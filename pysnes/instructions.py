@@ -540,6 +540,18 @@ class Instruction:
             cpu.PC = addr
         return 0
 
+    def BEQ(self, cpu, addr) -> int:
+        """Branch Equal"""
+        if cpu.P.Z == 1:
+            cpu.PC = addr
+        return 0
+
+    def BNE(self, cpu, addr) -> int:
+        """Branch Not Equal"""
+        if cpu.P.Z == 0:
+            cpu.PC = addr
+        return 0
+
     def JSR(self, cpu, addr) -> int:
         """Jump to Subroutine"""
         pc = cpu.current_instruction_PC
@@ -565,6 +577,26 @@ class Instruction:
 
     def PLP(self, cpu, addr) -> int:
         """Pull Processor Status Register"""
+        cpu.S += 1
+        cpu.P.set(cpu.bus[cpu.S], cpu.emulation)
+        return 0
+
+    def CMP(self, cpu, addr) -> int:
+        """Compare Accumulator with Memory"""
+        if cpu.emulation == 0 and cpu.P.M == 0:
+            value = cpu.bus[addr] | cpu.bus[addr + 1] << 8
+            temp = cpu.A - value
+            cpu.P.Z = 1 if (temp & 0xFFFF) == 0 else 0
+            cpu.P.N = 1 if temp & 0x8000 else 0
+        else:
+            value = cpu.bus[addr]
+            temp = (cpu.A & 0xFF) - value
+            cpu.P.Z = 1 if (temp & 0xFF) == 0 else 0
+            cpu.P.N = 1 if temp & 0x80 else 0
+
+        cpu.P.C = 1 if cpu.A >= value else 0
+
+        return 0
 
 
 class InstructionSet:

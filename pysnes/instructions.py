@@ -30,6 +30,7 @@ class AddressingMode:
         "": "nop",  # Reserved for Future Expansion
         "Implied": "implied",
         "Immediate": "immediate",
+        "Immediate Single Byte": "immediate_single_byte",  # Added by me: always fetch just 1 operand byte (ignore M flag)
         "Absolute": "absolute",
         "Absolute Long": "absolute_long",
         "Absolute Indirect": "absolute_indirect",
@@ -54,7 +55,7 @@ class AddressingMode:
         "Stack (Absolute)": "stack_absolute",
         "Stack (DP Indirect)": "stack_dp_indirect",
         "Stack (PC Relative Long)": "stack_pc_relative_long",
-        "Stack (Push)": "stack_push",
+        "Stack (Push)": "implied",
         "Stack (Pull)": "stack_pull",
         "Stack (RTI)": "stack_rti",
         "Stack (RTL)": "stack_rtl",
@@ -94,6 +95,15 @@ class AddressingMode:
             cpu.PC += 1
         return addr  # operand
 
+    def immediate_single_byte(self, cpu) -> int:
+        """
+        I added this mode to use with instructions that disregard the M flag
+        and always have fixed length one byte operands
+        """
+        addr = cpu.PC
+        cpu.PC += 1
+        return addr
+
     def absolute(self, cpu) -> int:
         """
         LDA addr
@@ -120,6 +130,16 @@ class AddressingMode:
         cpu.PC += 3
         return addr
 
+    def absolute_long_indexed_x(self, cpu) -> int:
+        """
+        Effective Address: The 24-bit Operand is added to X
+        (16 bits if 65802/65816 native mode, x = 0; else 8 bits)
+        """
+        operand = cpu.bus[cpu.PC] | cpu.bus[cpu.PC + 1] << 8 | cpu.bus[cpu.PC + 2] << 16
+        cpu.PC += 3
+        addr = cpu.X + operand
+        return addr
+
     def stack_interrupt(self, cpu) -> int:
         """
         Effective Address: After pushing the Program Bank (65802/816 native mode only),
@@ -130,6 +150,20 @@ class AddressingMode:
         """
         assert cpu.emulation == 0
         return self.immediate(cpu)
+
+    def program_counter_relative(self, cpu) -> int:
+        """
+        Bank: Program Bank Register (PBR).
+        High/Low: The Operand byte, a two's complement signed value, is sign-extended to 16 bits,
+        then added to the Program Counter (its value is the address of the opcode following this one).
+        """
+        operand = cpu.bus[cpu.PC]
+        # Sign extension
+        if operand & 0x80:  # Negative
+            operand |= 0xFF00
+        cpu.PC += 1  # TODO not sure...
+        addr = (operand + cpu.PC) & 0xFFFF | cpu.PB << 16
+        return addr
 
     def program_counter_relative_long(self, cpu) -> int:
         """
@@ -265,6 +299,14 @@ class Instruction:
 
         return 3
 
+    def SEP(self, cpu, addr) -> int:
+        """Set Status Bits"""
+        mask = cpu.bus[addr]
+        status = cpu.P.get(cpu.emulation)
+        cpu.P.set(status | mask, cpu.emulation)
+
+        return 3
+
     def STZ(self, cpu, addr) -> int:
         """Store Zero byte to Memory"""
         cpu.bus[addr] = 0
@@ -320,6 +362,210 @@ class Instruction:
 
         return 2
 
+    def LDX(self, cpu, addr) -> int:
+        """Load X Register from Memory"""
+        cpu.X = cpu.bus[addr]
+        cpu.P.N = 1 if cpu.X & 0x80 else 0
+        if cpu.emulation == 0 and cpu.P.M == 0 and cpu.P.X == 0:
+            cpu.X |= cpu.bus[addr + 1] << 8
+            cpu.P.N = 1 if cpu.X & 0x8000 else 0
+        cpu.P.Z = 1 if cpu.X == 0 else 0
+
+        return 0
+
+    def LDY(self, cpu, addr) -> int:
+        """Load Y Register from Memory"""
+        cpu.Y = cpu.bus[addr]
+        cpu.P.N = 1 if cpu.Y & 0x80 else 0
+        if cpu.emulation == 0 and cpu.P.M == 0 and cpu.P.X == 0:
+            cpu.Y |= cpu.bus[addr + 1] << 8
+            cpu.P.N = 1 if cpu.Y & 0x8000 else 0
+        cpu.P.Z = 1 if cpu.Y == 0 else 0
+
+        return 0
+
+    def TAX(self, cpu, addr) -> int:
+        """Transfer accumulator to X index register"""
+        assert cpu.emulation == 0
+        if cpu.P.X == 1:
+            cpu.X = cpu.A & 0xFF
+            cpu.P.N = 1 if cpu.X & 0x80 else 0
+        else:
+            cpu.X = cpu.A
+            cpu.P.N = 1 if cpu.X & 0x8000 else 0
+        cpu.P.Z = 1 if cpu.X == 0 else 0
+
+        return 2
+
+    def TAY(self, cpu, addr) -> int:
+        """Transfer accumulator to Y index register"""
+        assert cpu.emulation == 0
+        if cpu.P.X == 1:
+            cpu.Y = cpu.A & 0xFF
+            cpu.P.N = 1 if cpu.Y & 0x80 else 0
+        else:
+            cpu.Y = cpu.A
+            cpu.P.N = 1 if cpu.Y & 0x8000 else 0
+        cpu.P.Z = 1 if cpu.Y == 0 else 0
+
+        return 2
+
+    def TYA(self, cpu, addr) -> int:
+        """Transfer Y index register to the accumulator"""
+        assert cpu.emulation == 0
+        if cpu.P.M == 1:
+            if cpu.P.X == 0:
+                # 16 bit index regs to 8 bit acc (m=1, x=0), 8 bits are transferred.
+                # The hidden high order accumulator byte is not
+                # affected and the previous values remain.
+                cpu.A = (cpu.A & 0xFF00) | cpu.Y & 0xFF
+            else:
+                cpu.A = cpu.Y & 0xFF
+            cpu.P.N = 1 if cpu.A & 0x80 else 0
+        else:
+            if cpu.P.X == 1:
+                # 8 bit index regs to 16 bit acc (m=0, x=1), Two bytes
+                # transferred with the high byte being zero.
+                cpu.A = cpu.Y & 0xFF
+            else:
+                cpu.A = cpu.Y
+            cpu.P.N = 1 if cpu.A & 0x8000 else 0
+
+        cpu.P.Z = 1 if cpu.A == 0 else 0
+
+        return 2
+
+    def TXA(self, cpu, addr) -> int:
+        """Transfer X index register to the accumulator"""
+        assert cpu.emulation == 0
+        if cpu.P.M == 1:
+            if cpu.P.X == 0:
+                # 16 bit index regs to 8 bit acc (m=1, x=0), 8 bits are transferred.
+                # The hidden high order accumulator byte is not
+                # affected and the previous values remain.
+                cpu.A = (cpu.A & 0xFF00) | cpu.X & 0xFF
+            else:
+                cpu.A = cpu.X & 0xFF
+            cpu.P.N = 1 if cpu.A & 0x80 else 0
+        else:
+            if cpu.P.X == 1:
+                # 8 bit index regs to 16 bit acc (m=0, x=1), Two bytes
+                # transferred with the high byte being zero.
+                cpu.A = cpu.X & 0xFF
+            else:
+                cpu.A = cpu.X
+            cpu.P.N = 1 if cpu.A & 0x8000 else 0
+
+        cpu.P.Z = 1 if cpu.A == 0 else 0
+
+        return 2
+
+    def ADC(self, cpu, addr) -> int:
+        """Add with carry"""
+        assert cpu.emulation == 0
+        # Value to be added to the accumulator
+        value = cpu.bus[addr]
+        if cpu.P.M == 0:
+            value |= cpu.bus[addr + 1] << 8
+        # Sum
+        temp = cpu.A + value + (cpu.P.C & 0x1)
+        # Set flags and accumulator
+        if cpu.P.M == 0:
+            cpu.P.Z = 1 if (temp & 0xFFFF) == 0 else 0
+            cpu.P.C = 1 if temp > 0xFFFF else 0
+            cpu.P.N = 1 if temp & 0x8000 else 0
+            cpu.P.V = 1 if (~(cpu.A ^ value) & (cpu.A ^ temp)) & 0x8000 else 0
+            cpu.A = temp & 0xFFFF
+        else:
+            cpu.P.Z = 1 if (temp & 0xFF) == 0 else 0
+            cpu.P.C = 1 if temp > 0xFF else 0
+            cpu.P.N = 1 if temp & 0x80 else 0
+            cpu.P.V = 1 if (~(cpu.A ^ value) & (cpu.A ^ temp)) & 0x80 else 0
+            cpu.A = temp & 0xFF
+
+        return 0
+
+    def SBC(self, cpu, addr) -> int:
+        """Subtract from Accumulator"""
+        assert cpu.emulation == 0
+        # Value to be subtracted from the accumulator
+
+        if cpu.P.M == 0:
+            value = (cpu.bus[addr] | cpu.bus[addr + 1] << 8) ^ 0xFFFF
+        else:
+            value = cpu.bus[addr] ^ 0xFF
+        # Subtract
+        temp = cpu.A + value + (cpu.P.C & 0x1)
+        # Set flags and accumulator
+        if cpu.P.M == 0:
+            cpu.P.Z = 1 if (temp & 0xFFFF) == 0 else 0
+            cpu.P.C = 1 if temp > 0xFFFF else 0
+            cpu.P.N = 1 if temp & 0x8000 else 0
+            cpu.P.V = 1 if ((temp ^ cpu.A) & (temp ^ value)) & 0x8000 else 0
+            cpu.A = temp & 0xFFFF
+        else:
+            cpu.P.Z = 1 if (temp & 0xFF) == 0 else 0
+            cpu.P.C = 1 if temp > 0xFF else 0
+            cpu.P.N = 1 if temp & 0x80 else 0
+            cpu.P.V = 1 if ((temp ^ cpu.A) & (temp ^ value)) & 0x80 else 0
+            cpu.A = temp & 0xFF
+
+        return 0
+
+    def DEX(self, cpu, addr) -> int:
+        """Decrement Index Register X"""
+        cpu.X -= 1
+        if cpu.P.X == 0:
+            cpu.P.N = 1 if cpu.X & 0x8000 else 0
+        else:
+            cpu.P.N = 1 if cpu.X & 0x80 else 0
+        cpu.P.Z = 1 if cpu.X == 0 else 0
+
+        return 2
+
+    def DEY(self, cpu, addr) -> int:
+        """Decrement Index Register Y"""
+        cpu.Y -= 1
+        if cpu.P.X == 0:
+            cpu.P.N = 1 if cpu.Y & 0x8000 else 0
+        else:
+            cpu.P.N = 1 if cpu.Y & 0x80 else 0
+        cpu.P.Z = 1 if cpu.Y == 0 else 0
+
+        return 2
+
+    def BPL(self, cpu, addr) -> int:
+        """Branch Result Positive"""
+        if cpu.P.N == 0:
+            cpu.PC = addr
+        return 0
+
+    def JSR(self, cpu, addr) -> int:
+        """Jump to Subroutine"""
+        pc = cpu.current_instruction_PC
+        # Push program bank
+        cpu.bus[cpu.S] = cpu.PB
+        cpu.S -= 1
+        # PC high byte
+        cpu.bus[cpu.S] = (pc >> 8) & 0xFF
+        cpu.S -= 1
+        # PC low byte
+        cpu.bus[cpu.S] = pc & 0xFF
+        cpu.S -= 1
+        # Jump to addr
+        cpu.PC = addr
+
+        return 0
+
+    def PHP(self, cpu, addr) -> int:
+        """Push Processor Status Register"""
+        cpu.bus[cpu.S] = cpu.P.get(cpu.emulation)
+        cpu.S -= 1
+        return 0
+
+    def PLP(self, cpu, addr) -> int:
+        """Pull Processor Status Register"""
+
 
 class InstructionSet:
     def __init__(self, cpu) -> None:
@@ -337,5 +583,6 @@ class InstructionSet:
     def execute(self, opcode: int) -> int:
         instruction = self.instructions[opcode]
         print("0x{:02X} {}".format(self.cpu.PC - 1, instruction))
+        self.cpu.current_instruction_PC = self.cpu.PC - 1
         cycles = instruction(self.cpu)
         return cycles

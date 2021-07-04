@@ -177,7 +177,7 @@ PLD,,Pull Direct Page Register,2B,Stack (Pull),N-----Z-,1,5
 PLP,,Pull Processor Status Register,28,Stack (Pull),NVMXDIZC,1,4
 PLX,,Pull Index Register X,FA,Stack (Pull),N-----Z-,1,4[^8]
 PLY,,Pull Index Register Y,7A,Stack (Pull),N-----Z-,1,4[^8]
-REP #const,,Reset Processor Status Bits,C2,Immediate,NVMXDIZC,2,3
+REP #const,,Reset Processor Status Bits,C2,Immediate Single Byte,NVMXDIZC,2,3
 ROL dp,,Rotate Memory or Accumulator Left,26,Direct Page,N-----ZC,2,5[^2][^4]
 ROL A,,Rotate Memory or Accumulator Left,2A,Accumulator,N-----ZC,1,2
 ROL addr,,Rotate Memory or Accumulator Left,2E,Absolute,N-----ZC,3,6[^4]
@@ -209,7 +209,7 @@ SBC (dp),,Subtract with Borrow from Accumulator,F2,DP Indirect,NV----ZC,2,5[^1][
 SEC,,Set Carry Flag,38,Implied,-------C,1,2
 SED,,Set Decimal Flag,F8,Implied,----D---,1,2
 SEI,,Set Interrupt Disable Flag,78,Implied,-----I--,1,2
-SEP #const,,Set Processor Status Bits,E2,Immediate,NVMXDIZC,2,3
+SEP #const,,Set Processor Status Bits,E2,Immediate Single Byte,NVMXDIZC,2,3
 "STA (dp,X)",,Store Accumulator to Memory,81,"DP Indexed Indirect,X",,2,6[^1][^2]
 "STA sr,S",,Store Accumulator to Memory,83,Stack Relative,,2,4[^1]
 STA dp,,Store Accumulator to Memory,85,Direct Page,,2,3[^1][^2]

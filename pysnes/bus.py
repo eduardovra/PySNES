@@ -14,7 +14,9 @@ class Bus:
             # 0x4200 DMA, PPU2, hardware registers
             return self.cpu_registers[addr - 0x4200]
 
-        raise RuntimeError("Error accessing unmamped memory region: {}" % hex(addr))
+        raise RuntimeError(
+            "Error accessing unmamped memory region: 0x{:06X}".format(addr)
+        )
 
     def __setitem__(self, addr: int, data: int) -> None:
         """self.rom[addr + offset] = value"""

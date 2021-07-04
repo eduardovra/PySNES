@@ -4,36 +4,20 @@ from .instructions import InstructionSet
 
 class Cpu:
     class StatusRegister:
-        # The status register bits 7,6,3,2,1,0 (nvdizc) function the same as the 6502 status register bits.
-
-        # 7 n Negative flag
-        # 6 v Overflow flag
-        # 5 m Accumulator/Memory Select
-        # 4 x Index Register Select
-        # 3 d Decimal flag
-        # 2 i Interrupt mask
-        # 1 z Zero flag
-        # 0 c Carry flag
-
         def __init__(self, emulation_mode: int) -> None:
-            self.emulation_mode = emulation_mode
-            self.initialize()
+            self.N = 0  # Negative flag
+            self.V = 0  # Overflow flag
+            self.D = 0  # Decimal flag
+            self.I = 0  # Interrupt mask
+            self.Z = 0  # Zero flag
+            self.C = 0  # Carry flag
+            # Emulation mode only
+            self.B = 0  # B BRK flag bit
+            # Native mode only
+            self.M = 0  # Accumulator/Memory Select
+            self.X = 0  # Index Register Select
 
-        def initialize(self):
-            self.N = 0
-            self.V = 0
-            self.D = 0
-            self.I = 0
-            self.Z = 0
-            self.C = 0
-
-            if self.emulation_mode:
-                self.B = 0  # B BRK flag bit - Emulation mode only
-            else:
-                self.M = 0  # Accumulator/Memory Select
-                self.X = 0  # Index Register Select
-
-        def get(self) -> int:
+        def get(self, emulation_mode) -> int:
             value = (
                 (self.N << 7)
                 | (self.V << 6)
@@ -43,12 +27,26 @@ class Cpu:
                 | (self.C << 0)
             )
 
-            if self.emulation_mode:
+            if emulation_mode:
                 value |= self.B << 4
             else:
                 value |= (self.M << 5) | (self.X << 4)
 
             return value
+
+        def set(self, value, emulation_mode) -> None:
+            self.N = (value >> 7) & 0x01
+            self.V = (value >> 6) & 0x01
+            self.D = (value >> 5) & 0x01
+            self.I = (value >> 2) & 0x01
+            self.Z = (value >> 1) & 0x01
+            self.C = (value >> 0) & 0x01
+
+            if emulation_mode:
+                self.B = (value >> 4) & 0x01
+            else:
+                self.M = (value >> 5) & 0x01
+                self.X = (value >> 4) & 0x01
 
     def __init__(self, bus: Bus) -> None:
         self.bus = bus
@@ -62,7 +60,7 @@ class Cpu:
         self.X: int = 0  # X Index Register
         self.Y: int = 0  # Y Index Register
         self.D: int = 0  # Direct Page Register
-        self.S: int = 0  # Stack Pointer
+        self.S: int = 0x100  # Stack Pointer
         self.PB: int = 0  # Program Bank Register
         self.DB: int = 0  # Data Bank Register
         self.PC: int = 0x8000  # Program Counter TODO read from reset int vector
@@ -74,4 +72,6 @@ class Cpu:
 
     def fetch_and_execute(self) -> int:
         opcode = self.bus[self.PC]
-        return self.instruction_set.execute(opcode)
+        self.PC += 1
+        cycles = self.instruction_set.execute(opcode)
+        return cycles

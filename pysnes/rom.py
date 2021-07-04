@@ -58,3 +58,36 @@ class Rom:
         # - D == 0 means LoROM (+ $0), D == 1 means HiROM (+ $1)
         # For super mario world A == 0 and D == 0, so it's SlowROM + LoROM
         assert self.snes_header["mapping_mode"] == 0x20  # LoROM+SNES
+
+        """
+        7.10 Hardware Vectors:
+        ----------------------
+            Native Mode           6502 Emulation Mode
+            -----------------------------------------
+            IRQ   $FFEE-$FFEF     IRQ/BRK $FFFE-$FFFF
+                                  RESET   $FFFC-$FFFD
+            NMI   $FFEA-$FFEB     NMI     $FFFA-$FFFB
+            ABORT $FFE8-$FFE9     ABORT   $FFF8-$FFF9
+            BRK   $FFE6-$FFE7
+            COP   $FFE5-$FFE6     COP     $FFF4-$FFF5
+        """
+
+        # Interrupt vectors
+        self.hardware_vectors = {
+            "native": {
+                "IRQ": self.rom[0x7FEE] | self.rom[0x7FEF] << 8,
+                "NMI": self.rom[0x7FEA] | self.rom[0x7FEB] << 8,
+                "ABORT": self.rom[0x7FE8] | self.rom[0x7FE9] << 8,
+                "BRK": self.rom[0x7FE6] | self.rom[0x7FE7] << 8,
+                "COP": self.rom[0x7FE5] | self.rom[0x7FE6] << 8,
+            },
+            "emulation": {
+                "IRQ/BRK": self.rom[0x7FEE] | self.rom[0x7FEF] << 8,
+                "RESET": self.rom[0x7FFC] | self.rom[0x7FFD] << 8,
+                "NMI": self.rom[0x7FFA] | self.rom[0x7FFB] << 8,
+                "ABORT": self.rom[0x7FF8] | self.rom[0x7FF9] << 8,
+                "COP": self.rom[0x7FF4] | self.rom[0x7FF5] << 8,
+            },
+        }
+
+        print(f"{self.hardware_vectors=}")

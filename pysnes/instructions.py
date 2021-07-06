@@ -183,6 +183,32 @@ class AddressingMode:
 
         return addr | cpu.PB << 16
 
+    def dp_indirect_long_indexed_y(self, cpu) -> int:
+        """
+        Direct Page Indirect Long Indexed, Y Addressing
+        Effective Address:Found by adding to the triple-byte indirect address Y (16 bits if 65802/65816 native mode, x = 0; else 8 bits).
+        Indirect Address: Located in the Direct Page at the sum of the direct page register and the operand byte in bank zero.
+
+        Direct Page Indirect Long Indexed Y       LDA [$77],Y
+        This instruction in two bytes long and allows you to temporarily reach into any memory bank.
+        The operand is a direct page (zero page) pointer. The address located at the direct page offset is
+        three bytes long. First is the low byte, then high byte, followed by the bank byte of the base effect address.
+        The Y index register is then added to this three byte destination address to form the effective address.
+        Square brackets are used to denote that the address is a full 24 bit address and not a simple 16 bit address.
+        """
+        assert cpu.emulation == 0
+        operand = cpu.bus[cpu.PC]
+        cpu.PC += 1
+
+        offset = cpu.D + operand
+        indirect_addr = (
+            cpu.bus[offset] | cpu.bus[offset + 1] << 8 | cpu.bus[offset + 2] << 16
+        )
+        y = cpu.Y if cpu.P.X == 0 else cpu.Y & 0xFF
+        addr = indirect_addr + y
+
+        return addr
+
 
 class Instruction:
     def __init__(self, raw_instruction: dict) -> None:
@@ -534,6 +560,11 @@ class Instruction:
 
         return 2
 
+    def BRA(self, cpu, addr) -> int:
+        """Branch Always"""
+        cpu.PC = addr
+        return 0
+
     def BPL(self, cpu, addr) -> int:
         """Branch Result Positive"""
         if cpu.P.N == 0:
@@ -569,6 +600,25 @@ class Instruction:
 
         return 0
 
+    def PHA(self, cpu, addr) -> int:
+        """Push Accumulator"""
+        cpu.bus[cpu.S] = cpu.A
+        cpu.S -= 1
+        if cpu.emulation == 0 and cpu.P.M == 0:
+            cpu.bus[cpu.S] = cpu.A >> 8
+            cpu.S -= 1
+        return 0
+
+    def PLA(self, cpu, addr) -> int:
+        """Pull Accumulator"""
+        cpu.S += 1
+        cpu.A = cpu.bus[cpu.S]
+        if cpu.emulation == 0 and cpu.P.M == 0:
+            cpu.S += 1
+            cpu.A = cpu.A << 8 | cpu.bus[cpu.S]
+
+        return 0
+
     def PHP(self, cpu, addr) -> int:
         """Push Processor Status Register"""
         cpu.bus[cpu.S] = cpu.P.get(cpu.emulation)
@@ -598,6 +648,72 @@ class Instruction:
 
         return 0
 
+    def CPX(self, cpu, addr) -> int:
+        """Compare X Index register with Memory"""
+        value = cpu.bus[addr]
+        if cpu.emulation == 0 and cpu.P.X == 0:
+            value |= cpu.bus[addr + 1] << 8
+            # TODO workaround: in this case X defines the 16bit mode instead of A
+            cpu.PC += 1
+        result = cpu.X - value
+
+        if cpu.emulation == 0 and cpu.P.X == 0:
+            cpu.P.N = 1 if result & 0x8000 else 0
+            cpu.P.Z = 1 if (result & 0xFFFF) == 0 else 0
+        else:
+            cpu.P.N = 1 if result & 0x80 else 0
+            cpu.P.Z = 1 if (result & 0xFF) == 0 else 0
+
+        cpu.P.C = 1 if cpu.X >= value else 0
+
+        return 0
+
+    def CPY(self, cpu, addr) -> int:
+        """Compare Y Index register with Memory"""
+        value = cpu.bus[addr]
+        if cpu.emulation == 0 and cpu.P.X == 0:
+            value |= cpu.bus[addr + 1] << 8
+            # TODO workaround: in this case X defines the 16bit mode instead of A
+            cpu.PC += 1
+        result = cpu.Y - value
+
+        if cpu.emulation == 0 and cpu.P.X == 0:
+            cpu.P.N = 1 if result & 0x8000 else 0
+            cpu.P.Z = 1 if (result & 0xFFFF) == 0 else 0
+        else:
+            cpu.P.N = 1 if result & 0x80 else 0
+            cpu.P.Z = 1 if (result & 0xFF) == 0 else 0
+
+        cpu.P.C = 1 if cpu.Y >= value else 0
+
+        return 0
+
+    def INX(self, cpu, addr) -> int:
+        """Increment Index Register X"""
+        cpu.X += 1
+        if cpu.emulation == 0 and cpu.P.X == 0:
+            cpu.X &= 0xFFFF
+            cpu.P.N = 1 if cpu.X & 0x8000 else 0
+        else:
+            cpu.X &= 0xFF
+            cpu.P.N = 1 if cpu.X & 0x80 else 0
+        cpu.P.Z = 1 if cpu.X == 0 else 0
+
+        return 2
+
+    def INY(self, cpu, addr) -> int:
+        """Increment Index Register Y"""
+        cpu.Y += 1
+        if cpu.emulation == 0 and cpu.P.X == 0:
+            cpu.Y &= 0xFFFF
+            cpu.P.N = 1 if cpu.Y & 0x8000 else 0
+        else:
+            cpu.Y &= 0xFF
+            cpu.P.N = 1 if cpu.Y & 0x80 else 0
+        cpu.P.Z = 1 if cpu.Y == 0 else 0
+
+        return 2
+
 
 class InstructionSet:
     def __init__(self, cpu) -> None:
@@ -614,7 +730,7 @@ class InstructionSet:
 
     def execute(self, opcode: int) -> int:
         instruction = self.instructions[opcode]
-        print("0x{:02X} {}".format(self.cpu.PC - 1, instruction))
+        print("CPU 0x{:02X} {}".format(self.cpu.PC - 1, instruction))
         self.cpu.current_instruction_PC = self.cpu.PC - 1
         cycles = instruction(self.cpu)
         return cycles

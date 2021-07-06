@@ -37,7 +37,7 @@ class Cpu:
         def set(self, value, emulation_mode) -> None:
             self.N = (value >> 7) & 0x01
             self.V = (value >> 6) & 0x01
-            self.D = (value >> 5) & 0x01
+            self.D = (value >> 3) & 0x01
             self.I = (value >> 2) & 0x01
             self.Z = (value >> 1) & 0x01
             self.C = (value >> 0) & 0x01

@@ -25,12 +25,16 @@ class Bus:
         elif 0x2100 <= addr <= 0x21FF:
             if 0x2140 <= addr <= 0x217F:
                 # 0x2140 - 0x204C == 0xF4 [addr of PORT0]
+                if 0x2140 <= addr <= 0x2143:  # TODO ugly
+                    return self.apu.ports_w[addr - 0x2140]
                 return self.apu[addr - 0x204C]
             return self.pp1_apu_hw_registers[addr - 0x2100]
         elif 0x4200 <= addr <= 0x44FF:
             return self.dma_ppu2_hw_registers[addr - 0x4200]
         elif 0x8000 <= addr <= 0xFFFF:
             return self.rom[addr - 0x8000]
+        elif 0x0E8000 <= addr <= 0x0EFFFF:  # Shadowed
+            return self.rom[addr - 0x0E8000]
         elif 0x7E0000 <= addr <= 0x7E1FFF:
             return self.low_ram[addr & 0xFFFF]
         elif 0x7E8000 <= addr <= 0x7FFFFF:
@@ -46,7 +50,10 @@ class Bus:
         if 0x0000 <= addr <= 0x1FFF:
             self.low_ram[addr & 0xFFFF] = data & 0xFF
         elif 0x2100 <= addr <= 0x21FF:
-            self.pp1_apu_hw_registers[addr - 0x2100] = data & 0xFF
+            if 0x2140 <= addr <= 0x2143:  # TODO ugly
+                self.apu.ports_r[addr - 0x2140] = data & 0xFF
+            else:
+                self.pp1_apu_hw_registers[addr - 0x2100] = data & 0xFF
         elif 0x4200 <= addr <= 0x44FF:
             self.dma_ppu2_hw_registers[addr - 0x4200] = data & 0xFF
         elif 0x7E0000 <= addr <= 0x7E1FFF:

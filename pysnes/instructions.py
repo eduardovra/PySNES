@@ -315,6 +315,15 @@ class Instruction:
         cpu.P.I = 1
         return 2
 
+    def XBA(self, cpu, addr) -> int:
+        """Exchange B and A Accumulators"""
+        temp_high = cpu.A >> 8
+        temp_low = cpu.A & 0xFF
+        cpu.A = temp_low << 8 | temp_high
+        cpu.P.N = 1 if cpu.A & 0x80 else 0
+        cpu.P.Z = 1 if (cpu.A & 0xFF) == 0 else 0
+        return 3
+
     def XCE(self, cpu, addr) -> int:
         """Exchange Carry and Emulation Bits"""
         carry = cpu.P.C
@@ -575,9 +584,15 @@ class Instruction:
         cpu.PC = addr
         return 0
 
-    def BPL(self, cpu, addr) -> int:
-        """Branch Result Positive"""
-        if cpu.P.N == 0:
+    def BCC(self, cpu, addr) -> int:
+        """Branch Carry Clear"""
+        if cpu.P.C == 0:
+            cpu.PC = addr
+        return 0
+
+    def BCS(self, cpu, addr) -> int:
+        """Branch Carry Set"""
+        if cpu.P.C == 1:
             cpu.PC = addr
         return 0
 
@@ -590,6 +605,30 @@ class Instruction:
     def BNE(self, cpu, addr) -> int:
         """Branch Not Equal"""
         if cpu.P.Z == 0:
+            cpu.PC = addr
+        return 0
+
+    def BMI(self, cpu, addr) -> int:
+        """Branch Result Minus"""
+        if cpu.P.N == 1:
+            cpu.PC = addr
+        return 0
+
+    def BPL(self, cpu, addr) -> int:
+        """Branch Result Positive"""
+        if cpu.P.N == 0:
+            cpu.PC = addr
+        return 0
+
+    def BVC(self, cpu, addr) -> int:
+        """Branch Overflow Clear"""
+        if cpu.P.V == 0:
+            cpu.PC = addr
+        return 0
+
+    def BVS(self, cpu, addr) -> int:
+        """Branch Overflow Set"""
+        if cpu.P.V == 1:
             cpu.PC = addr
         return 0
 
@@ -697,6 +736,22 @@ class Instruction:
         cpu.P.C = 1 if cpu.Y >= value else 0
 
         return 0
+
+    def INC(self, cpu, addr) -> int:
+        """Increment Data"""
+        opcode = cpu.bus[cpu.current_instruction_PC]
+        assert opcode == 0x1A  # TODO other modes not implemented
+
+        cpu.A += 1
+        if cpu.emulation == 0 and cpu.P.M == 0:
+            cpu.A &= 0xFFFF
+            cpu.P.N = 1 if cpu.A & 0x8000 else 0
+        else:
+            cpu.A &= 0xFF
+            cpu.P.N = 1 if cpu.A & 0x80 else 0
+        cpu.P.Z = 1 if cpu.A == 0 else 0
+
+        return 2
 
     def INX(self, cpu, addr) -> int:
         """Increment Index Register X"""

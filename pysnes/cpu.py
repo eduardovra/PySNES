@@ -4,7 +4,7 @@ from .instructions import InstructionSet
 
 class Cpu:
     class StatusRegister:
-        def __init__(self, emulation_mode: int) -> None:
+        def __init__(self) -> None:
             self.N = 0  # Negative flag
             self.V = 0  # Overflow flag
             self.D = 0  # Decimal flag
@@ -48,8 +48,9 @@ class Cpu:
                 self.M = (value >> 5) & 0x01
                 self.X = (value >> 4) & 0x01
 
-    def __init__(self, bus: Bus) -> None:
+    def __init__(self, bus: Bus, hardware_vectors: dict) -> None:
         self.bus = bus
+        self.hardware_vectors = hardware_vectors
         self.instruction_set = InstructionSet(self)
 
         # Emulation bit
@@ -63,8 +64,8 @@ class Cpu:
         self.S: int = 0x100  # Stack Pointer
         self.PB: int = 0  # Program Bank Register
         self.DB: int = 0  # Data Bank Register
-        self.PC: int = 0x8000  # Program Counter TODO read from reset int vector
-        self.P = self.StatusRegister(emulation_mode=self.emulation)
+        self.PC: int = self.hardware_vectors["emulation"]["RESET"]
+        self.P = self.StatusRegister()
 
         # Debugging properties
         self.ticks = 0

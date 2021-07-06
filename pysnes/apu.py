@@ -22,12 +22,16 @@ class Apu:
             0x1D,
             0xDD,
             0x5D,
+            0xBC,
+            0x3D,
+            0xFC,
         ],
         "Immediate": [0xCD, 0xE8],
         "Indirect": [0xC6],
         "Relative": [0x90, 0xB0, 0xF0, 0x30, 0xD0, 0x10, 0x50, 0x70, 0x2F],
-        "DirectPage": [0xBA, 0xDA, 0xC4, 0xEB],
+        "DirectPage": [0xBA, 0xDA, 0xC4, 0xEB, 0x7E, 0xE4, 0xCB],
         "ImmediateDataToDirectPage": [0x8F, 0x78],
+        "IndirectYIndexed": [0xD7],
     }
 
     def __init__(self) -> None:
@@ -63,28 +67,32 @@ class Apu:
         # FFC0 - FFFF	64 byte IPL ROM (read only)*
         # self.memory = [0] * 0xFFFF
 
-        self.page_0 = [0] * (1 + 0x00EF - 0x0000)
+        self.page_0 = bytearray(1 + 0x00EF - 0x0000)
 
         # The IO Port0-4 registers have separete memory for R/W
-        self.ports_r = [0] * 4  # APU reads from
-        self.ports_w = [0] * 4  # APU writes to
+        self.ports_r = bytearray(4)  # APU reads from
+        self.ports_w = bytearray(4)  # APU writes to
+
+        self.memory = bytearray(0xFFBF - 0x0200 + 1)
 
         # IPL ROOM (boot code) - 64 bytes
         # fmt: off
-        self.ipl_rom = (
+        self.ipl_rom = bytes((
             0xCD,0xEF,0xBD,0xE8,0x00,0xC6,0x1D,0xD0,0xFC,0x8F,0xAA,0xF4,0x8F,0xBB,0xF5,0x78,
             0xCC,0xF4,0xD0,0xFB,0x2F,0x19,0xEB,0xF4,0xD0,0xFC,0x7E,0xF4,0xD0,0x0B,0xE4,0xF5,
             0xCB,0xF4,0xD7,0x00,0xFC,0xD0,0xF3,0xAB,0x01,0x10,0xEF,0x7E,0xF4,0x10,0xEB,0xBA,
             0xF6,0xDA,0x00,0xBA,0xF4,0xC4,0xF4,0xDD,0x5D,0xD0,0xDB,0x1F,0x00,0x00,0xC0,0xFF,
-        )
+        ))
         # fmt: on
 
     def __getitem__(self, addr: int) -> int:
         if 0x0000 <= addr <= 0x00EF:
             return self.page_0[addr]
         elif 0x00F4 <= addr <= 0x00F7:
-            print(f"  APU read [{hex(addr)}] ==> {hex(self.ports_r[addr - 0x00F4])}")
+            # print(f"  APU read [{hex(addr)}] ==> {hex(self.ports_r[addr - 0x00F4])}")
             return self.ports_r[addr - 0x00F4]
+        elif 0x0200 <= addr <= 0xFFBF:
+            return self.memory[addr - 0x0200]
         elif 0xFFC0 <= addr <= 0xFFFF:
             return self.ipl_rom[addr - 0xFFC0]
 
@@ -100,6 +108,8 @@ class Apu:
         elif 0x00F4 <= addr <= 0x00F7:
             print(f"  APU write [{hex(addr)}] <== {hex(value)}")
             self.ports_w[addr - 0x00F4] = value
+        elif 0x0200 <= addr <= 0xFFBF:
+            self.memory[addr - 0x0200] = value
         else:
             raise RuntimeError(
                 "Error writting unmamped memory region: 0x{:06X}".format(addr)
@@ -168,7 +178,7 @@ class Apu:
         self.PC += 1
         # Get reference to instruction metadata
         instruction = self.instruction_set[opcode]
-        print("\033[93mAPU", hex(self.PC), hex(opcode), instruction, "\033[0m")
+        # print("\033[93mAPU", hex(self.PC), hex(opcode), instruction, "\033[0m")
         # Determine addressing mode and fetch operand address
         addr_mode_method = getattr(self, instruction["AddressingMode"])
         addr = addr_mode_method()
@@ -219,6 +229,15 @@ class Apu:
         self.PC += 2
         return addr
 
+    def IndirectYIndexed(self) -> int:
+        """Indirect Y-Indexed = [d]+Y"""
+        page = 0x0100 if self.P else 0x0000
+        relative_addr = self[self.PC] | page
+        d_value = self[relative_addr] | self[relative_addr + 1] << 8
+        addr = d_value + self.Y  # TODO dont know if Y can be negative
+        self.PC += 1
+        return addr
+
     def update_flags(self, value: int) -> None:
         """Update SPW flags based on resulting value from previous operation"""
 
@@ -262,17 +281,25 @@ class Apu:
         self.N = 1 if self.A & 0x80 else 0
         self.Z = 1 if self.A == 0 else 0
 
+    def MOV_E4(self, addr: int) -> None:
+        """A = (d)"""
+        page = 0x0100 if self.P else 0x0000
+        absolute_addr = self[addr] | page
+        self.A = self[absolute_addr]
+        self.N = 1 if self.A & 0x80 else 0
+        self.Z = 1 if self.A == 0 else 0
+
     def MOV_C4(self, addr: int) -> None:
         """(d) = A        (read)"""
         page = 0x0100 if self.P else 0x0000
         absolute_addr = self[addr] | page
         self[absolute_addr] = self.A
 
-    def MOV_C6(self, addr: int) -> None:
-        """(X) = A"""
+    def MOV_CB(self, addr: int) -> None:
+        """(d) = Y        (read)"""
         page = 0x0100 if self.P else 0x0000
         absolute_addr = self[addr] | page
-        self[absolute_addr] = self.A
+        self[absolute_addr] = self.Y
 
     def MOV_8F(self, addr: int) -> None:
         """(d) = i"""
@@ -280,6 +307,16 @@ class Apu:
         page = 0x0100 if self.P else 0x0000
         absolute_addr = self[addr + 1] | page
         self[absolute_addr] = value
+
+    def MOV_C6(self, addr: int) -> None:
+        """(X) = A"""
+        page = 0x0100 if self.P else 0x0000
+        absolute_addr = self.X | page
+        self[absolute_addr] = self.A
+
+    def MOV_D7(self, addr: int) -> None:
+        """([d]+Y) = A    (read)"""
+        self[addr] = self.A
 
     def MOVW_BA(self, addr: int) -> None:
         """YA = word (d)"""
@@ -356,3 +393,30 @@ class Apu:
         self.N = 1 if result < 0x00 else 0
         self.Z = 1 if result == 0 else 0
         self.C = 1 if result > 0xFF else 0  # TODO not sure
+
+    def CMP_7E(self, addr: int) -> None:
+        """Y - (d)"""
+        page = 0x0100 if self.P else 0x0000
+        absolute_addr = self[addr] | page
+        result = self.Y - self[absolute_addr]
+        self.N = 1 if result < 0x00 else 0
+        self.Z = 1 if result == 0 else 0
+        self.C = 1 if result > 0xFF else 0  # TODO not sure
+
+    def INC_BC(self, addr: int) -> None:
+        """A++"""
+        self.A = (self.A + 1) & 0xFF
+        self.N = 1 if self.A & 0x80 else 0
+        self.Z = 1 if self.A == 0 else 0
+
+    def INC_3D(self, addr: int) -> None:
+        """X++"""
+        self.X = (self.X + 1) & 0xFF
+        self.N = 1 if self.X & 0x80 else 0
+        self.Z = 1 if self.X == 0 else 0
+
+    def INC_FC(self, addr: int) -> None:
+        """Y++"""
+        self.Y = (self.Y + 1) & 0xFF
+        self.N = 1 if self.Y & 0x80 else 0
+        self.Z = 1 if self.Y == 0 else 0

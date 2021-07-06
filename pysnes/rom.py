@@ -57,7 +57,9 @@ class Rom:
         # - C == 1 means ExLoROM (+ $2)
         # - D == 0 means LoROM (+ $0), D == 1 means HiROM (+ $1)
         # For super mario world A == 0 and D == 0, so it's SlowROM + LoROM
-        assert self.snes_header["mapping_mode"] == 0x20  # LoROM+SNES
+        # assert self.snes_header["mapping_mode"] == 0x20  # LoROM+SNES
+        # For the test ROM
+        assert self.snes_header["mapping_mode"] == 0x30  # LoROM + FastROM+SNES
 
         """
         7.10 Hardware Vectors:

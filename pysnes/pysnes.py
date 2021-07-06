@@ -9,7 +9,7 @@ class PySNES:
         rom = Rom(rom_file_path)
         self.apu = Apu()
         bus = Bus(rom, self.apu)
-        self.cpu = Cpu(bus)
+        self.cpu = Cpu(bus, rom.hardware_vectors)
 
     def tick(self):
         """
@@ -25,6 +25,8 @@ class PySNES:
 
 
 if __name__ == "__main__":
-    pysnes = PySNES("Super Mario World (U) [!].smc")
+    rom = "snes_oam_test/1-random.smc"
+    # rom = "Super Mario World (U) [!].smc"
+    pysnes = PySNES(rom)
     while not pysnes.tick():
         pass

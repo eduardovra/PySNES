@@ -26,6 +26,9 @@ class Bus:
             if 0x2140 <= addr <= 0x217F:
                 # 0x2140 - 0x204C == 0xF4 [addr of PORT0]
                 if 0x2140 <= addr <= 0x2143:  # TODO ugly
+                    # print(
+                    #    f"  CPU read [{hex(addr)}] ==> {hex(self.apu.ports_w[addr - 0x2140])}"
+                    # )
                     return self.apu.ports_w[addr - 0x2140]
                 return self.apu[addr - 0x204C]
             return self.pp1_apu_hw_registers[addr - 0x2100]
@@ -51,6 +54,7 @@ class Bus:
             self.low_ram[addr & 0xFFFF] = data & 0xFF
         elif 0x2100 <= addr <= 0x21FF:
             if 0x2140 <= addr <= 0x2143:  # TODO ugly
+                # print(f"  CPU write [{hex(addr)}] <== {hex(data)}")
                 self.apu.ports_r[addr - 0x2140] = data & 0xFF
             else:
                 self.pp1_apu_hw_registers[addr - 0x2100] = data & 0xFF

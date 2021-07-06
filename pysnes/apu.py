@@ -83,6 +83,7 @@ class Apu:
         if 0x0000 <= addr <= 0x00EF:
             return self.page_0[addr]
         elif 0x00F4 <= addr <= 0x00F7:
+            print(f"  APU read [{hex(addr)}] ==> {hex(self.ports_r[addr - 0x00F4])}")
             return self.ports_r[addr - 0x00F4]
         elif 0xFFC0 <= addr <= 0xFFFF:
             return self.ipl_rom[addr - 0xFFC0]
@@ -97,6 +98,7 @@ class Apu:
         if 0x0000 <= addr <= 0x00EF:
             self.page_0[addr] = value
         elif 0x00F4 <= addr <= 0x00F7:
+            print(f"  APU write [{hex(addr)}] <== {hex(value)}")
             self.ports_w[addr - 0x00F4] = value
         else:
             raise RuntimeError(
@@ -283,8 +285,8 @@ class Apu:
         """YA = word (d)"""
         page = 0x0100 if self.P else 0x0000
         absolute_addr = self[addr] | page
-        self.Y = self[absolute_addr]  # TODO not sure about order
-        self.A = self[absolute_addr + 1]
+        self.A = self[absolute_addr]
+        self.Y = self[absolute_addr + 1]
         self.N = 1 if self.Y & 0xFF else 0
         self.Z = 1 if self.Y == 0 and self.A == 0 else 0
 
@@ -292,8 +294,8 @@ class Apu:
         """word (d) = YA  (read low only)"""
         page = 0x0100 if self.P else 0x0000
         absolute_addr = self[addr] | page
-        self[absolute_addr] = self.Y  # TODO not sure about order
-        self[absolute_addr + 1] = self.A
+        self[absolute_addr] = self.A  # TODO not sure about order
+        self[absolute_addr + 1] = self.Y
 
     def DEC_1D(self, addr: int) -> None:
         """X--"""

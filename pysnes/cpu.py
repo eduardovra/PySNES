@@ -66,7 +66,11 @@ class Cpu:
         self.PC: int = 0x8000  # Program Counter TODO read from reset int vector
         self.P = self.StatusRegister(emulation_mode=self.emulation)
 
+        # Debugging properties
+        self.ticks = 0
+
     def tick(self) -> int:
+        self.ticks += 1
         cycles = self.fetch_and_execute()
         return cycles
 

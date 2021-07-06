@@ -56,7 +56,7 @@ class AddressingMode:
         "Stack (DP Indirect)": "stack_dp_indirect",
         "Stack (PC Relative Long)": "stack_pc_relative_long",
         "Stack (Push)": "implied",
-        "Stack (Pull)": "stack_pull",
+        "Stack (Pull)": "implied",
         "Stack (RTI)": "stack_rti",
         "Stack (RTL)": "stack_rtl",
         "Stack (RTS)": "stack_rts",
@@ -79,6 +79,16 @@ class AddressingMode:
         """
         SEI
         In implied addressing mode, the operands are specified implicitly in the definition of the instruction
+        """
+        return 0
+
+    def accumulator(self, cpu) -> int:
+        """
+        Accumulator Addressing
+        8-Bit Data (all processors): Data: Byte in accumulator A.
+        16-Bit Data (65802/65816, native mode. 16-bit accumulator (m = 0):
+            Data High: High byte in accumulator A.
+            Data Low: Low byte in accumulator A.
         """
         return 0
 
@@ -714,6 +724,46 @@ class Instruction:
 
         return 2
 
+    def ROL(self, cpu, addr) -> int:
+        """Rotate Memory or Accumulator Left"""
+        opcode = cpu.bus[cpu.current_instruction_PC]
+        if opcode == 0x2A:
+            # Addressing mode == Accumulator
+            value = cpu.A if cpu.P.M == 0 else cpu.A & 0xFF
+            temp = (value << 1) | (cpu.P.C & 0x1)
+            if cpu.emulation == 0 and cpu.P.M == 0:
+                cpu.P.C = 1 if temp > 0xFFFF else 0
+                cpu.P.Z = 1 if (temp & 0xFFFF) == 0 else 0
+                cpu.P.N = 1 if temp & 0x8000 else 0
+                cpu.A = temp & 0xFFFF
+            else:
+                cpu.P.C = 1 if temp > 0xFF else 0
+                cpu.P.Z = 1 if (temp & 0xFF) == 0 else 0
+                cpu.P.N = 1 if temp & 0x80 else 0
+                cpu.A = temp & 0xFF
+        else:
+            value = cpu.bus[addr]
+            if cpu.emulation == 0 and cpu.P.M == 0:
+                value |= cpu.bus[addr + 1] << 8
+            temp = (value << 1) | (cpu.P.C & 0x1)
+            if cpu.emulation == 0 and cpu.P.M == 0:
+                cpu.P.C = 1 if temp > 0xFFFF else 0
+                cpu.P.Z = 1 if (temp & 0xFFFF) == 0 else 0
+                cpu.P.N = 1 if temp & 0x8000 else 0
+                cpu.bus[addr] = temp & 0xFF
+                cpu.bus[addr + 1] = (temp >> 8) & 0xFF
+            else:
+                cpu.P.C = 1 if temp > 0xFF else 0
+                cpu.P.Z = 1 if (temp & 0xFF) == 0 else 0
+                cpu.P.N = 1 if temp & 0x80 else 0
+                cpu.A = temp & 0xFF
+
+        return 0
+
+    def ROR(self, cpu, addr) -> int:
+        """Rotate Memory or Accumulator Right"""
+        raise
+
 
 class InstructionSet:
     def __init__(self, cpu) -> None:
@@ -730,7 +780,7 @@ class InstructionSet:
 
     def execute(self, opcode: int) -> int:
         instruction = self.instructions[opcode]
-        print("CPU 0x{:02X} {}".format(self.cpu.PC - 1, instruction))
+        print("\033[92mCPU 0x{:02X} {}\033[0m".format(self.cpu.PC - 1, instruction))
         self.cpu.current_instruction_PC = self.cpu.PC - 1
         cycles = instruction(self.cpu)
         return cycles

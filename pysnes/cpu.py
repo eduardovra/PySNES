@@ -57,13 +57,13 @@ class Cpu:
         self.emulation = 1  # Starts enabled
 
         # Registers
-        self.A: int = 0  # Accumulator
-        self.X: int = 0  # X Index Register
-        self.Y: int = 0  # Y Index Register
-        self.D: int = 0  # Direct Page Register
-        self.S: int = 0x100  # Stack Pointer
-        self.PB: int = 0  # Program Bank Register
-        self.DB: int = 0  # Data Bank Register
+        self.A: int = 0x0000  # Accumulator
+        self.X: int = 0x0000  # X Index Register
+        self.Y: int = 0x0000  # Y Index Register
+        self.D: int = 0x0000  # Direct Page Register
+        self.S: int = 0x0100  # Stack Pointer
+        self.PB: int = 0x00  # Program Bank Register
+        self.DB: int = 0x00  # Data Bank Register
         self.PC: int = self.hardware_vectors["emulation"]["RESET"]
         self.P = self.StatusRegister()
 

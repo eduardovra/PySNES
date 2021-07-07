@@ -26,7 +26,8 @@ class PySNES:
 
 if __name__ == "__main__":
     rom = "snes_oam_test/1-random.smc"
-    # rom = "Super Mario World (U) [!].smc"
+    rom = "snes_oam_test/2-low.smc"
+    rom = "Super Mario World (U) [!].smc"
     pysnes = PySNES(rom)
     while not pysnes.tick():
         pass

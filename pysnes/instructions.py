@@ -26,6 +26,25 @@ RTL	Return long from subroutine
 
 
 class AddressingMode:
+    BRANCH_INSTRUCTIONS = (
+        "BCC",
+        "BCS",
+        "BNE",
+        "BEQ",
+        "BPL",
+        "BMI",
+        "BVC",
+        "BVS",
+        "BRA",
+        "BRL",
+        "JMP",
+        "JML",
+        "JSR",
+        "JSL",
+        "RTS",
+        "RTL",
+    )
+
     MODES = {
         "": "nop",  # Reserved for Future Expansion
         "Implied": "implied",
@@ -123,7 +142,10 @@ class AddressingMode:
         High: Second operand byte.
         Low: First operand byte.
         """
-        bank = 0  # TODO assuming bank 0 for now
+        if cpu.current_instruction_mnemonic in self.BRANCH_INSTRUCTIONS:
+            bank = cpu.PB
+        else:
+            bank = cpu.DB
         addr = cpu.bus[cpu.PC] | cpu.bus[cpu.PC + 1] << 8 | bank << 16
         cpu.PC += 2
         return addr  # operand
@@ -159,7 +181,21 @@ class AddressingMode:
         High/Low: The contents of the instruction- and processor-specific interrupt vector.
         """
         assert cpu.emulation == 0
-        return self.immediate(cpu)
+        addr = cpu.PC
+        # BRK is one byte, but program counter value pushed onto stack is
+        # incremented by 2 allowing for optional signature byte.
+        cpu.PC += 1
+        return addr
+
+    def stack_absolute(self, cpu) -> int:
+        """
+        Stack (Absolute) Addressing
+        Source of data to be pushed: The 16-bit operand, which can be either an absolute address or immediate data.
+        Destination effective address: Provided by Stack Pointer.
+        """
+        addr = cpu.PC
+        cpu.PC += 2
+        return addr
 
     def program_counter_relative(self, cpu) -> int:
         """
@@ -168,10 +204,10 @@ class AddressingMode:
         then added to the Program Counter (its value is the address of the opcode following this one).
         """
         operand = cpu.bus[cpu.PC]
+        cpu.PC += 1  # TODO not sure...
         # Sign extension
         if operand & 0x80:  # Negative
             operand |= 0xFF00
-        cpu.PC += 1  # TODO not sure...
         addr = (operand + cpu.PC) & 0xFFFF | cpu.PB << 16
         return addr
 
@@ -192,6 +228,26 @@ class AddressingMode:
         addr = cpu.PC + operand
 
         return addr | cpu.PB << 16
+
+    def dp_indexed_indirect_x(self, cpu) -> int:
+        """
+        Direct Page Indexed Indirect, X Addressing
+
+        Bank: Data bank register
+        High/Low: The indirect address
+        Indirect Address: Located in the direct page at the sum of the direct page register, the operand byte,
+        and X (16 bits if 65802/65816 native mode, x = 0; else 8), in bank 0.
+        """
+        assert cpu.emulation == 0
+        operand = cpu.bus[cpu.PC]
+        cpu.PC += 1
+
+        x = cpu.X if cpu.P.X == 0 else cpu.X & 0xFF
+        indirect_addr = cpu.D + operand + x
+
+        addr = cpu.bus[indirect_addr] | cpu.bus[indirect_addr + 1] << 8 | cpu.DB << 16
+
+        return addr
 
     def dp_indirect_long_indexed_y(self, cpu) -> int:
         """
@@ -252,6 +308,9 @@ class Instruction:
         except AttributeError:
             raise RuntimeError(f"Mnemonic not implemented: {self.mnemonic}")
 
+        # Saved to be used in the addressing mode
+        cpu.current_instruction_mnemonic = self.mnemonic
+
         return instruction(cpu, addr)
 
     def BRK(self, cpu, addr):
@@ -262,21 +321,21 @@ class Instruction:
         cpu.S -= 1
         # the program counter is incremented by two and pushed on the stack.
         cpu.PC += 2  # TODO verify - at this point was already incremented by 1
-        cpu.bus[cpu.S] = (cpu.PC >> 8) & 0xFF
+        cpu.bus[cpu.S] = cpu.PC >> 8
         cpu.S -= 1
         cpu.bus[cpu.S] = cpu.PC & 0xFF
         cpu.S -= 1
         # the status register is pushed onto the stack
-        cpu.bus[cpu.S] = cpu.P
+        cpu.bus[cpu.S] = cpu.P.get(cpu.emulation)
         cpu.S -= 1
         # the interrupt disable flag is set.
-        cpu.I = 1
+        cpu.P.I = 1
         # the decimal mode flag is cleared.
-        cpu.D = 0
+        cpu.P.D = 0
         # the program bank register is cleared to zero.
         cpu.PB = 0
         # the program counter is loaded from the break vector at $FFE6-$FFE7.
-        cpu.PC = 0xFFFF  # TODO fix hardcoded
+        cpu.PC = cpu.hardware_vectors["native"]["BRK"]
 
         return 7
 
@@ -411,10 +470,11 @@ class Instruction:
         """Load X Register from Memory"""
         cpu.X = cpu.bus[addr]
         cpu.P.N = 1 if cpu.X & 0x80 else 0
+        cpu.P.Z = 1 if (cpu.X & 0xFF) == 0 else 0
         if cpu.emulation == 0 and cpu.P.M == 0 and cpu.P.X == 0:
             cpu.X |= cpu.bus[addr + 1] << 8
             cpu.P.N = 1 if cpu.X & 0x8000 else 0
-        cpu.P.Z = 1 if cpu.X == 0 else 0
+            cpu.P.Z = 1 if (cpu.X & 0xFFFF) == 0 else 0
 
         return 0
 
@@ -632,6 +692,11 @@ class Instruction:
             cpu.PC = addr
         return 0
 
+    def JMP(self, cpu, addr) -> int:
+        """Jump to New Location"""
+        cpu.PC = addr
+        return 0
+
     def JSR(self, cpu, addr) -> int:
         """Jump to Subroutine"""
         pc = cpu.current_instruction_PC
@@ -678,6 +743,33 @@ class Instruction:
         """Pull Processor Status Register"""
         cpu.S += 1
         cpu.P.set(cpu.bus[cpu.S], cpu.emulation)
+        return 0
+
+    def PEA(self, cpu, addr) -> int:
+        """Push Effective Absolute Address"""
+        cpu.bus[cpu.S] = cpu.bus[addr]
+        cpu.S -= 1
+        cpu.bus[cpu.S] = cpu.bus[addr + 1]
+        cpu.S -= 1
+        return 5
+
+    def PLB(self, cpu, addr) -> int:
+        """Pulls a byte off the stack into the data bank register"""
+        cpu.S += 1
+        cpu.D = cpu.bus[cpu.S]
+        cpu.P.N = 1 if cpu.D & 0x80 else 0
+        cpu.P.Z = 1 if (cpu.D & 0xFF) == 0 else 0
+        return 0
+
+    def PLD(self, cpu, addr) -> int:
+        """Pulls a sixteen bit value off stack into the direct page register"""
+        cpu.S += 1
+        low = cpu.bus[cpu.S]
+        cpu.S += 1
+        high = cpu.bus[cpu.S]
+        cpu.D = low | high << 8
+        cpu.P.N = 1 if cpu.D & 0x8000 else 0
+        cpu.P.Z = 1 if (cpu.D & 0xFFFF) == 0 else 0
         return 0
 
     def CMP(self, cpu, addr) -> int:
@@ -746,10 +838,11 @@ class Instruction:
         if cpu.emulation == 0 and cpu.P.M == 0:
             cpu.A &= 0xFFFF
             cpu.P.N = 1 if cpu.A & 0x8000 else 0
+            cpu.P.Z = 1 if cpu.A & 0xFFFF == 0 else 0
         else:
             cpu.A &= 0xFF
             cpu.P.N = 1 if cpu.A & 0x80 else 0
-        cpu.P.Z = 1 if cpu.A == 0 else 0
+            cpu.P.Z = 1 if cpu.A & 0xFF == 0 else 0
 
         return 2
 
@@ -818,6 +911,21 @@ class Instruction:
     def ROR(self, cpu, addr) -> int:
         """Rotate Memory or Accumulator Right"""
         raise
+
+    def ORA(self, cpu, addr) -> int:
+        """OR Accumulator with Memory"""
+        if cpu.emulation == 0 and cpu.P.M == 0:
+            value = cpu.bus[addr] | cpu.bus[addr + 1] << 8
+            result = cpu.A | value
+            cpu.P.N = 1 if result & 0x8000 else 0
+            cpu.P.Z = 1 if (result & 0xFFFF) == 0 else 0
+        else:
+            value = cpu.bus[addr]
+            result = (cpu.A & 0xFF) | value
+            cpu.P.N = 1 if result & 0x80 else 0
+            cpu.P.Z = 1 if (result & 0xFF) == 0 else 0
+
+        return 0
 
 
 class InstructionSet:

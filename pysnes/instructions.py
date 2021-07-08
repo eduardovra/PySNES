@@ -421,15 +421,16 @@ class Instruction:
     def LDA(self, cpu, addr) -> int:
         """Load the Accumulator with Memory"""
         cycles = 2  # TODO it depends on addressing mode and processor flags
-        cpu.A = cpu.bus[addr]
-        n_mask = 0x80
+
         if cpu.emulation == 0 and cpu.P.M == 0:
             cycles += 1
-            n_mask = 0x8000
-            cpu.A |= cpu.bus[addr + 1] << 8
-
-        cpu.P.Z = 1 if cpu.A == 0 else 0
-        cpu.P.N = 1 if cpu.A & n_mask else 0
+            cpu.A = (cpu.bus[addr] & 0xFF) | cpu.bus[addr + 1] << 8
+            cpu.P.Z = 1 if cpu.A & 0xFFFF == 0 else 0
+            cpu.P.N = 1 if cpu.A & 0x8000 else 0
+        else:
+            cpu.A = (cpu.A & 0xFF00) | (cpu.bus[addr] & 0xFF)  # Preserve high byte
+            cpu.P.Z = 1 if cpu.A & 0xFF == 0 else 0
+            cpu.P.N = 1 if cpu.A & 0x80 else 0
 
         return cycles
 
@@ -716,20 +717,24 @@ class Instruction:
 
     def PHA(self, cpu, addr) -> int:
         """Push Accumulator"""
-        cpu.bus[cpu.S] = cpu.A
-        cpu.S -= 1
         if cpu.emulation == 0 and cpu.P.M == 0:
             cpu.bus[cpu.S] = cpu.A >> 8
             cpu.S -= 1
+        cpu.bus[cpu.S] = cpu.A & 0xFF
+        cpu.S -= 1
         return 0
 
     def PLA(self, cpu, addr) -> int:
         """Pull Accumulator"""
         cpu.S += 1
-        cpu.A = cpu.bus[cpu.S]
+        cpu.A = (cpu.A & 0xFF00) | (cpu.bus[cpu.S] & 0xFF)  # Dont change high byte
+        cpu.P.N = 1 if cpu.A & 0x80 else 0
+        cpu.P.Z = 1 if (cpu.A & 0xFF) == 0 else 0
         if cpu.emulation == 0 and cpu.P.M == 0:
             cpu.S += 1
-            cpu.A = cpu.A << 8 | cpu.bus[cpu.S]
+            cpu.A = (cpu.A & 0xFF) | (cpu.bus[cpu.S] << 8)
+            cpu.P.N = 1 if cpu.A & 0x8000 else 0
+            cpu.P.Z = 1 if (cpu.A & 0xFFFF) == 0 else 0
 
         return 0
 
@@ -943,7 +948,7 @@ class InstructionSet:
 
     def execute(self, opcode: int) -> int:
         instruction = self.instructions[opcode]
-        print("\033[92mCPU 0x{:02X} {}\033[0m".format(self.cpu.PC - 1, instruction))
+        # print("\033[92mCPU 0x{:02X} {}\033[0m".format(self.cpu.PC - 1, instruction))
         self.cpu.current_instruction_PC = self.cpu.PC - 1
         cycles = instruction(self.cpu)
         return cycles

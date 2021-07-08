@@ -15,6 +15,9 @@ class PySNES:
         """
         Process one frame
         """
+        # if pysnes.cpu.PC >= 0x80E8:
+        #    print("++++ BREAK ++++")
+
         cycles = self.cpu.tick()
         self.apu.tick()
 

@@ -27,11 +27,13 @@ class Apu:
             0xFC,
         ],
         "Immediate": [0xCD, 0xE8],
-        "Indirect": [0xC6],
-        "Relative": [0x90, 0xB0, 0xF0, 0x30, 0xD0, 0x10, 0x50, 0x70, 0x2F],
-        "DirectPage": [0xBA, 0xDA, 0xC4, 0xEB, 0x7E, 0xE4, 0xCB],
         "ImmediateDataToDirectPage": [0x8F, 0x78],
+        "Absolute": [],
+        "AbsoluteXIndexedIndirect": [0x1F],
+        "Indirect": [0xC6],
         "IndirectYIndexed": [0xD7],
+        "Relative": [0x90, 0xB0, 0xF0, 0x30, 0xD0, 0x10, 0x50, 0x70, 0x2F],
+        "DirectPage": [0xBA, 0xDA, 0xC4, 0xEB, 0x7E, 0xE4, 0xCB, 0xAB],
     }
 
     def __init__(self) -> None:
@@ -106,7 +108,7 @@ class Apu:
         if 0x0000 <= addr <= 0x00EF:
             self.page_0[addr] = value
         elif 0x00F4 <= addr <= 0x00F7:
-            print(f"  APU write [{hex(addr)}] <== {hex(value)}")
+            # print(f"  APU write [{hex(addr)}] <== {hex(value)}")
             self.ports_w[addr - 0x00F4] = value
         elif 0x0200 <= addr <= 0xFFBF:
             self.memory[addr - 0x0200] = value
@@ -202,6 +204,19 @@ class Apu:
         self.PC += 1
         return addr
 
+    def Absolute(self) -> int:
+        """Absolute = !a"""
+        raise NotImplementedError
+
+    def AbsoluteXIndexedIndirect(self) -> int:
+        """Absolute X-Indexed Indirect = [!a+X]"""
+        addr_low = self[self.PC]
+        self.PC += 1
+        addr_high = self[self.PC]
+        self.PC += 1
+        addr = ((addr_low | addr_high << 8) + self.X) & 0xFFFF
+        return self[addr] | self[addr + 1] << 8
+
     def Indirect(self) -> int:
         """Indirect = (X)"""
         addr = self.X
@@ -244,6 +259,13 @@ class Apu:
     #######################################################
     # Instructions                                        #
     #######################################################
+
+    def NOP_00(self, addr: int) -> None:
+        """do nothing"""
+
+    def CLRP_20(self, addr: int) -> None:
+        """P = 0"""
+        self.P = 0
 
     def MOV_CD(self, addr: int) -> None:
         """X = i"""
@@ -334,12 +356,6 @@ class Apu:
         self[absolute_addr] = self.A  # TODO not sure about order
         self[absolute_addr + 1] = self.Y
 
-    def DEC_1D(self, addr: int) -> None:
-        """X--"""
-        self.X -= 1
-        self.N = 1 if self.X & 0x80 else 0
-        self.Z = 1 if self.X == 0 else 0
-
     def BCC_90(self, addr: int) -> None:
         """PC+=r  if C == 0"""
         if self.C == 0:
@@ -384,6 +400,10 @@ class Apu:
         """PC+=r"""
         self.PC = addr
 
+    def JMP_1F(self, addr: int) -> None:
+        """PC = [a+X]"""
+        self.PC = addr
+
     def CMP_78(self, addr: int) -> None:
         """(d) - i"""
         i = self[addr]
@@ -420,3 +440,17 @@ class Apu:
         self.Y = (self.Y + 1) & 0xFF
         self.N = 1 if self.Y & 0x80 else 0
         self.Z = 1 if self.Y == 0 else 0
+
+    def INC_AB(self, addr: int) -> None:
+        """(d)++"""
+        page = 0x0100 if self.P else 0x0000
+        absolute_addr = self[addr] | page
+        self[absolute_addr] = (self[absolute_addr] + 1) & 0xFF
+        self.N = 1 if self[absolute_addr] & 0x80 else 0
+        self.Z = 1 if self[absolute_addr] == 0 else 0
+
+    def DEC_1D(self, addr: int) -> None:
+        """X--"""
+        self.X -= 1
+        self.N = 1 if self.X & 0x80 else 0
+        self.Z = 1 if self.X == 0 else 0

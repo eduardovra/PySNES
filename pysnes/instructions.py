@@ -77,8 +77,8 @@ class AddressingMode:
         "Stack (Push)": "implied",
         "Stack (Pull)": "implied",
         "Stack (RTI)": "stack_rti",
-        "Stack (RTL)": "stack_rtl",
-        "Stack (RTS)": "stack_rts",
+        "Stack (RTL)": "implied",
+        "Stack (RTS)": "implied",
         "Block Move": "block_move",
         "Accumulator": "accumulator",
     }
@@ -172,6 +172,20 @@ class AddressingMode:
         addr = cpu.X + operand
         return addr
 
+    def absolute_indexed_y(self, cpu) -> int:
+        """
+        Absolute Indexed, Y Addressing
+        Effective Address: The Data Bank Register is concatenated to the 16-bit Operand:
+        the 24-bit result is added to Y (16 bits if 65802/65816 native mode, x = 0; else 8).
+        """
+        indirect_addr = cpu.bus[cpu.PC] | cpu.bus[cpu.PC + 1] << 8 | cpu.DB << 16
+        cpu.PC += 2
+        if cpu.emulation == 0 and cpu.P.X == 0:
+            addr = indirect_addr + (cpu.Y & 0xFFFF)
+        else:
+            addr = indirect_addr + (cpu.Y & 0xFF)
+        return addr & 0xFFFFFF
+
     def stack_interrupt(self, cpu) -> int:
         """
         Effective Address: After pushing the Program Bank (65802/816 native mode only),
@@ -228,6 +242,35 @@ class AddressingMode:
         addr = cpu.PC + operand
 
         return addr | cpu.PB << 16
+
+    def direct_page(self, cpu) -> int:
+        """
+        Direct Page Addressing
+
+        Effective Address:
+        Bank: Zero
+        High/Low: Direct Page Register plus Operand byte.
+        """
+        operand = cpu.bus[cpu.PC]
+        cpu.PC += 1
+        addr = cpu.D + operand
+        return addr
+
+    def dp_indexed_x(self, cpu) -> int:
+        """
+        Direct Page Indexed, X Addressing
+
+        Effective Address:
+        Bank: Zero
+        High/Low: Direct Page Register plus Operand byte plus X (16 bits if 65802/65816 native mode, x = 0; else 8 bits).
+        """
+        operand = cpu.bus[cpu.PC]
+        cpu.PC += 1
+        if cpu.emulation == 0 and cpu.P.X == 0:
+            addr = cpu.D + operand + cpu.X
+        else:
+            addr = cpu.D + operand + (cpu.X & 0xFF)
+        return addr
 
     def dp_indexed_indirect_x(self, cpu) -> int:
         """
@@ -463,7 +506,7 @@ class Instruction:
         if cpu.emulation == 0:
             cpu.S = cpu.A
         else:
-            cpu.S = cpu.A & 0xFF
+            cpu.S = (cpu.A & 0xFF) | (0x01 << 8)
 
         return 2
 
@@ -587,7 +630,7 @@ class Instruction:
             cpu.P.C = 1 if temp > 0xFF else 0
             cpu.P.N = 1 if temp & 0x80 else 0
             cpu.P.V = 1 if (~(cpu.A ^ value) & (cpu.A ^ temp)) & 0x80 else 0
-            cpu.A = temp & 0xFF
+            cpu.A = (cpu.A & 0xFF00) | temp & 0xFF
 
         return 0
 
@@ -700,10 +743,12 @@ class Instruction:
 
     def JSR(self, cpu, addr) -> int:
         """Jump to Subroutine"""
+        assert cpu.bus[cpu.current_instruction_PC] == 0x20  # Absolute
         pc = cpu.current_instruction_PC
+        pc = cpu.PC - 1
         # Push program bank
-        cpu.bus[cpu.S] = cpu.PB
-        cpu.S -= 1
+        # cpu.bus[cpu.S] = cpu.PB
+        # cpu.S -= 1
         # PC high byte
         cpu.bus[cpu.S] = (pc >> 8) & 0xFF
         cpu.S -= 1
@@ -714,6 +759,15 @@ class Instruction:
         cpu.PC = addr
 
         return 0
+
+    def RTS(self, cpu, addr) -> int:
+        """Return from Subroutine"""
+        cpu.S += 1
+        low = cpu.bus[cpu.S]
+        cpu.S += 1
+        high = cpu.bus[cpu.S]
+        cpu.PC = (low | high << 8) + 1
+        return 6
 
     def PHA(self, cpu, addr) -> int:
         """Push Accumulator"""
@@ -799,9 +853,13 @@ class Instruction:
         value = cpu.bus[addr]
         if cpu.emulation == 0 and cpu.P.X == 0:
             value |= cpu.bus[addr + 1] << 8
-            # TODO workaround: in this case X defines the 16bit mode instead of A
-            cpu.PC += 1
         result = cpu.X - value
+
+        # TODO workaround: in this case X defines the 16bit mode instead of A
+        if cpu.P.X == 0 and cpu.P.M == 1:
+            cpu.PC += 1
+        elif cpu.P.X == 1 and cpu.P.M == 0:
+            cpu.PC -= 1
 
         if cpu.emulation == 0 and cpu.P.X == 0:
             cpu.P.N = 1 if result & 0x8000 else 0
@@ -948,7 +1006,8 @@ class InstructionSet:
 
     def execute(self, opcode: int) -> int:
         instruction = self.instructions[opcode]
-        # print("\033[92mCPU 0x{:02X} {}\033[0m".format(self.cpu.PC - 1, instruction))
+        # if instruction.mnemonic in ("JSR", "RTS"):
+        print("\033[92mCPU 0x{:02X} {}\033[0m".format(self.cpu.PC - 1, instruction))
         self.cpu.current_instruction_PC = self.cpu.PC - 1
         cycles = instruction(self.cpu)
         return cycles

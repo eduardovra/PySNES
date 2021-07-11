@@ -897,13 +897,12 @@ class Instruction:
         opcode = cpu.bus[cpu.current_instruction_PC]
         assert opcode == 0x1A  # TODO other modes not implemented
 
-        cpu.A += 1
         if cpu.emulation == 0 and cpu.P.M == 0:
-            cpu.A &= 0xFFFF
+            cpu.A = (cpu.A + 1) & 0xFFFF
             cpu.P.N = 1 if cpu.A & 0x8000 else 0
             cpu.P.Z = 1 if cpu.A & 0xFFFF == 0 else 0
         else:
-            cpu.A &= 0xFF
+            cpu.A = ((cpu.A + 1) & 0xFF) | (cpu.A & 0xFF00)
             cpu.P.N = 1 if cpu.A & 0x80 else 0
             cpu.P.Z = 1 if cpu.A & 0xFF == 0 else 0
 

@@ -30,6 +30,7 @@ class Apu:
         "ImmediateDataToDirectPage": [0x8F, 0x78],
         "Absolute": [],
         "AbsoluteXIndexedIndirect": [0x1F],
+        "AbsoluteBooleanBit": [0xAA],
         "Indirect": [0xC6],
         "IndirectYIndexed": [0xD7],
         "Relative": [0x90, 0xB0, 0xF0, 0x30, 0xD0, 0x10, 0x50, 0x70, 0x2F],
@@ -91,7 +92,7 @@ class Apu:
         if 0x0000 <= addr <= 0x00EF:
             return self.page_0[addr]
         elif 0x00F4 <= addr <= 0x00F7:
-            # print(f"  APU read [{hex(addr)}] ==> {hex(self.ports_r[addr - 0x00F4])}")
+            print(f"  APU read [{hex(addr)}] ==> {hex(self.ports_r[addr - 0x00F4])}")
             return self.ports_r[addr - 0x00F4]
         elif 0x0200 <= addr <= 0xFFBF:
             return self.memory[addr - 0x0200]
@@ -111,6 +112,7 @@ class Apu:
             # print(f"  APU write [{hex(addr)}] <== {hex(value)}")
             self.ports_w[addr - 0x00F4] = value
         elif 0x0200 <= addr <= 0xFFBF:
+            print(f"[{hex(addr)}] <== {hex(value)}")
             self.memory[addr - 0x0200] = value
         else:
             raise RuntimeError(
@@ -150,11 +152,6 @@ class Apu:
                 mnemonic = row["Assembler Example"].split(" ", 1)[0]
                 # TODO Determine addressing mode
                 addr_mode_str = row["Assembler Example"][len(mnemonic) + 1 :]
-
-                # if addr_mode_str == "X, #i":
-                #    addressing_mode = "Immediate"
-                # else:
-                #    addressing_mode = None
 
                 self.instruction_set[opcode] = {
                     "Mnemonic": mnemonic,
@@ -216,6 +213,14 @@ class Apu:
         self.PC += 1
         addr = ((addr_low | addr_high << 8) + self.X) & 0xFFFF
         return self[addr] | self[addr + 1] << 8
+
+    def AbsoluteBooleanBit(self) -> int:
+        """Absolute Boolean Bit = m.b"""
+        addr_low = self[self.PC]
+        self.PC += 1
+        addr_high = self[self.PC]
+        self.PC += 1
+        return addr_low | addr_high << 8
 
     def Indirect(self) -> int:
         """Indirect = (X)"""
@@ -355,6 +360,12 @@ class Apu:
         absolute_addr = self[addr] | page
         self[absolute_addr] = self.A  # TODO not sure about order
         self[absolute_addr + 1] = self.Y
+
+    def MOV1_AA(self, addr: int) -> None:
+        """C = (m.b)"""
+        bit = addr >> 13
+        data = self[addr & 0x1FFF]
+        self.C = 1 if (data & (1 << bit)) else 0
 
     def BCC_90(self, addr: int) -> None:
         """PC+=r  if C == 0"""

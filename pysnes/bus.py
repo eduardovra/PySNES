@@ -73,7 +73,7 @@ class Bus:
         if bank == 0x00:
             if 0x2100 <= addr <= 0x21FF:
                 if 0x2140 <= addr <= 0x2143:  # TODO ugly
-                    print(f"  CPU write [{hex(addr)}] <== {hex(data)}")
+                    # print(f"  CPU write [{hex(addr)}] <== {hex(data)}")
                     self.apu.ports_r[addr - 0x2140] = data
                     return
                 else:

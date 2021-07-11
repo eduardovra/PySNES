@@ -28,7 +28,7 @@ class Apu:
         ],
         "Immediate": [0xCD, 0xE8],
         "ImmediateDataToDirectPage": [0x8F, 0x78],
-        "Absolute": [],
+        "Absolute": [0xC5],
         "AbsoluteXIndexedIndirect": [0x1F],
         "AbsoluteBooleanBit": [0xAA],
         "Indirect": [0xC6],
@@ -92,7 +92,7 @@ class Apu:
         if 0x0000 <= addr <= 0x00EF:
             return self.page_0[addr]
         elif 0x00F4 <= addr <= 0x00F7:
-            print(f"  APU read [{hex(addr)}] ==> {hex(self.ports_r[addr - 0x00F4])}")
+            # print(f"  APU read [{hex(addr)}] ==> {hex(self.ports_r[addr - 0x00F4])}")
             return self.ports_r[addr - 0x00F4]
         elif 0x0200 <= addr <= 0xFFBF:
             return self.memory[addr - 0x0200]
@@ -112,7 +112,7 @@ class Apu:
             # print(f"  APU write [{hex(addr)}] <== {hex(value)}")
             self.ports_w[addr - 0x00F4] = value
         elif 0x0200 <= addr <= 0xFFBF:
-            print(f"[{hex(addr)}] <== {hex(value)}")
+            # print(f"[{hex(addr)}] <== {hex(value)}")
             self.memory[addr - 0x0200] = value
         else:
             raise RuntimeError(
@@ -177,7 +177,7 @@ class Apu:
         self.PC += 1
         # Get reference to instruction metadata
         instruction = self.instruction_set[opcode]
-        # print("\033[93mAPU", hex(self.PC), hex(opcode), instruction, "\033[0m")
+        print("\033[93mAPU", hex(self.PC), hex(opcode), instruction, "\033[0m")
         # Determine addressing mode and fetch operand address
         addr_mode_method = getattr(self, instruction["AddressingMode"])
         addr = addr_mode_method()
@@ -203,7 +203,11 @@ class Apu:
 
     def Absolute(self) -> int:
         """Absolute = !a"""
-        raise NotImplementedError
+        addr_low = self[self.PC]
+        self.PC += 1
+        addr_high = self[self.PC]
+        self.PC += 1
+        return addr_low | addr_high << 8
 
     def AbsoluteXIndexedIndirect(self) -> int:
         """Absolute X-Indexed Indirect = [!a+X]"""
@@ -334,6 +338,10 @@ class Apu:
         page = 0x0100 if self.P else 0x0000
         absolute_addr = self[addr + 1] | page
         self[absolute_addr] = value
+
+    def MOV_C5(self, addr: int) -> None:
+        """(a) = A"""
+        self[addr] = self.A
 
     def MOV_C6(self, addr: int) -> None:
         """(X) = A"""

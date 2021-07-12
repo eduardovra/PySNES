@@ -25,25 +25,30 @@ class Apu:
             0xBC,
             0x3D,
             0xFC,
+            0xFD,
+            0xAF,
+            0x6F,
         ],
-        "Immediate": [0xCD, 0xE8],
+        "Immediate": [0xCD, 0xC8, 0xE8],
         "ImmediateDataToDirectPage": [0x8F, 0x78],
-        "Absolute": [0xC5],
+        "Absolute": [0x0C, 0x2C, 0x4C, 0x6C, 0x8C, 0xAC, 0xCC, 0xEC, 0x3F, 0xC5],
         "AbsoluteXIndexedIndirect": [0x1F],
         "AbsoluteBooleanBit": [0xAA],
         "Indirect": [0xC6],
         "IndirectYIndexed": [0xD7],
+        "IndirectAutoIncremet": [],
         "Relative": [0x90, 0xB0, 0xF0, 0x30, 0xD0, 0x10, 0x50, 0x70, 0x2F],
         "DirectPage": [0xBA, 0xDA, 0xC4, 0xEB, 0x7E, 0xE4, 0xCB, 0xAB],
+        "XIndexedAbsolute": [0xD5, 0xF5],
     }
 
     def __init__(self) -> None:
         # Registers
         self.PC = 0xFFC0  # Program Counter (16 bit)
-        self.A = 0  # Accumulator (8 bit)
-        self.X = 0  # X Index Register (8 bit)
-        self.Y = 0  # Y Index Register (8 bit)
-        self.SP = 0  # Stack Pointer (8 bit)
+        self.A = 0x00  # Accumulator (8 bit)
+        self.X = 0x00  # X Index Register (8 bit)
+        self.Y = 0x00  # Y Index Register (8 bit)
+        self.SP = 0x00  # Stack Pointer (8 bit)
         # self.PSW = 0  # Program Status Word (8 bit)
         # YA  YA paired 16-bit register TODO
 
@@ -70,11 +75,19 @@ class Apu:
         # FFC0 - FFFF	64 byte IPL ROM (read only)*
         # self.memory = [0] * 0xFFFF
 
-        self.page_0 = bytearray(1 + 0x00EF - 0x0000)
+        self.page_0 = bytearray(0x00F0)
+        self.page_1 = bytearray(0x0100)
 
         # The IO Port0-4 registers have separete memory for R/W
         self.ports_r = bytearray(4)  # APU reads from
         self.ports_w = bytearray(4)  # APU writes to
+
+        # Registers
+        self.control_register = 0x00  # F1 (write only)
+        self.dsp_register_address = 0x00  # F2 (r/w)
+        self.dsp_register_data = 0x00  # F3 (r/w)
+        self.timers = bytearray(3)  # FA/FB/FC (/w)
+        self.counters = bytearray(3)  # FD/FE/FF (r/)
 
         self.memory = bytearray(0xFFBF - 0x0200 + 1)
 
@@ -91,9 +104,17 @@ class Apu:
     def __getitem__(self, addr: int) -> int:
         if 0x0000 <= addr <= 0x00EF:
             return self.page_0[addr]
+        elif addr == 0x00F2:
+            return self.dsp_register_address
+        elif addr == 0x00F3:
+            return self.dsp_register_data
         elif 0x00F4 <= addr <= 0x00F7:
             # print(f"  APU read [{hex(addr)}] ==> {hex(self.ports_r[addr - 0x00F4])}")
             return self.ports_r[addr - 0x00F4]
+        elif 0x00FD <= addr <= 0x00FF:
+            return self.counters[addr - 0x00FD]
+        elif 0x0100 <= addr <= 0x01FF:
+            return self.page_1[addr - 0x0100]
         elif 0x0200 <= addr <= 0xFFBF:
             return self.memory[addr - 0x0200]
         elif 0xFFC0 <= addr <= 0xFFFF:
@@ -108,9 +129,19 @@ class Apu:
 
         if 0x0000 <= addr <= 0x00EF:
             self.page_0[addr] = value
+        elif addr == 0x00F1:
+            self.control_register = value
+        elif addr == 0x00F2:
+            self.dsp_register_address = value
+        elif addr == 0x00F3:
+            self.dsp_register_data = value
         elif 0x00F4 <= addr <= 0x00F7:
             # print(f"  APU write [{hex(addr)}] <== {hex(value)}")
             self.ports_w[addr - 0x00F4] = value
+        elif 0x00FA <= addr <= 0x00FC:
+            self.timers[addr - 0x00FB] = value
+        elif 0x0100 <= addr <= 0x01FF:
+            self.page_1[addr - 0x0100] = value
         elif 0x0200 <= addr <= 0xFFBF:
             # print(f"[{hex(addr)}] <== {hex(value)}")
             self.memory[addr - 0x0200] = value
@@ -177,7 +208,8 @@ class Apu:
         self.PC += 1
         # Get reference to instruction metadata
         instruction = self.instruction_set[opcode]
-        print("\033[93mAPU", hex(self.PC), hex(opcode), instruction, "\033[0m")
+        if not (0xFFC0 <= self.PC <= 0xFFFF):  # Skip IPL
+            print("\033[93mAPU", hex(self.PC - 1), hex(opcode), instruction, "\033[0m")
         # Determine addressing mode and fetch operand address
         addr_mode_method = getattr(self, instruction["AddressingMode"])
         addr = addr_mode_method()
@@ -231,6 +263,10 @@ class Apu:
         addr = self.X
         return addr
 
+    def IndirectAutoIncremet(self) -> int:
+        """Indirect Auto-Increment = (X)+"""
+        raise
+
     def Relative(self) -> int:
         """Relative = r"""
         r = self[self.PC]
@@ -262,6 +298,15 @@ class Apu:
         self.PC += 1
         return addr
 
+    def XIndexedAbsolute(self) -> int:
+        """X-Indexed Absolute = !a+X"""
+        addr_low = self[self.PC]
+        self.PC += 1
+        addr_high = self[self.PC]
+        self.PC += 1
+        addr = ((addr_low | addr_high << 8) + self.X) & 0xFFFF
+        return addr
+
     def update_flags(self, value: int) -> None:
         """Update SPW flags based on resulting value from previous operation"""
 
@@ -276,6 +321,14 @@ class Apu:
         """P = 0"""
         self.P = 0
 
+    def MOV_D5(self, addr: int) -> None:
+        """(a+X) = A"""
+        self[addr] = self.A
+
+    def MOV_D6(self, addr: int) -> None:
+        """(a+Y) = A"""
+        self[addr] = self.A
+
     def MOV_CD(self, addr: int) -> None:
         """X = i"""
         self.X = self[addr]
@@ -288,11 +341,36 @@ class Apu:
         self.N = 1 if self.X & 0x80 else 0
         self.Z = 1 if self.X == 0 else 0
 
+    def MOV_E9(self, addr: int) -> None:
+        """X = (a)"""
+        self.X = self[addr]
+        self.N = 1 if self.X & 0x80 else 0
+        self.Z = 1 if self.X == 0 else 0
+
+    def MOV_AF(self, addr: int) -> None:
+        """(X++) = A"""
+        self.X = (
+            self.X + 1
+        ) & 0xFF  # TODO confirm if the increment is before or after the memory access
+        self.A = self[self.X]
+
+    def MOV_FD(self, addr: int) -> None:
+        """Y = A"""
+        self.Y = self.A
+        self.N = 1 if self.Y & 0x80 else 0
+        self.Z = 1 if self.Y == 0 else 0
+
     def MOV_EB(self, addr: int) -> None:
         """Y = (d)"""
         page = 0x0100 if self.P else 0x0000
         absolute_addr = self[addr] | page
         self.Y = self[absolute_addr]
+        self.N = 1 if self.Y & 0x80 else 0
+        self.Z = 1 if self.Y == 0 else 0
+
+    def MOV_EC(self, addr: int) -> None:
+        """Y = (a)"""
+        self.Y = self[addr]
         self.N = 1 if self.Y & 0x80 else 0
         self.Z = 1 if self.Y == 0 else 0
 
@@ -320,6 +398,18 @@ class Apu:
         self.N = 1 if self.A & 0x80 else 0
         self.Z = 1 if self.A == 0 else 0
 
+    def MOV_E5(self, addr: int) -> None:
+        """A = (a)"""
+        self.A = self[addr]
+        self.N = 1 if self.A & 0x80 else 0
+        self.Z = 1 if self.A == 0 else 0
+
+    def MOV_F5(self, addr: int) -> None:
+        """A = (a+X)"""
+        self.A = self[addr]
+        self.N = 1 if self.A & 0x80 else 0
+        self.Z = 1 if self.A == 0 else 0
+
     def MOV_C4(self, addr: int) -> None:
         """(d) = A        (read)"""
         page = 0x0100 if self.P else 0x0000
@@ -342,6 +432,14 @@ class Apu:
     def MOV_C5(self, addr: int) -> None:
         """(a) = A"""
         self[addr] = self.A
+
+    def MOV_C9(self, addr: int) -> None:
+        """(a) = X"""
+        self[addr] = self.X
+
+    def MOV_CC(self, addr: int) -> None:
+        """(a) = Y"""
+        self[addr] = self.Y
 
     def MOV_C6(self, addr: int) -> None:
         """(X) = A"""
@@ -422,6 +520,30 @@ class Apu:
     def JMP_1F(self, addr: int) -> None:
         """PC = [a+X]"""
         self.PC = addr
+
+    def CALL_3F(self, addr: int) -> None:
+        """(SP--)=PCh, (SP--)=PCl, PC=a"""
+        self[self.SP] = (self.PC >> 8) & 0xFF
+        self.SP -= 1
+        self[self.SP] = self.PC & 0xFF
+        self.SP -= 1
+        self.PC = addr
+
+    def RET_6F(self, addr: int) -> None:
+        """Pop PC"""
+        self.SP += 1
+        low_addr = self[self.SP]
+        self.SP += 1
+        high_addr = self[self.SP]
+        self.PC = low_addr | high_addr << 8
+
+    def CMP_C8(self, addr: int) -> None:
+        """X - i"""
+        i = self[addr]
+        result = self.X - i
+        self.N = 1 if result < 0x00 else 0
+        self.Z = 1 if result == 0 else 0
+        self.C = 1 if result > 0xFF else 0  # TODO not sure
 
     def CMP_78(self, addr: int) -> None:
         """(d) - i"""

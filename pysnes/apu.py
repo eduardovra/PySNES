@@ -83,6 +83,7 @@ class Apu:
         self.ports_w = bytearray(4)  # APU writes to
 
         # Registers
+        self.undocumented = 0x0A  # F0
         self.control_register = 0x00  # F1 (write only)
         self.dsp_register_address = 0x00  # F2 (r/w)
         self.dsp_register_data = 0x00  # F3 (r/w)

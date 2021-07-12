@@ -612,24 +612,30 @@ class Instruction:
     def ADC(self, cpu, addr) -> int:
         """Add with carry"""
         assert cpu.emulation == 0
+        assert cpu.P.D == 0
         # Value to be added to the accumulator
         value = cpu.bus[addr]
         if cpu.P.M == 0:
             value |= cpu.bus[addr + 1] << 8
-        # Sum
-        temp = cpu.A + value + (cpu.P.C & 0x1)
+
         # Set flags and accumulator
         if cpu.P.M == 0:
+            # Sum
+            temp = (cpu.A & 0xFFFF) + value + (cpu.P.C & 0x1)
             cpu.P.Z = 1 if (temp & 0xFFFF) == 0 else 0
             cpu.P.C = 1 if temp > 0xFFFF else 0
             cpu.P.N = 1 if temp & 0x8000 else 0
             cpu.P.V = 1 if (~(cpu.A ^ value) & (cpu.A ^ temp)) & 0x8000 else 0
             cpu.A = temp & 0xFFFF
         else:
+            # Sum
+            a = cpu.A & 0xFF
+            temp = a + value + (cpu.P.C & 0x1)
             cpu.P.Z = 1 if (temp & 0xFF) == 0 else 0
             cpu.P.C = 1 if temp > 0xFF else 0
             cpu.P.N = 1 if temp & 0x80 else 0
-            cpu.P.V = 1 if (~(cpu.A ^ value) & (cpu.A ^ temp)) & 0x80 else 0
+            # cpu.P.V = 1 if (~(cpu.A ^ value) & (cpu.A ^ temp)) & 0x80 else 0
+            cpu.P.V = 1 if ~(a ^ value) & (a ^ temp) & 0x80 else 0
             cpu.A = (cpu.A & 0xFF00) | temp & 0xFF
 
         return 0
@@ -942,31 +948,31 @@ class Instruction:
             value = cpu.A if cpu.P.M == 0 else cpu.A & 0xFF
             temp = (value << 1) | (cpu.P.C & 0x1)
             if cpu.emulation == 0 and cpu.P.M == 0:
-                cpu.P.C = 1 if temp > 0xFFFF else 0
+                cpu.P.C = 1 if value > 0xFFFF else 0
                 cpu.P.Z = 1 if (temp & 0xFFFF) == 0 else 0
                 cpu.P.N = 1 if temp & 0x8000 else 0
                 cpu.A = temp & 0xFFFF
             else:
-                cpu.P.C = 1 if temp > 0xFF else 0
+                cpu.P.C = 1 if value > 0xFF else 0
                 cpu.P.Z = 1 if (temp & 0xFF) == 0 else 0
                 cpu.P.N = 1 if temp & 0x80 else 0
-                cpu.A = temp & 0xFF
+                cpu.A = (cpu.A & 0xFF00) | temp & 0xFF
         else:
             value = cpu.bus[addr]
             if cpu.emulation == 0 and cpu.P.M == 0:
                 value |= cpu.bus[addr + 1] << 8
             temp = (value << 1) | (cpu.P.C & 0x1)
             if cpu.emulation == 0 and cpu.P.M == 0:
-                cpu.P.C = 1 if temp > 0xFFFF else 0
+                cpu.P.C = 1 if value > 0xFFFF else 0
                 cpu.P.Z = 1 if (temp & 0xFFFF) == 0 else 0
                 cpu.P.N = 1 if temp & 0x8000 else 0
                 cpu.bus[addr] = temp & 0xFF
                 cpu.bus[addr + 1] = (temp >> 8) & 0xFF
             else:
-                cpu.P.C = 1 if temp > 0xFF else 0
+                cpu.P.C = 1 if value > 0xFF else 0
                 cpu.P.Z = 1 if (temp & 0xFF) == 0 else 0
                 cpu.P.N = 1 if temp & 0x80 else 0
-                cpu.A = temp & 0xFF
+                cpu.bus[addr] = temp & 0xFF
 
         return 0
 
@@ -1006,7 +1012,7 @@ class InstructionSet:
     def execute(self, opcode: int) -> int:
         instruction = self.instructions[opcode]
         # if instruction.mnemonic in ("JSR", "RTS"):
-        # print("\033[92mCPU 0x{:02X} {}\033[0m".format(self.cpu.PC - 1, instruction))
+        print("\033[92mCPU 0x{:02X} {}\033[0m".format(self.cpu.PC - 1, instruction))
         self.cpu.current_instruction_PC = self.cpu.PC - 1
         cycles = instruction(self.cpu)
         return cycles

@@ -2,20 +2,17 @@ import csv
 
 
 class Timer:
-    def __init__(self, frequency: int) -> None:
+    def __init__(self, apu: "Apu", frequency: int) -> None:
+        self.apu = apu
         self.frequency = frequency
-        self.stage0 = 0  # 8 bits
-        self.stage1 = 0  # 8 bits
-        self.stage2 = 0  # 8 bits
-        self.stage3 = 0  # 4 bits
+        self.stage0 = 0x00  # 8 bits
+        self.stage1 = 0x00  # 8 bits
+        self.stage2 = 0x00  # 8 bits
+        self.stage3 = 0x0  # 4 bits
 
         self.line = False
         self.enable = False
-        self.target = 0  # 8 bits
-
-        # Global control
-        self.timers_disable = 0
-        self.timers_enable = 0
+        self.target = 0x00  # 8 bits
 
     def step(self, clocks: int) -> None:
         # stage 0 increment
@@ -30,9 +27,9 @@ class Timer:
 
     def syncronize_stage1(self) -> None:
         level = self.stage1
-        if not self.timers_enable:
+        if not self.apu.timers_enable:
             level = 0
-        if self.timers_disable:
+        if self.apu.timers_disable:
             level = 0
         # only pulse on 1->0 transition
         if not self.lower(level):
@@ -56,6 +53,7 @@ class Timer:
         elif not self.line and level:
             self.line = True
         return False
+
 
 class Apu:
     """
@@ -129,7 +127,6 @@ class Apu:
         # FFC0 - FFFF	Memory (read / write)
         # FFC0 - FFFF	Memory (write only)*
         # FFC0 - FFFF	64 byte IPL ROM (read only)*
-        # self.memory = [0] * 0xFFFF
 
         self.page_0 = bytearray(0x00F0)
         self.page_1 = bytearray(0x0100)
@@ -138,13 +135,18 @@ class Apu:
         self.ports_r = bytearray(4)  # APU reads from
         self.ports_w = bytearray(4)  # APU writes to
 
+        self.timers = [Timer(self, 128), Timer(self, 128), Timer(self, 16)]
+
         # Registers
-        self.undocumented = 0x0A  # F0
+        self.test_register = 0x0A  # F0 (write-only)
         self.control_register = 0xB0  # F1 (write only)
         self.dsp_register_address = 0x00  # F2 (r/w)
         self.dsp_register_data = 0x00  # F3 (r/w)
-        self.timers = bytearray(3)  # FA/FB/FC (/w)
-        self.counters = bytearray(3)  # FD/FE/FF (r/)
+        # self.timers = bytearray(3)  # FA/FB/FC (/w)
+        # self.counters = bytearray(3)  # FD/FE/FF (r/)
+
+        # Control register 0xF1
+        self.ipl_rom_enable = True
 
         self.memory = bytearray(0xFFBF - 0x0200 + 1)
 
@@ -161,6 +163,10 @@ class Apu:
     def __getitem__(self, addr: int) -> int:
         if 0x0000 <= addr <= 0x00EF:
             return self.page_0[addr]
+        elif addr == 0x00F0:
+            return self.test_register
+        elif addr == 0x00F1:
+            return self.control_register
         elif addr == 0x00F2:
             return self.dsp_register_address
         elif addr == 0x00F3:
@@ -169,7 +175,10 @@ class Apu:
             # print(f"  APU read [{hex(addr)}] ==> {hex(self.ports_r[addr - 0x00F4])}")
             return self.ports_r[addr - 0x00F4]
         elif 0x00FD <= addr <= 0x00FF:
-            return self.counters[addr - 0x00FD]
+            timer = self.timers[addr - 0x00FD]
+            data = timer.stage3
+            timer.stage3 = 0
+            return data
         elif 0x0100 <= addr <= 0x01FF:
             return self.page_1[addr - 0x0100]
         elif 0x0200 <= addr <= 0xFFBF:
@@ -186,6 +195,8 @@ class Apu:
 
         if 0x0000 <= addr <= 0x00EF:
             self.page_0[addr] = value
+        elif addr == 0x00F0:
+            self.test_register = value
         elif addr == 0x00F1:
             self.control_register = value
         elif addr == 0x00F2:
@@ -196,7 +207,8 @@ class Apu:
             # print(f"  APU write [{hex(addr)}] <== {hex(value)}")
             self.ports_w[addr - 0x00F4] = value
         elif 0x00FA <= addr <= 0x00FC:
-            self.timers[addr - 0x00FB] = value
+            timer = self.timers[addr - 0x00FA]
+            timer.target = value
         elif 0x0100 <= addr <= 0x01FF:
             self.page_1[addr - 0x0100] = value
         elif 0x0200 <= addr <= 0xFFBF:
@@ -231,6 +243,66 @@ class Apu:
         self.Z = (value & 0x02) >> 1
         self.C = (value & 0x01) >> 0
 
+    @property
+    def test_register(self) -> int:
+        return 0x00  # Write only register
+
+    @test_register.setter
+    def test_register(self, data: int) -> None:
+        if self.P:
+            return  # writes only valid when P flag is clear
+
+        self.timers_disable = bool(data >> 0 & 1)
+        self.ram_writable = bool(data >> 1 & 1)
+        self.ram_disable = bool(data >> 2 & 1)
+        self.timers_enable = bool(data >> 3 & 1)
+        self.external_wait_states = bool(data >> 4 & 3)
+        self.internal_wait_states = bool(data >> 6 & 3)
+
+        for timer in self.timers:
+            timer.syncronize_stage1()
+
+    @property
+    def control_register(self) -> int:
+        return 0x00  # Write only register
+
+    @control_register.setter
+    def control_register(self, data: int) -> None:
+        # 0->1 transistion resets timers
+        timer0 = self.timers[0]
+        timer0_enable = timer0.enable
+        timer0_enable_flag = bool(data & 0x01)
+        timer0.enable = timer0_enable_flag
+        if timer0_enable_flag and not timer0_enable:
+            timer0.stage2 = 0
+            timer0.stage3 = 0
+
+        timer1 = self.timers[1]
+        timer1_enable = timer1.enable
+        timer1_enable_flag = bool(data & 0x02)
+        timer1.enable = timer1_enable_flag
+        if timer1_enable_flag and not timer1_enable:
+            timer1.stage2 = 0
+            timer1.stage3 = 0
+
+        timer2 = self.timers[2]
+        timer2_enable = timer2.enable
+        timer2_enable_flag = bool(data & 0x04)
+        timer2.enable = timer2_enable_flag
+        if timer2_enable_flag and not timer2_enable:
+            timer2.stage2 = 0
+            timer2.stage3 = 0
+
+        if data & 0x10:
+            self.ports_r[0] = 0x00
+            self.ports_r[1] = 0x00
+
+        if data & 0x20:
+            self.ports_r[2] = 0x00
+            self.ports_r[3] = 0x00
+
+        self.ipl_rom_enable = bool(data & 0x80)
+
     def load_instructions(self) -> None:
         self.instruction_set = [{}] * 256
         with open("spc700.csv", "r") as f:
@@ -261,7 +333,8 @@ class Apu:
         self.fetch_and_execute()
 
     def step_timers(self) -> None:
-        pass
+        for timer in self.timers:
+            timer.step(1)  # TODO count real clock cycles
 
     def fetch_and_execute(self) -> None:
         # Fetch opcode

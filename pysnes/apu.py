@@ -1,6 +1,62 @@
 import csv
 
 
+class Timer:
+    def __init__(self, frequency: int) -> None:
+        self.frequency = frequency
+        self.stage0 = 0  # 8 bits
+        self.stage1 = 0  # 8 bits
+        self.stage2 = 0  # 8 bits
+        self.stage3 = 0  # 4 bits
+
+        self.line = False
+        self.enable = False
+        self.target = 0  # 8 bits
+
+        # Global control
+        self.timers_disable = 0
+        self.timers_enable = 0
+
+    def step(self, clocks: int) -> None:
+        # stage 0 increment
+        self.stage0 = (self.stage0 + clocks) & 0xFF
+        if self.stage0 < self.frequency:
+            return
+        self.stage0 = (self.stage0 - self.frequency) & 0xFF
+
+        # stage 1 increment
+        self.stage1 ^= 1  # Toogle
+        self.syncronize_stage1()
+
+    def syncronize_stage1(self) -> None:
+        level = self.stage1
+        if not self.timers_enable:
+            level = 0
+        if self.timers_disable:
+            level = 0
+        # only pulse on 1->0 transition
+        if not self.lower(level):
+            return
+
+        # stage 2 increment
+        if not self.enable:
+            return
+        self.stage2 = (self.stage2 + 1) & 0xFF
+        if self.stage2 != self.target:
+            return
+
+        # stage 3 increment
+        self.stage2 = 0
+        self.stage3 = (self.stage3 + 1) & 0x0F
+
+    def lower(self, level) -> bool:
+        if self.line and not level:
+            self.line = False
+            return True
+        elif not self.line and level:
+            self.line = True
+        return False
+
 class Apu:
     """
     Audio system
@@ -84,7 +140,7 @@ class Apu:
 
         # Registers
         self.undocumented = 0x0A  # F0
-        self.control_register = 0x00  # F1 (write only)
+        self.control_register = 0xB0  # F1 (write only)
         self.dsp_register_address = 0x00  # F2 (r/w)
         self.dsp_register_data = 0x00  # F3 (r/w)
         self.timers = bytearray(3)  # FA/FB/FC (/w)
@@ -201,7 +257,11 @@ class Apu:
                 self.instruction_set[opcode]["AddressingMode"] = mode
 
     def tick(self) -> None:
+        self.step_timers()
         self.fetch_and_execute()
+
+    def step_timers(self) -> None:
+        pass
 
     def fetch_and_execute(self) -> None:
         # Fetch opcode

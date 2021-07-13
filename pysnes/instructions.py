@@ -1012,7 +1012,7 @@ class InstructionSet:
     def execute(self, opcode: int) -> int:
         instruction = self.instructions[opcode]
         # if instruction.mnemonic in ("JSR", "RTS"):
-        print("\033[92mCPU 0x{:02X} {}\033[0m".format(self.cpu.PC - 1, instruction))
+        # print("\033[92mCPU 0x{:02X} {}\033[0m".format(self.cpu.PC - 1, instruction))
         self.cpu.current_instruction_PC = self.cpu.PC - 1
         cycles = instruction(self.cpu)
         return cycles

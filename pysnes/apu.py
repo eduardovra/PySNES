@@ -81,6 +81,7 @@ class Apu:
             0xFC,
             0xFD,
             0xAF,
+            0x6D,
             0x6F,
         ],
         "Immediate": [0xCD, 0xC8, 0xE8],
@@ -670,6 +671,46 @@ class Apu:
         self.SP += 1
         high_addr = self[self.SP]
         self.PC = low_addr | high_addr << 8
+
+    def PUSH_2D(self, addr: int) -> None:
+        """(SP--) = A"""
+        self[self.SP] = self.A
+        self.SP -= 1
+
+    def PUSH_0D(self, addr: int) -> None:
+        """(SP--) = Flags"""
+        self[self.SP] = self.PSW
+        self.SP -= 1
+
+    def PUSH_4D(self, addr: int) -> None:
+        """(SP--) = X"""
+        self[self.SP] = self.X
+        self.SP -= 1
+
+    def PUSH_6D(self, addr: int) -> None:
+        """(SP--) = Y"""
+        self[self.SP] = self.Y
+        self.SP -= 1
+
+    def POP_AE(self, addr: int) -> None:
+        """A = (++SP)"""
+        self.SP += 1
+        self.A = self[self.SP]
+
+    def POP_8E(self, addr: int) -> None:
+        """Flags = (++SP)"""
+        self.SP += 1
+        self.PSW = self[self.SP]
+
+    def POP_CE(self, addr: int) -> None:
+        """X = (++SP)"""
+        self.SP += 1
+        self.X = self[self.SP]
+
+    def POP_EE(self, addr: int) -> None:
+        """Y = (++SP)"""
+        self.SP += 1
+        self.Y = self[self.SP]
 
     def CMP_C8(self, addr: int) -> None:
         """X - i"""

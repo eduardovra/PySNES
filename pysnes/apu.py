@@ -47,9 +47,6 @@ class Timer:
         if self.stage2 != self.target:
             return
 
-        if self.frequency == 128 and self.target == 16:
-            print("stage1 hit")
-
         # stage 3 increment
         self.stage2 = 0
         self.stage3 = (self.stage3 + 1) & 0x0F
@@ -105,10 +102,27 @@ class Apu:
             0xAF,
             0x6D,
             0x6F,
+            0x7D,
+            0x2E,  # Handled in mnemonic
+            0xDE,  # Handled in mnemonic
         ],
-        "Immediate": [0xCD, 0xC8, 0xE8],
+        "Immediate": [0x68, 0x8D, 0xAD, 0xCD, 0xC8, 0xE8],
         "ImmediateDataToDirectPage": [0x8F, 0x78],
-        "Absolute": [0x0C, 0x2C, 0x4C, 0x6C, 0x8C, 0xAC, 0xCC, 0xEC, 0x3F, 0xC5],
+        "Absolute": [
+            0x0C,
+            0x2C,
+            0x3F,
+            0x4C,
+            0x5E,
+            0x6C,
+            0x8C,
+            0xAC,
+            0xC5,
+            0xC9,
+            0xCC,
+            0xE5,
+            0xEC,
+        ],
         "AbsoluteXIndexedIndirect": [0x1F],
         "AbsoluteBooleanBit": [0xAA],
         "Indirect": [0xC6],
@@ -117,7 +131,9 @@ class Apu:
         "IndirectPageToIndirectPage": [0x19, 0x39, 0x59, 0x79, 0x99, 0xB9],
         "Relative": [0x90, 0xB0, 0xF0, 0x30, 0xD0, 0x10, 0x50, 0x70, 0x2F],
         "DirectPage": [0xBA, 0xDA, 0xC4, 0xEB, 0x7E, 0x84, 0xE4, 0xCB, 0xAB],
-        "XIndexedAbsolute": [0xD5, 0xF5],
+        "XIndexedAbsolute": [0x75, 0xD5, 0xF5],
+        "XIndexedDirectPage": [0xF4, 0xD4, 0xDB],
+        "YIndexedDirectPage": [0xD9],
     }
 
     def __init__(self) -> None:
@@ -196,7 +212,7 @@ class Apu:
         elif addr == 0x00F3:
             return self.dsp_register_data
         elif 0x00F4 <= addr <= 0x00F7:
-            print(f"  APU read [{hex(addr)}] ==> {hex(self.ports_r[addr - 0x00F4])}")
+            # print(f"  APU read [{hex(addr)}] ==> {hex(self.ports_r[addr - 0x00F4])}")
             return self.ports_r[addr - 0x00F4]
         elif 0x00FD <= addr <= 0x00FF:
             timer = self.timers[addr - 0x00FD]
@@ -228,7 +244,7 @@ class Apu:
         elif addr == 0x00F3:
             self.dsp_register_data = value
         elif 0x00F4 <= addr <= 0x00F7:
-            print(f"  APU write [{hex(addr)}] <== {hex(value)}")
+            # print(f"  APU write [{hex(addr)}] <== {hex(value)}")
             self.ports_w[addr - 0x00F4] = value
         elif 0x00FA <= addr <= 0x00FC:
             timer = self.timers[addr - 0x00FA]
@@ -361,8 +377,6 @@ class Apu:
             timer.step(1)  # TODO count real clock cycles
 
     def fetch_and_execute(self) -> None:
-        if self.PC == 0x054E:
-            print("CALL")
         # Fetch opcode
         opcode = self[self.PC]
         self.PC += 1
@@ -470,6 +484,20 @@ class Apu:
         addr = ((addr_low | addr_high << 8) + self.X) & 0xFFFF
         return addr
 
+    def XIndexedDirectPage(self) -> int:
+        """X-Indexed Direct Page = d+X"""
+        page = 0x0100 if self.P else 0x0000
+        addr = self[self.PC]
+        self.PC += 1
+        return page | (addr + self.X)
+
+    def YIndexedDirectPage(self) -> int:
+        """Y-Indexed Direct Page = d+Y"""
+        page = 0x0100 if self.P else 0x0000
+        addr = self[self.PC]
+        self.PC += 1
+        return page | (addr + self.Y)
+
     #######################################################
     # Instructions                                        #
     #######################################################
@@ -523,6 +551,12 @@ class Apu:
         ) & 0xFF  # TODO confirm if the increment is before or after the memory access
         self.A = self[self.X]
 
+    def MOV_8D(self, addr: int) -> None:
+        """Y = i"""
+        self.Y = self[addr]
+        self.N = 1 if self.Y & 0x80 else 0
+        self.Z = 1 if self.Y == 0 else 0
+
     def MOV_FD(self, addr: int) -> None:
         """Y = A"""
         self.Y = self.A
@@ -553,6 +587,12 @@ class Apu:
         self.N = 1 if self.A & 0x80 else 0
         self.Z = 1 if self.A == 0 else 0
 
+    def MOV_7D(self, addr: int) -> None:
+        """A = X"""
+        self.A = self.X
+        self.N = 1 if self.A & 0x80 else 0
+        self.Z = 1 if self.A == 0 else 0
+
     def MOV_DD(self, addr: int) -> None:
         """A = Y"""
         self.A = self.Y
@@ -564,6 +604,12 @@ class Apu:
         page = 0x0100 if self.P else 0x0000
         absolute_addr = self[addr] | page
         self.A = self[absolute_addr]
+        self.N = 1 if self.A & 0x80 else 0
+        self.Z = 1 if self.A == 0 else 0
+
+    def MOV_F4(self, addr: int) -> None:
+        """A = (d+X)"""
+        self.A = self[addr]
         self.N = 1 if self.A & 0x80 else 0
         self.Z = 1 if self.A == 0 else 0
 
@@ -619,6 +665,18 @@ class Apu:
     def MOV_D7(self, addr: int) -> None:
         """([d]+Y) = A    (read)"""
         self[addr] = self.A
+
+    def MOV_D4(self, addr: int) -> None:
+        """(d+X) = A"""
+        self[addr] = self.A
+
+    def MOV_DB(self, addr: int) -> None:
+        """(d+X) = Y"""
+        self[addr] = self.Y
+
+    def MOV_D9(self, addr: int) -> None:
+        """(d+Y) = X"""
+        self[addr] = self.X
 
     def MOVW_BA(self, addr: int) -> None:
         """YA = word (d)"""
@@ -690,6 +748,38 @@ class Apu:
         """PC = [a+X]"""
         self.PC = addr
 
+    def CBNE_DE(self, addr: int) -> None:
+        """CMP A, (d+X) then BNE"""
+        # Exception --> Set addr mode as implied and handle
+        # everything in here
+        addr = self[self.PC]
+        self.PC += 1
+        page = self.P << 8
+        data = self[page | (addr + self.X)]
+        displacement = self[self.PC]
+        self.PC += 1
+        if self.A != data:
+            # Convert two's complement representation to signed int
+            if displacement & 0x80:
+                displacement = (-1) * ((~displacement & 0xFF) + 1)
+            self.PC += displacement
+
+    def CBNE_2E(self, addr: int) -> None:
+        """CMP A, (d) then BNE"""
+        # Exception --> Set addr mode as implied and handle
+        # everything in here
+        addr = self[self.PC]
+        self.PC += 1
+        page = self.P << 8
+        data = self[page | addr]
+        displacement = self[self.PC]
+        self.PC += 1
+        if self.A != data:
+            # Convert two's complement representation to signed int
+            if displacement & 0x80:
+                displacement = (-1) * ((~displacement & 0xFF) + 1)
+            self.PC += displacement
+
     def CALL_3F(self, addr: int) -> None:
         """(SP--)=PCh, (SP--)=PCl, PC=a"""
         self[self.SP] = (self.PC >> 8) & 0xFF
@@ -746,6 +836,22 @@ class Apu:
         self.SP += 1
         self.Y = self[self.SP]
 
+    def CMP_68(self, addr: int) -> None:
+        """A - i"""
+        i = self[addr]
+        result = self.A - i
+        self.N = 1 if result < 0x00 else 0
+        self.Z = 1 if result == 0 else 0
+        self.C = 1 if result > 0xFF else 0  # TODO not sure
+
+    def CMP_75(self, addr: int) -> None:
+        """A - (a+X)"""
+        i = self[addr]
+        result = self.A - i
+        self.N = 1 if result < 0x00 else 0
+        self.Z = 1 if result == 0 else 0
+        self.C = 1 if result > 0xFF else 0  # TODO not sure
+
     def CMP_C8(self, addr: int) -> None:
         """X - i"""
         i = self[addr]
@@ -769,6 +875,13 @@ class Apu:
         page = 0x0100 if self.P else 0x0000
         absolute_addr = self[addr] | page
         result = self.Y - self[absolute_addr]
+        self.N = 1 if result < 0x00 else 0
+        self.Z = 1 if result == 0 else 0
+        self.C = 1 if result > 0xFF else 0  # TODO not sure
+
+    def CMP_5E(self, addr: int) -> None:
+        """Y - (a)"""
+        result = self.Y - self[addr]
         self.N = 1 if result < 0x00 else 0
         self.Z = 1 if result == 0 else 0
         self.C = 1 if result > 0xFF else 0  # TODO not sure
@@ -828,16 +941,19 @@ class Apu:
 
     def ADC_86(self, addr: int) -> None:
         """A = A+(X)+C"""
+        raise
         value = self[addr]
         self.A = self.ADC(self.A, value)
 
     def ADC_97(self, addr: int) -> None:
         """A = A+([d]+Y)+C"""
+        raise
         value = self[addr]
         self.A = self.ADC(self.A, value)
 
     def ADC_87(self, addr: int) -> None:
         """A = A+([d+X])+C"""
+        raise
         value = self[addr]
         self.A = self.ADC(self.A, value)
 
@@ -850,21 +966,25 @@ class Apu:
 
     def ADC_94(self, addr: int) -> None:
         """A = A+(d+X)+C"""
+        raise
         value = self[addr]
         self.A = self.ADC(self.A, value)
 
     def ADC_85(self, addr: int) -> None:
         """A = A+(a)+C"""
+        raise
         value = self[addr]
         self.A = self.ADC(self.A, value)
 
     def ADC_95(self, addr: int) -> None:
         """A = A+(a+X)+C"""
+        raise
         value = self[addr]
         self.A = self.ADC(self.A, value)
 
     def ADC_96(self, addr: int) -> None:
         """A = A+(a+Y)+C"""
+        raise
         value = self[addr]
         self.A = self.ADC(self.A, value)
 

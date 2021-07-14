@@ -382,7 +382,8 @@ class Apu:
         self.PC += 1
         # Get reference to instruction metadata
         instruction = self.instruction_set[opcode]
-        if not (0xFFC0 <= self.PC <= 0xFFFF):  # Skip IPL
+        # if not (0xFFC0 <= self.PC <= 0xFFFF):  # Skip IPL
+        if not instruction.get("AddressingMode"):  # Unimplemented instructions only
             print("\033[93mAPU", hex(self.PC - 1), hex(opcode), instruction, "\033[0m")
         # Determine addressing mode and fetch operand address
         addr_mode_method = getattr(self, instruction["AddressingMode"])

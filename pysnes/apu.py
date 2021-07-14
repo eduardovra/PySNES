@@ -2,6 +2,8 @@ import csv
 
 
 class Timer:
+    TIMER_WAIT_STATES = (2, 4, 8, 16)  # Clock dividers
+
     def __init__(self, apu: "Apu", frequency: int) -> None:
         self.apu = apu
         self.frequency = frequency
@@ -14,7 +16,10 @@ class Timer:
         self.enable = False
         self.target = 0x00  # 8 bits
 
-    def step(self, clocks: int) -> None:
+    def step(self, _clocks: int) -> None:
+        wait_states = self.apu.internal_wait_states  # TODO can be external
+        clocks = self.TIMER_WAIT_STATES[wait_states]
+
         # stage 0 increment
         self.stage0 = (self.stage0 + clocks) & 0xFF
         if self.stage0 < self.frequency:
@@ -42,6 +47,9 @@ class Timer:
         if self.stage2 != self.target:
             return
 
+        if self.frequency == 128 and self.target == 16:
+            print("stage1 hit")
+
         # stage 3 increment
         self.stage2 = 0
         self.stage3 = (self.stage3 + 1) & 0x0F
@@ -60,20 +68,34 @@ class Apu:
     Audio system
     SPC700 & ARAM
     DSP
+    8-bit SPC700, runs at ~1Mhz ...with the effective
+    speed being half (each instruction takes a minimum of 2 cycles)
+    1.024 MHz
+    Wikipedia:
+    Clock rates
+    Input: 24.576 MHz
+    SPC700: 1.024 MHz
+
+    BSNES:
+    DSP clock (~24576khz) / 12 (~2048khz) is fed into the SMP
     """
+
+    FREQUENCY = 2048000  # 2048khz
 
     OPCODES_ADDRESSING_MODE_TABLE = {
         "Implied": [
-            0xBD,
             0x00,
+            0x1D,
             0x20,
             0x40,
             0x60,
             0x80,
             0xA0,
+            0xBD,
             0xC0,
+            0xCF,
             0xE0,
-            0x1D,
+            0xEE,
             0xDD,
             0x5D,
             0xBC,
@@ -92,8 +114,9 @@ class Apu:
         "Indirect": [0xC6],
         "IndirectYIndexed": [0xD7],
         "IndirectAutoIncremet": [],
+        "IndirectPageToIndirectPage": [0x19, 0x39, 0x59, 0x79, 0x99, 0xB9],
         "Relative": [0x90, 0xB0, 0xF0, 0x30, 0xD0, 0x10, 0x50, 0x70, 0x2F],
-        "DirectPage": [0xBA, 0xDA, 0xC4, 0xEB, 0x7E, 0xE4, 0xCB, 0xAB],
+        "DirectPage": [0xBA, 0xDA, 0xC4, 0xEB, 0x7E, 0x84, 0xE4, 0xCB, 0xAB],
         "XIndexedAbsolute": [0xD5, 0xF5],
     }
 
@@ -103,7 +126,7 @@ class Apu:
         self.A = 0x00  # Accumulator (8 bit)
         self.X = 0x00  # X Index Register (8 bit)
         self.Y = 0x00  # Y Index Register (8 bit)
-        self.SP = 0x00  # Stack Pointer (8 bit)
+        self.SP = 0xEF  # Stack Pointer (8 bit)
         # self.PSW = 0  # Program Status Word (8 bit)
         # YA  YA paired 16-bit register TODO
 
@@ -114,7 +137,7 @@ class Apu:
         self.B = 0  # Break
         self.H = 0  # Half carry
         self.I = 0  # Interrupt enabled (unused)
-        self.Z = 0  # Zero
+        self.Z = 1  # Zero
         self.C = 0  # Carry
 
         self.load_instructions()
@@ -140,7 +163,7 @@ class Apu:
 
         # Registers
         self.test_register = 0x0A  # F0 (write-only)
-        self.control_register = 0xB0  # F1 (write only)
+        self.control_register = 0x80  # F1 (write only)
         self.dsp_register_address = 0x00  # F2 (r/w)
         self.dsp_register_data = 0x00  # F3 (r/w)
         # self.timers = bytearray(3)  # FA/FB/FC (/w)
@@ -173,7 +196,7 @@ class Apu:
         elif addr == 0x00F3:
             return self.dsp_register_data
         elif 0x00F4 <= addr <= 0x00F7:
-            # print(f"  APU read [{hex(addr)}] ==> {hex(self.ports_r[addr - 0x00F4])}")
+            print(f"  APU read [{hex(addr)}] ==> {hex(self.ports_r[addr - 0x00F4])}")
             return self.ports_r[addr - 0x00F4]
         elif 0x00FD <= addr <= 0x00FF:
             timer = self.timers[addr - 0x00FD]
@@ -205,7 +228,7 @@ class Apu:
         elif addr == 0x00F3:
             self.dsp_register_data = value
         elif 0x00F4 <= addr <= 0x00F7:
-            # print(f"  APU write [{hex(addr)}] <== {hex(value)}")
+            print(f"  APU write [{hex(addr)}] <== {hex(value)}")
             self.ports_w[addr - 0x00F4] = value
         elif 0x00FA <= addr <= 0x00FC:
             timer = self.timers[addr - 0x00FA]
@@ -257,8 +280,8 @@ class Apu:
         self.ram_writable = bool(data >> 1 & 1)
         self.ram_disable = bool(data >> 2 & 1)
         self.timers_enable = bool(data >> 3 & 1)
-        self.external_wait_states = bool(data >> 4 & 3)
-        self.internal_wait_states = bool(data >> 6 & 3)
+        self.external_wait_states = int(data >> 4 & 3)
+        self.internal_wait_states = int(data >> 6 & 3)
 
         for timer in self.timers:
             timer.syncronize_stage1()
@@ -338,6 +361,8 @@ class Apu:
             timer.step(1)  # TODO count real clock cycles
 
     def fetch_and_execute(self) -> None:
+        if self.PC == 0x054E:
+            print("CALL")
         # Fetch opcode
         opcode = self[self.PC]
         self.PC += 1
@@ -352,7 +377,6 @@ class Apu:
         method_name = "_".join((instruction["Mnemonic"], "{:02X}".format(opcode)))
         instruction_method = getattr(self, method_name)
         instruction_method(addr)
-        # TODO Update SPW flags
 
     #######################################################
     # Addressing Modes                                    #
@@ -402,6 +426,10 @@ class Apu:
         """Indirect Auto-Increment = (X)+"""
         raise
 
+    def IndirectPageToIndirectPage(self) -> int:
+        """Indirect Page to Indirect Page = (X), (Y)"""
+        return self.X
+
     def Relative(self) -> int:
         """Relative = r"""
         r = self[self.PC]
@@ -442,9 +470,6 @@ class Apu:
         addr = ((addr_low | addr_high << 8) + self.X) & 0xFFFF
         return addr
 
-    def update_flags(self, value: int) -> None:
-        """Update SPW flags based on resulting value from previous operation"""
-
     #######################################################
     # Instructions                                        #
     #######################################################
@@ -452,9 +477,18 @@ class Apu:
     def NOP_00(self, addr: int) -> None:
         """do nothing"""
 
+    def CLRC_60(self, addr: int) -> None:
+        """C = 0"""
+        self.C = 0
+
     def CLRP_20(self, addr: int) -> None:
         """P = 0"""
         self.P = 0
+
+    def CLRV_E0(self, addr: int) -> None:
+        """V = 0, H = 0"""
+        self.V = 0
+        self.H = 0
 
     def MOV_D5(self, addr: int) -> None:
         """(a+X) = A"""
@@ -770,3 +804,83 @@ class Apu:
         self.X -= 1
         self.N = 1 if self.X & 0x80 else 0
         self.Z = 1 if self.X == 0 else 0
+
+    def ADC(self, x: int, y: int) -> int:
+        result = x + y + self.C
+        self.C = result > 0xFF
+        self.Z = (result & 0xFF) == 0
+        self.H = (x ^ y ^ result) & 0x10
+        self.V = ~(x ^ y) & (x ^ result) & 0x80
+        self.N = result & 0x80
+        return result & 0xFF
+
+    def ADC_99(self, addr: int) -> None:
+        """(X) = (X)+(Y)+C"""
+        x = self[self.P << 8 | self.X]
+        y = self[self.P << 8 | self.Y]
+        result = self.ADC(x, y)
+        self[self.P << 8 | self.X] = result
+
+    def ADC_88(self, addr: int) -> None:
+        """A = A+i+C"""
+        value = self[addr]
+        self.A = self.ADC(self.A, value)
+
+    def ADC_86(self, addr: int) -> None:
+        """A = A+(X)+C"""
+        value = self[addr]
+        self.A = self.ADC(self.A, value)
+
+    def ADC_97(self, addr: int) -> None:
+        """A = A+([d]+Y)+C"""
+        value = self[addr]
+        self.A = self.ADC(self.A, value)
+
+    def ADC_87(self, addr: int) -> None:
+        """A = A+([d+X])+C"""
+        value = self[addr]
+        self.A = self.ADC(self.A, value)
+
+    def ADC_84(self, addr: int) -> None:
+        """A = A+(d)+C"""
+        page = 0x0100 if self.P else 0x0000
+        absolute_addr = self[addr] | page
+        value = self[absolute_addr]
+        self.A = self.ADC(self.A, value)
+
+    def ADC_94(self, addr: int) -> None:
+        """A = A+(d+X)+C"""
+        value = self[addr]
+        self.A = self.ADC(self.A, value)
+
+    def ADC_85(self, addr: int) -> None:
+        """A = A+(a)+C"""
+        value = self[addr]
+        self.A = self.ADC(self.A, value)
+
+    def ADC_95(self, addr: int) -> None:
+        """A = A+(a+X)+C"""
+        value = self[addr]
+        self.A = self.ADC(self.A, value)
+
+    def ADC_96(self, addr: int) -> None:
+        """A = A+(a+Y)+C"""
+        value = self[addr]
+        self.A = self.ADC(self.A, value)
+
+    def ADC_89(self, addr: int) -> None:
+        """(dd) = (dd)+(d)+C"""
+        raise NotImplementedError
+
+    def ADC_98(self, addr: int) -> None:
+        """(d) = (d)+i+C"""
+        raise NotImplementedError
+
+    def MUL_CF(self, addr: int) -> None:
+        """YA = Y * A, NZ on Y only"""
+        ya = self.Y * self.A
+        self.A = (ya >> 0) & 0xFF
+        self.Y = (ya >> 8) & 0xFF
+        # result is set based on y (high-byte) only
+        self.Z = 1 if self.Y == 0 else 0
+        self.N = 1 if self.Y & 0x80 else 0

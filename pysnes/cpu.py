@@ -3,6 +3,14 @@ from .instructions import InstructionSet
 
 
 class Cpu:
+    """
+    The SNES's CPU (Central Processing Unit) is a 65c816 based processor.
+    While its clock speed is at about 21 MHz, it's effective speed is considerably lower,
+    at 3.58 MHz for quick access (i.e. hardware registers at $2100-$21FF in banks $00-$3F),
+    2.68 MHz for slow access (i.e. ROM and RAM) and
+    1.79 MHz for very slow access (i.e. hardware registers at $4000-$41FFF in banks $00 through $3F).
+    """
+
     class StatusRegister:
         def __init__(self) -> None:
             self.N = 0  # Negative flag

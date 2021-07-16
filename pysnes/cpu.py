@@ -78,6 +78,22 @@ class Cpu:
         # Debugging properties
         self.ticks = 0
 
+    def __str__(self) -> str:
+        flags = [
+            "E" if self.emulation else "e",
+            "N" if self.P.N else "n",
+            "V" if self.P.V else "v",
+            "M" if self.P.M else "m",
+            "X" if self.P.X else "x",
+            "D" if self.P.D else "d",
+            "I" if self.P.I else "i",
+            "Z" if self.P.Z else "z",
+            "C" if self.P.C else "c",
+        ]
+        return "PC:{:06X} A:{:04X} X:{:04X} Y:{:04X} P:{}".format(
+            self.PC, self.A, self.X, self.Y, "".join(flags)
+        )
+
     def tick(self) -> int:
         self.ticks += 1
         cycles = self.fetch_and_execute()

@@ -189,13 +189,14 @@ class AddressingMode:
         Effective Address: The Data Bank Register is concatenated to the 16-bit Operand:
         the 24-bit result is added to X (16 bits if 65802/65816 native mode, x = 0; else 8).
         """
-        indirect_addr = cpu.bus[cpu.PC] | cpu.bus[cpu.PC + 1] << 8 | cpu.DB << 16
+        indirect_addr = (cpu.bus[cpu.PC] | cpu.bus[cpu.PC + 1] << 8) + cpu.X
         cpu.PC += 2
-        if cpu.emulation == 0 and cpu.P.X == 0:
-            addr = indirect_addr + (cpu.X & 0xFFFF)
-        else:
-            addr = indirect_addr + (cpu.X & 0xFF)
-        return addr & 0xFFFFFF
+        addr = (indirect_addr & 0xFFFF) | cpu.DB << 16
+        # if cpu.emulation == 0 and cpu.P.X == 0:
+        #    addr = indirect_addr + (cpu.X & 0xFFFF)
+        # else:
+        #    addr = indirect_addr + (cpu.X & 0xFF)
+        return addr
 
     def absolute_indexed_y(self, cpu) -> int:
         """
@@ -338,8 +339,8 @@ class AddressingMode:
         indirect_addr = (
             cpu.bus[offset] | cpu.bus[offset + 1] << 8 | cpu.bus[offset + 2] << 16
         )
-        y = cpu.Y if cpu.P.X == 0 else cpu.Y & 0xFF
-        addr = indirect_addr + y
+        # y = cpu.Y if cpu.P.X == 0 else cpu.Y & 0xFF
+        addr = indirect_addr + cpu.Y
 
         return addr
 
@@ -445,8 +446,8 @@ class Instruction:
     def AND(self, cpu, addr) -> int:
         """And Accumulator with Memory"""
         if cpu.emulation == 0 and cpu.P.M == 0:
-            high = cpu.bus[addr + 0] & 0xFF
-            low = cpu.bus[addr + 1] & 0xFF
+            low = cpu.bus[addr + 0] & 0xFF
+            high = cpu.bus[addr + 1] & 0xFF
             value = low | high << 8
             cpu.A &= value
             cpu.P.N = 1 if cpu.A & 0x8000 else 0
@@ -519,6 +520,15 @@ class Instruction:
         status = cpu.P.get(cpu.emulation)
         cpu.P.set(status & ~mask, cpu.emulation)
 
+        if cpu.emulation:
+            cpu.P.M = 1
+            cpu.P.X = 1
+
+        if cpu.P.X:
+            # Clear high byte
+            cpu.X &= 0xFF
+            cpu.Y &= 0xFF
+
         return 3
 
     def SEP(self, cpu, addr) -> int:
@@ -526,6 +536,15 @@ class Instruction:
         mask = cpu.bus[addr]
         status = cpu.P.get(cpu.emulation)
         cpu.P.set(status | mask, cpu.emulation)
+
+        if cpu.emulation:
+            cpu.P.M = 1
+            cpu.P.X = 1
+
+        if cpu.P.X:
+            # Clear high byte
+            cpu.X &= 0xFF
+            cpu.Y &= 0xFF
 
         return 3
 
@@ -603,6 +622,8 @@ class Instruction:
 
     def LDX(self, cpu, addr) -> int:
         """Load X Register from Memory"""
+        opcode = cpu.bus[cpu.current_instruction_PC]
+
         cpu.X = cpu.bus[addr]
         cpu.P.N = 1 if cpu.X & 0x80 else 0
         cpu.P.Z = 1 if (cpu.X & 0xFF) == 0 else 0
@@ -611,16 +632,32 @@ class Instruction:
             cpu.P.N = 1 if cpu.X & 0x8000 else 0
             cpu.P.Z = 1 if (cpu.X & 0xFFFF) == 0 else 0
 
+        # Workaround
+        if opcode == 0xA2:  # Immediate
+            if cpu.P.M == 0 and cpu.P.X == 1:
+                cpu.PC -= 1
+            elif cpu.P.M == 1 and cpu.P.X == 0:
+                cpu.PC += 1
+
         return 0
 
     def LDY(self, cpu, addr) -> int:
         """Load Y Register from Memory"""
+        opcode = cpu.bus[cpu.current_instruction_PC]
+
         cpu.Y = cpu.bus[addr]
         cpu.P.N = 1 if cpu.Y & 0x80 else 0
         if cpu.emulation == 0 and cpu.P.M == 0 and cpu.P.X == 0:
             cpu.Y |= cpu.bus[addr + 1] << 8
             cpu.P.N = 1 if cpu.Y & 0x8000 else 0
         cpu.P.Z = 1 if cpu.Y == 0 else 0
+
+        # Workaround
+        if opcode == 0xA0:  # Immediate
+            if cpu.P.M == 0 and cpu.P.X == 1:
+                cpu.PC -= 1
+            elif cpu.P.M == 1 and cpu.P.X == 0:
+                cpu.PC += 1
 
         return 0
 
@@ -760,10 +797,11 @@ class Instruction:
 
     def DEX(self, cpu, addr) -> int:
         """Decrement Index Register X"""
-        cpu.X -= 1
-        if cpu.P.X == 0:
+        if cpu.emulation == 0 and cpu.P.X == 0:
+            cpu.X = (cpu.X - 1) & 0xFFFF
             cpu.P.N = 1 if cpu.X & 0x8000 else 0
         else:
+            cpu.X = (cpu.X & 0xFF00) | ((cpu.X & 0xFF) - 1) & 0xFF
             cpu.P.N = 1 if cpu.X & 0x80 else 0
         cpu.P.Z = 1 if cpu.X == 0 else 0
 
@@ -771,10 +809,11 @@ class Instruction:
 
     def DEY(self, cpu, addr) -> int:
         """Decrement Index Register Y"""
-        cpu.Y -= 1
-        if cpu.P.X == 0:
+        if cpu.emulation == 0 and cpu.P.X == 0:
+            cpu.Y = (cpu.Y - 1) & 0xFFFF
             cpu.P.N = 1 if cpu.Y & 0x8000 else 0
         else:
+            cpu.Y = (cpu.Y & 0xFF00) | ((cpu.Y & 0xFF) - 1) & 0xFF
             cpu.P.N = 1 if cpu.Y & 0x80 else 0
         cpu.P.Z = 1 if cpu.Y == 0 else 0
 
@@ -881,6 +920,18 @@ class Instruction:
         cpu.PC = (low | high << 8) + 1
         return 6
 
+    def RTL(self, cpu, addr) -> int:
+        """Return from Subroutine Long"""
+        cpu.S += 1
+        low = cpu.bus[cpu.S]
+        cpu.S += 1
+        high = cpu.bus[cpu.S]
+        cpu.S += 1
+        bank = cpu.bus[cpu.S]
+        addr = (low | high << 8) + 1
+        cpu.PC = addr | bank << 16
+        return 6
+
     def PHA(self, cpu, addr) -> int:
         """Push Accumulator"""
         if cpu.emulation == 0 and cpu.P.M == 0:
@@ -914,6 +965,16 @@ class Instruction:
         """Pull Processor Status Register"""
         cpu.S += 1
         cpu.P.set(cpu.bus[cpu.S], cpu.emulation)
+
+        if cpu.emulation:
+            cpu.P.M = 1
+            cpu.P.X = 1
+
+        if cpu.P.X:
+            # Clear high byte
+            cpu.X &= 0xFF
+            cpu.Y &= 0xFF
+
         return 0
 
     def PEA(self, cpu, addr) -> int:
@@ -924,13 +985,27 @@ class Instruction:
         cpu.S -= 1
         return 5
 
+    def PHB(self, cpu, addr) -> int:
+        """Push Data Bank register"""
+        cpu.bus[cpu.S] = cpu.DB
+        cpu.S -= 1
+        return 3
+
     def PLB(self, cpu, addr) -> int:
         """Pulls a byte off the stack into the data bank register"""
         cpu.S += 1
-        cpu.D = cpu.bus[cpu.S]
-        cpu.P.N = 1 if cpu.D & 0x80 else 0
-        cpu.P.Z = 1 if (cpu.D & 0xFF) == 0 else 0
+        cpu.DB = cpu.bus[cpu.S]
+        cpu.P.N = 1 if cpu.DB & 0x80 else 0
+        cpu.P.Z = 1 if (cpu.DB & 0xFF) == 0 else 0
         return 0
+
+    def PHD(self, cpu, addr) -> int:
+        """Pushes the 16 bit contents of the direct page register on stack"""
+        cpu.bus[cpu.S] = (cpu.D >> 8) & 0xFF
+        cpu.S -= 1
+        cpu.bus[cpu.S] = (cpu.D >> 0) & 0xFF
+        cpu.S -= 1
+        return 4
 
     def PLD(self, cpu, addr) -> int:
         """Pulls a sixteen bit value off stack into the direct page register"""
@@ -942,6 +1017,12 @@ class Instruction:
         cpu.P.N = 1 if cpu.D & 0x8000 else 0
         cpu.P.Z = 1 if (cpu.D & 0xFFFF) == 0 else 0
         return 0
+
+    def PHK(self, cpu, addr) -> int:
+        """Pushes the 8 bit contents of the program bank register on stack"""
+        cpu.bus[cpu.S] = cpu.PB
+        cpu.S -= 1
+        return 3
 
     def PHX(self, cpu, addr) -> int:
         """Push X"""
@@ -1099,27 +1180,29 @@ class Instruction:
 
     def INX(self, cpu, addr) -> int:
         """Increment Index Register X"""
-        cpu.X += 1
         if cpu.emulation == 0 and cpu.P.X == 0:
-            cpu.X &= 0xFFFF
+            cpu.X = (cpu.X + 1) & 0xFFFF
             cpu.P.N = 1 if cpu.X & 0x8000 else 0
+            cpu.P.Z = 1 if cpu.X & 0xFFFF == 0 else 0
         else:
-            cpu.X &= 0xFF
+            cpu.X = (cpu.X & 0xFF00) | (cpu.X + 1) & 0xFF
             cpu.P.N = 1 if cpu.X & 0x80 else 0
-        cpu.P.Z = 1 if cpu.X == 0 else 0
+            cpu.P.Z = 1 if cpu.X & 0xFF == 0 else 0
 
         return 2
 
     def INY(self, cpu, addr) -> int:
         """Increment Index Register Y"""
-        cpu.Y += 1
+        if cpu.Y >= 0xFFFF:
+            print("overflow")
         if cpu.emulation == 0 and cpu.P.X == 0:
-            cpu.Y &= 0xFFFF
+            cpu.Y = (cpu.Y + 1) & 0xFFFF
             cpu.P.N = 1 if cpu.Y & 0x8000 else 0
+            cpu.P.Z = 1 if cpu.Y & 0xFFFF == 0 else 0
         else:
-            cpu.Y &= 0xFF
+            cpu.Y = (cpu.Y & 0xFF00) | (cpu.Y + 1) & 0xFF
             cpu.P.N = 1 if cpu.Y & 0x80 else 0
-        cpu.P.Z = 1 if cpu.Y == 0 else 0
+            cpu.P.Z = 1 if cpu.Y & 0xFF == 0 else 0
 
         return 2
 
@@ -1195,18 +1278,25 @@ class InstructionSet:
     def execute(self, opcode: int) -> int:
         instruction = self.instructions[opcode]
         self.cpu.current_instruction_PC = self.cpu.PC - 1
-        if instruction.mnemonic in ("JSR", "RTS"):
+        if self.cpu.current_instruction_PC == 0x8058:
+            print("BREAKPOINT")
+        # if instruction.mnemonic in ("JSR", "RTS"):
+        if True:
             print(
-                "\033[92mCPU 0x{:02X} {}\033[0m".format(
-                    self.cpu.current_instruction_PC, instruction
+                "\033[92mCPU 0x{:02X} {} {}\033[0m".format(
+                    self.cpu.current_instruction_PC,
+                    str(instruction).ljust(40),
+                    self.cpu,
                 )
             )
         try:
             cycles = instruction(self.cpu)
         except:
             print(
-                "\033[92mCPU 0x{:02X} {}\033[0m".format(
-                    self.cpu.current_instruction_PC, instruction
+                "\033[92mCPU 0x{:02X} {} {}\033[0m".format(
+                    self.cpu.current_instruction_PC,
+                    str(instruction).ljust(40),
+                    self.cpu,
                 )
             )
             raise

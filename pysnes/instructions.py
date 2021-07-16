@@ -318,6 +318,22 @@ class AddressingMode:
 
         return addr
 
+    def dp_indirect_long(self, cpu) -> int:
+        """
+        Effective Address:
+        Bank/High/Low: The 24-bit Indirect Address
+        Indirect Address: The Operand byte plus the Direct Page Register, in Bank Zero
+        """
+        operand = cpu.bus[cpu.PC]
+        cpu.PC += 1
+        indirect_addr = cpu.D + operand
+        addr = (
+            cpu.bus[indirect_addr]
+            | cpu.bus[indirect_addr + 1] << 8
+            | cpu.bus[indirect_addr + 2] << 16
+        )
+        return addr
+
     def dp_indirect_long_indexed_y(self, cpu) -> int:
         """
         Direct Page Indirect Long Indexed, Y Addressing
@@ -627,7 +643,7 @@ class Instruction:
         cpu.X = cpu.bus[addr]
         cpu.P.N = 1 if cpu.X & 0x80 else 0
         cpu.P.Z = 1 if (cpu.X & 0xFF) == 0 else 0
-        if cpu.emulation == 0 and cpu.P.M == 0 and cpu.P.X == 0:
+        if cpu.emulation == 0 and cpu.P.X == 0:
             cpu.X |= cpu.bus[addr + 1] << 8
             cpu.P.N = 1 if cpu.X & 0x8000 else 0
             cpu.P.Z = 1 if (cpu.X & 0xFFFF) == 0 else 0
@@ -647,7 +663,7 @@ class Instruction:
 
         cpu.Y = cpu.bus[addr]
         cpu.P.N = 1 if cpu.Y & 0x80 else 0
-        if cpu.emulation == 0 and cpu.P.M == 0 and cpu.P.X == 0:
+        if cpu.emulation == 0 and cpu.P.X == 0:
             cpu.Y |= cpu.bus[addr + 1] << 8
             cpu.P.N = 1 if cpu.Y & 0x8000 else 0
         cpu.P.Z = 1 if cpu.Y == 0 else 0
@@ -734,6 +750,32 @@ class Instruction:
             cpu.P.N = 1 if cpu.A & 0x8000 else 0
 
         cpu.P.Z = 1 if cpu.A == 0 else 0
+
+        return 2
+
+    def TXY(self, cpu, addr) -> int:
+        """Transfer X to Y"""
+        if cpu.emulation == 0 and cpu.P.X == 0:
+            cpu.Y = cpu.X
+            cpu.P.N = 1 if cpu.Y & 0x8000 else 0
+            cpu.P.Z = 1 if cpu.Y & 0xFFFF == 0 else 0
+        else:
+            cpu.Y = (cpu.Y & 0xFF00) | (cpu.X & 0xFF)
+            cpu.P.N = 1 if cpu.Y & 0x80 else 0
+            cpu.P.Z = 1 if cpu.Y & 0xFF == 0 else 0
+
+        return 2
+
+    def TYX(self, cpu, addr) -> int:
+        """Transfer Y to X"""
+        if cpu.emulation == 0 and cpu.P.X == 0:
+            cpu.X = cpu.Y
+            cpu.P.N = 1 if cpu.X & 0x8000 else 0
+            cpu.P.Z = 1 if cpu.X & 0xFFFF == 0 else 0
+        else:
+            cpu.X = (cpu.X & 0xFF00) | (cpu.Y & 0xFF)
+            cpu.P.N = 1 if cpu.X & 0x80 else 0
+            cpu.P.Z = 1 if cpu.X & 0xFF == 0 else 0
 
         return 2
 
@@ -1112,12 +1154,6 @@ class Instruction:
             value |= cpu.bus[addr + 1] << 8
         result = cpu.X - value
 
-        # TODO workaround: in this case X defines the 16bit mode instead of A
-        if cpu.P.X == 0 and cpu.P.M == 1:
-            cpu.PC += 1
-        elif cpu.P.X == 1 and cpu.P.M == 0:
-            cpu.PC -= 1
-
         if cpu.emulation == 0 and cpu.P.X == 0:
             cpu.P.N = 1 if result & 0x8000 else 0
             cpu.P.Z = 1 if (result & 0xFFFF) == 0 else 0
@@ -1127,6 +1163,14 @@ class Instruction:
 
         cpu.P.C = 1 if cpu.X >= value else 0
 
+        # Workaround
+        opcode = cpu.bus[cpu.current_instruction_PC]
+        if opcode == 0xE0:  # Immediate
+            if cpu.P.M == 0 and cpu.P.X == 1:
+                cpu.PC -= 1
+            elif cpu.P.M == 1 and cpu.P.X == 0:
+                cpu.PC += 1
+
         return 0
 
     def CPY(self, cpu, addr) -> int:
@@ -1134,8 +1178,6 @@ class Instruction:
         value = cpu.bus[addr]
         if cpu.emulation == 0 and cpu.P.X == 0:
             value |= cpu.bus[addr + 1] << 8
-            # TODO workaround: in this case X defines the 16bit mode instead of A
-            cpu.PC += 1
         result = cpu.Y - value
 
         if cpu.emulation == 0 and cpu.P.X == 0:
@@ -1146,6 +1188,14 @@ class Instruction:
             cpu.P.Z = 1 if (result & 0xFF) == 0 else 0
 
         cpu.P.C = 1 if cpu.Y >= value else 0
+
+        # Workaround
+        opcode = cpu.bus[cpu.current_instruction_PC]
+        if opcode == 0xC0:  # Immediate
+            if cpu.P.M == 0 and cpu.P.X == 1:
+                cpu.PC -= 1
+            elif cpu.P.M == 1 and cpu.P.X == 0:
+                cpu.PC += 1
 
         return 0
 
@@ -1170,6 +1220,35 @@ class Instruction:
             cpu.P.Z = 1 if data & 0xFF == 0 else 0
 
         if opcode == 0x1A:
+            cpu.A = data
+        else:
+            cpu.bus[addr + 0] = (data >> 0) & 0xFF
+            if cpu.emulation == 0 and cpu.P.M == 0:
+                cpu.bus[addr + 1] = (data >> 8) & 0xFF
+
+        return 2
+
+    def DEC(self, cpu, addr) -> int:
+        """Decrement Data"""
+        opcode = cpu.bus[cpu.current_instruction_PC]
+
+        if opcode == 0x3A:
+            data = cpu.A
+        else:
+            data = cpu.bus[addr]
+            if cpu.emulation == 0 and cpu.P.M == 0:
+                data |= cpu.bus[addr + 1] << 8
+
+        if cpu.emulation == 0 and cpu.P.M == 0:
+            data = (data - 1) & 0xFFFF
+            cpu.P.N = 1 if data & 0x8000 else 0
+            cpu.P.Z = 1 if data & 0xFFFF == 0 else 0
+        else:
+            data = ((data - 1) & 0xFF) | (data & 0xFF00)
+            cpu.P.N = 1 if data & 0x80 else 0
+            cpu.P.Z = 1 if data & 0xFF == 0 else 0
+
+        if opcode == 0x3A:
             cpu.A = data
         else:
             cpu.bus[addr + 0] = (data >> 0) & 0xFF
@@ -1278,10 +1357,11 @@ class InstructionSet:
     def execute(self, opcode: int) -> int:
         instruction = self.instructions[opcode]
         self.cpu.current_instruction_PC = self.cpu.PC - 1
-        if self.cpu.current_instruction_PC == 0x8058:
+        if self.cpu.current_instruction_PC == 0xB930:
             print("BREAKPOINT")
-        # if instruction.mnemonic in ("JSR", "RTS"):
-        if True:
+        p_debug = instruction.mnemonic in ("JSR", "RTS")
+        p_debug = True
+        if p_debug:
             print(
                 "\033[92mCPU 0x{:02X} {} {}\033[0m".format(
                     self.cpu.current_instruction_PC,

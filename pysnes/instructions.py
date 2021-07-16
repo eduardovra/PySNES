@@ -282,6 +282,20 @@ class AddressingMode:
         addr = cpu.D + operand
         return addr
 
+    def dp_indirect(self, cpu) -> int:
+        """
+        Effective Address:
+
+        Bank: Data Bank Register (DBR)
+        High/Low: The 16-bit Indirect Address
+        Indirect Address: The Operand byte plus the Direct Page Register, in Bank Zero
+        """
+        operand = cpu.bus[cpu.PC]
+        cpu.PC += 1
+        indirect_address = operand + cpu.D
+        addr = cpu.bus[indirect_address] | cpu.bus[indirect_address + 1] << 8
+        return addr | cpu.DB << 16
+
     def dp_indexed_x(self, cpu) -> int:
         """
         Direct Page Indexed, X Addressing
@@ -1357,10 +1371,10 @@ class InstructionSet:
     def execute(self, opcode: int) -> int:
         instruction = self.instructions[opcode]
         self.cpu.current_instruction_PC = self.cpu.PC - 1
-        if self.cpu.current_instruction_PC == 0xB930:
-            print("BREAKPOINT")
+        # if self.cpu.current_instruction_PC == 0xB930:
+        # print("BREAKPOINT")
         p_debug = instruction.mnemonic in ("JSR", "RTS")
-        p_debug = True
+        p_debug = False
         if p_debug:
             print(
                 "\033[92mCPU 0x{:02X} {} {}\033[0m".format(

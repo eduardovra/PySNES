@@ -8,8 +8,9 @@ class PySNES:
     def __init__(self, rom_file_path: str) -> None:
         rom = Rom(rom_file_path)
         self.apu = Apu()
-        bus = Bus(rom, self.apu)
-        self.cpu = Cpu(bus, rom.hardware_vectors)
+        self.cpu = Cpu(rom.hardware_vectors)
+        bus = Bus(rom, self.cpu, self.apu)
+        self.cpu.attach(bus)
 
     def tick(self):
         """

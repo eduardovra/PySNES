@@ -1,5 +1,21 @@
-from .bus import Bus
+from typing import TYPE_CHECKING
+from dataclasses import dataclass
+
 from .instructions import InstructionSet
+
+if TYPE_CHECKING:
+    from .bus import Bus
+
+
+@dataclass
+class CpuStatus:
+    hirq_enable: bool = False
+    virq_enable: bool = False
+    irq_enable: bool = False
+
+    nmi_line: bool = False
+    nmi_pending: bool = False
+    interrupt_pending: bool = False
 
 
 class Cpu:
@@ -56,8 +72,7 @@ class Cpu:
                 self.M = (value >> 5) & 0x01
                 self.X = (value >> 4) & 0x01
 
-    def __init__(self, bus: Bus, hardware_vectors: dict) -> None:
-        self.bus = bus
+    def __init__(self, hardware_vectors: dict) -> None:
         self.hardware_vectors = hardware_vectors
         self.instruction_set = InstructionSet(self)
 
@@ -74,6 +89,9 @@ class Cpu:
         self.DB: int = 0x00  # Data Bank Register
         self.PC: int = self.hardware_vectors["emulation"]["RESET"]
         self.P = self.StatusRegister()
+
+        # Emulation state flags
+        self.status = CpuStatus()
 
         # Debugging properties
         self.ticks = 0
@@ -94,13 +112,57 @@ class Cpu:
             self.PC, self.A, self.X, self.Y, "".join(flags)
         )
 
+    def attach(self, bus: "Bus") -> None:
+        self.bus = bus
+
     def tick(self) -> int:
         self.ticks += 1
-        cycles = self.fetch_and_execute()
-        return cycles
+
+        if not self.status.interrupt_pending:
+            cycles = self.fetch_and_execute()
+            return cycles
+
+        if self.status.nmi_pending:
+            self.status.nmi_pending = False
+            # vectors = (
+            #    self.hardware_vectors["emulation"]
+            #    if self.emulation
+            #    else self.hardware_vectors["native"]
+            # )
+            # vector = vectors["NMI"]
+            vector = 0xFFFA if self.emulation else 0xFFEA
+            return self.interrupt(vector)
+
+        self.status.interrupt_pending = False
+
+        return 1
 
     def fetch_and_execute(self) -> int:
         opcode = self.bus[self.PC]
         self.PC += 1
         cycles = self.instruction_set.execute(opcode)
         return cycles
+
+    def interrupt(self, vector: int) -> int:
+        # Bank
+        if self.emulation == 0:
+            self.bus[self.S] = self.PC >> 16
+            self.S -= 1
+        # High
+        self.bus[self.S] = self.PC >> 8
+        self.S -= 1
+        # Low
+        self.bus[self.S] = self.PC & 0xFF
+        self.S -= 1
+        # P register
+        p = self.P.get(self.emulation)
+        self.bus[self.S] = p & ~0x10 if self.emulation else p
+        self.S -= 1
+
+        self.P.I = 1
+        self.P.D = 0
+
+        addr = self.bus[vector] | self.bus[vector + 1] << 8
+        self.PC = addr
+
+        return 1  # whatever

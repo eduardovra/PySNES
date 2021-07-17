@@ -1,23 +1,18 @@
-from .apu import Apu
 from .rom import Rom
+from .cpu import Cpu
+from .apu import Apu
 
 
 class Bus:
     # TODO consider banks
-    def __init__(self, rom: Rom, apu: Apu) -> None:
+    def __init__(self, rom: Rom, cpu: Cpu, apu: Apu) -> None:
         self.rom = rom  # LoROM section (program memory)
+        self.cpu = cpu
         self.apu = apu  # Sound system [0x2140-0x217F]
         self.low_ram = bytearray(0x2000)
         self.pp1_apu_hw_registers = bytearray(0xFF)
         self.dma_ppu2_hw_registers = bytearray(0x44FF - 0x4200 + 1)
         self.extended_ram = bytearray(0x7FFFFF - 0x7E8000 + 1)
-
-        # TODO move to somewhere else
-        # Initialize APU
-        # Wait for port $2140 to be $AA and port $2141 to be $BB.
-        # (This means the ROM program is through initializing, and is ready to begin a transfer.)
-        # self[0x2140] = 0xAA
-        # self[0x2141] = 0xBB
 
     def __getitem__(self, abs_addr: int) -> int:
         assert 0x000000 <= abs_addr <= 0xFFFFFF, "Address outside 24 bit range"
@@ -42,6 +37,14 @@ class Bus:
                     return self.apu[addr - 0x204C]
                 return self.pp1_apu_hw_registers[addr - 0x2100]
             elif 0x4200 <= addr <= 0x44FF:
+                if addr == 0x4210:  # RDNMI
+                    data = (
+                        self.cpu.status.nmi_line << 7
+                        | 0x02  # 5A22 chip version number [0-3]
+                    )
+                    # TODO bnes only clears this when it's not onhold
+                    self.cpu.status.nmi_line = False
+                    return data
                 return self.dma_ppu2_hw_registers[addr - 0x4200]
 
         if (0x00 <= bank <= 0x6F) or (0x80 <= bank <= 0xEF):
@@ -80,6 +83,16 @@ class Bus:
                     self.pp1_apu_hw_registers[addr - 0x2100] = data
                     return
             elif 0x4200 <= addr <= 0x44FF:
+                if addr == 0x4200:  # NMITIMEN
+                    self.cpu.status.hirq_enable = bool(data & 0x10)
+                    self.cpu.status.virq_enable = bool(data & 0x20)
+                    self.cpu.status.irq_enable = (
+                        self.cpu.status.hirq_enable or self.cpu.status.virq_enable
+                    )
+                    if data & 0x80:  # TODO enable only when transitioning
+                        self.cpu.status.nmi_pending = True
+                        self.cpu.status.interrupt_pending = True
+                    return
                 self.dma_ppu2_hw_registers[addr - 0x4200] = data
                 return
 

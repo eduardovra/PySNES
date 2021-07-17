@@ -361,12 +361,36 @@ class Apu:
                     "Flags": [f for f in row["Flags Set"] if f != "-"],
                     "Bytes": int(row["Bytes"]),
                     # "Cycles": int(row["Cycles"]), # TODO Don't know if it's gonna be important
+                    "AddrModeCb": self.not_implemented_addr_mode,
+                    "InstructionCb": self.not_implemented_instruction,
                 }
 
         # Add addressing mode
         for mode, opcodes in self.OPCODES_ADDRESSING_MODE_TABLE.items():
             for opcode in opcodes:
                 self.instruction_set[opcode]["AddressingMode"] = mode
+                self.instruction_set[opcode]["AddrModeCb"] = getattr(self, mode)
+                mnemonic = self.instruction_set[opcode]["Mnemonic"]
+                instruction_method_name = "_".join((mnemonic, "{:02X}".format(opcode)))
+                try:
+                    self.instruction_set[opcode]["InstructionCb"] = getattr(
+                        self, instruction_method_name
+                    )
+                except AttributeError:
+                    self.instruction_set[opcode][
+                        "InstructionCb"
+                    ] = self.not_implemented_instruction
+
+        # Build lookup table
+        self.lookup_table = tuple(
+            (i["AddrModeCb"], i["InstructionCb"]) for i in self.instruction_set
+        )
+
+    def not_implemented_addr_mode(self):
+        raise NotImplementedError("Addressing mode not specified for opcode")
+
+    def not_implemented_instruction(self, addr):
+        raise NotImplementedError("Instruction not implemented")
 
     def tick(self) -> None:
         self.step_timers()
@@ -381,17 +405,15 @@ class Apu:
         opcode = self[self.PC]
         self.PC += 1
         # Get reference to instruction metadata
-        instruction = self.instruction_set[opcode]
+        # instruction = self.instruction_set[opcode]
         # if not (0xFFC0 <= self.PC <= 0xFFFF):  # Skip IPL
-        if not instruction.get("AddressingMode"):  # Unimplemented instructions only
-            print("\033[93mAPU", hex(self.PC - 1), hex(opcode), instruction, "\033[0m")
-        # Determine addressing mode and fetch operand address
-        addr_mode_method = getattr(self, instruction["AddressingMode"])
-        addr = addr_mode_method()
+        # if not instruction.get("AddressingMode"):  # Unimplemented instructions only
+        # if True:
+        #    print("\033[93mAPU", hex(self.PC - 1), hex(opcode), instruction, "\033[0m")
+        addr_mode_cb, instruction_cb = self.lookup_table[opcode]
+        addr = addr_mode_cb()
         # Execute instruction
-        method_name = "_".join((instruction["Mnemonic"], "{:02X}".format(opcode)))
-        instruction_method = getattr(self, method_name)
-        instruction_method(addr)
+        instruction_cb(addr)
 
     #######################################################
     # Addressing Modes                                    #

@@ -85,14 +85,16 @@ class AddressingMode:
 
     def __init__(self, addressin_mode: str) -> None:
         self.mode_str = self.MODES[addressin_mode]
+        try:
+            self.addr_mode_cb = getattr(self, self.mode_str)
+        except AttributeError:
+            self.addr_mode_cb = self.not_implemented
 
     def __call__(self, cpu) -> int:
-        try:
-            method = getattr(self, self.mode_str)
-        except AttributeError:
-            raise RuntimeError(f"Addressing mode not implemented: {self.mode_str}")
+        return self.addr_mode_cb(cpu)
 
-        return method(cpu)
+    def not_implemented(self, cpu) -> int:
+        raise RuntimeError(f"Addressing mode not implemented: {self.mode_str}")
 
     def implied(self, cpu) -> int:
         """
@@ -387,30 +389,36 @@ class Instruction:
         self.bytes = raw_instruction["Bytes"]  # TODO parse
         self.cycles = raw_instruction["Cycles"]  # TODO parse
 
-        # TODO load method here, once I get all of them implemented
+        # Hook up addressing mode and mnemonic methods
+        self.setup()
 
     def __str__(self) -> str:
         opcode = "0x{:02X}".format(self.opcode)
         return f"{opcode} {self.mnemonic} {self.addressing_mode}"
 
     def __call__(self, cpu) -> int:
+        # Saved to be used in the addressing mode
+        cpu.current_instruction_mnemonic = self.mnemonic
+
         # Decode phase: fetch additional information before execution
 
         # TODO for now I'm just returning the addr to the operand,
         # but it'll have to return the number of cycles used eventually
-        addressing_mode = AddressingMode(self.addressing_mode)
-        addr = addressing_mode(cpu)
+        addr = self.addressing_mode_cb(cpu)
 
         # Execute instruction phase
+        return self.instruction_cb(cpu, addr)
+
+    def setup(self) -> None:
+        """Load addessing mode and Mnemonic methods"""
+        self.addressing_mode_cb = AddressingMode(self.addressing_mode)
         try:
-            instruction = getattr(self, self.mnemonic)
+            self.instruction_cb = getattr(self, self.mnemonic)
         except AttributeError:
-            raise RuntimeError(f"Mnemonic not implemented: {self.mnemonic}")
+            self.instruction_cb = self.mnemonic_not_implemented
 
-        # Saved to be used in the addressing mode
-        cpu.current_instruction_mnemonic = self.mnemonic
-
-        return instruction(cpu, addr)
+    def mnemonic_not_implemented(self, cpu, addr):
+        raise RuntimeError(f"Mnemonic not implemented: {self.mnemonic}")
 
     def BRK(self, cpu, addr):
         """Software Break"""
@@ -1357,11 +1365,12 @@ class Instruction:
 
 class InstructionSet:
     def __init__(self, cpu) -> None:
-        self.instructions = {}
         self.cpu = cpu
         self.load_instructions()
+        self.print_instructions = False
 
     def load_instructions(self) -> None:
+        self.instructions = {}
         with open("instructions.csv", "r") as f:
             reader = csv.DictReader(f)
             for row in reader:
@@ -1373,9 +1382,9 @@ class InstructionSet:
         self.cpu.current_instruction_PC = self.cpu.PC - 1
         # if self.cpu.current_instruction_PC == 0xB930:
         # print("BREAKPOINT")
-        p_debug = instruction.mnemonic in ("JSR", "RTS")
-        p_debug = False
-        if p_debug:
+        # p_debug = instruction.mnemonic in ("JSR", "RTS")
+        # p_debug = False
+        if self.print_instructions:
             print(
                 "\033[92mCPU 0x{:02X} {} {}\033[0m".format(
                     self.cpu.current_instruction_PC,

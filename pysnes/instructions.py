@@ -1474,7 +1474,40 @@ class Instruction:
 
     def ROR(self, cpu, addr) -> int:
         """Rotate Memory or Accumulator Right"""
-        raise NotImplementedError
+        carry = cpu.P.C
+        if self.opcode == 0x6A:  # Addressing mode == Accumulator
+            if cpu.emulation == 0 and cpu.P.M == 0:
+                data = cpu.A
+                cpu.P.C = 1 if data & 1 else 0
+                data = carry << 15 | data >> 1
+                cpu.P.Z = 1 if (data & 0xFFFF) == 0 else 0
+                cpu.P.N = 1 if data & 0x8000 else 0
+                cpu.A = data
+            else:
+                data = cpu.A & 0xFF
+                cpu.P.C = 1 if data & 1 else 0
+                data = carry << 7 | data >> 1
+                cpu.P.Z = 1 if (data & 0xFF) == 0 else 0
+                cpu.P.N = 1 if data & 0x80 else 0
+                cpu.A = (cpu.A & 0xFF00) | data & 0xFF
+        else:
+            if cpu.emulation == 0 and cpu.P.M == 0:
+                data = cpu.bus[addr] | cpu.bus[addr + 1] << 8
+                cpu.P.C = 1 if data & 1 else 0
+                data = carry << 15 | data >> 1
+                cpu.P.Z = 1 if (data & 0xFFFF) == 0 else 0
+                cpu.P.N = 1 if data & 0x8000 else 0
+                cpu.bus[addr] = data & 0xFF
+                cpu.bus[addr + 1] = (data >> 8) & 0xFF
+            else:
+                data = cpu.bus[addr]
+                cpu.P.C = 1 if data & 1 else 0
+                data = carry << 7 | data >> 1
+                cpu.P.Z = 1 if (data & 0xFF) == 0 else 0
+                cpu.P.N = 1 if data & 0x80 else 0
+                cpu.bus[addr] = data & 0xFF
+
+        return 0
 
     def ORA(self, cpu, addr) -> int:
         """OR Accumulator with Memory"""

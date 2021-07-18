@@ -38,7 +38,7 @@ class Bus:
                     return self.apu[addr - 0x204C]
                 return self.pp1_apu_hw_registers[addr - 0x2100]
             elif 0x4200 <= addr <= 0x44FF:
-                if addr == 0x4210:  # RDNMI
+                if addr == 0x4210:  # RDNMI - NMI Flag and 5A22 Version
                     data = (
                         self.cpu.status.nmi_line << 7
                         | 0x02  # 5A22 chip version number [0-3]
@@ -47,6 +47,15 @@ class Bus:
                     if True:
                         self.cpu.status.nmi_line = False  # Reading clears the line
                     return data
+                if addr == 0x4212:  # HVBJOY - PPU Status
+                    # H-Blank hcounter <= 2 or hcounter >= 1096
+                    # V-Blank vcounter >= ppu.vdisp
+                    return (
+                        (
+                            1 << 5
+                        )  # This bit is unmmaped but the test program keeps reading it
+                        | self.cpu.status.v_bank_on << 7
+                    )
                 return self.dma_ppu2_hw_registers[addr - 0x4200]
 
         if (0x00 <= bank <= 0x6F) or (0x80 <= bank <= 0xFF):

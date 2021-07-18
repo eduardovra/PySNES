@@ -42,8 +42,9 @@ class Bus:
                         self.cpu.status.nmi_line << 7
                         | 0x02  # 5A22 chip version number [0-3]
                     )
-                    # TODO bnes only clears this when it's not onhold
-                    self.cpu.status.nmi_line = False
+                    # if not self.cpu.status.nmi_hold: # (bsnes)
+                    if True:
+                        self.cpu.status.nmi_line = False  # Reading clears the line
                     return data
                 return self.dma_ppu2_hw_registers[addr - 0x4200]
 
@@ -89,9 +90,11 @@ class Bus:
                     self.cpu.status.irq_enable = (
                         self.cpu.status.hirq_enable or self.cpu.status.virq_enable
                     )
-                    if data & 0x80:  # TODO enable only when transitioning
-                        self.cpu.status.nmi_pending = True
-                        self.cpu.status.interrupt_pending = True
+                    # Trigger transition if line is up when the flag is enabled
+                    if data & 0x80:
+                        if not self.cpu.status.nmi_enable and self.cpu.status.nmi_line:
+                            self.cpu.status.nmi_transition = True
+                    self.cpu.status.nmi_enable = bool(data & 0x80)
                     return
                 self.dma_ppu2_hw_registers[addr - 0x4200] = data
                 return

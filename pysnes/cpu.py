@@ -14,8 +14,18 @@ class CpuStatus:
     irq_enable: bool = False
 
     nmi_line: bool = False
+    nmi_transition: bool = False
+    nmi_enable: bool = False
     nmi_pending: bool = False
-    interrupt_pending: bool = False
+    nmi_hold: bool = False
+    nmi_valid: bool = False
+
+    v_blank_ticks: int = 0
+    v_bank_on: bool = False
+
+    @property
+    def interrupt_pending(self) -> bool:
+        return self.nmi_pending
 
 
 class Cpu:
@@ -118,22 +128,57 @@ class Cpu:
     def tick(self) -> int:
         self.ticks += 1
 
+        # Update the NMI line to reflect the v-bank period
+        # I still don't know how to determine the correct
+        # moment to trigger the line, so I'm establishing
+        # something random:
+        # 10000 ticks for v-bank off, 1000 ticks v-bank on
+        if self.status.v_blank_ticks:
+            self.status.v_blank_ticks -= 1
+        else:
+            if self.status.v_bank_on:
+                # Transition to low
+                self.status.v_bank_on = False
+                self.status.nmi_line = False
+                self.status.v_blank_ticks = 10000
+            else:
+                # Transition to high
+                self.status.v_bank_on = True
+                self.status.nmi_line = True
+                self.status.v_blank_ticks = 1000
+                if self.status.nmi_enable:
+                    self.status.nmi_transition = True
+
+        # Test for NMI rising edge and trigger interrupt on next iteration
+        if self.status.nmi_transition:
+            self.status.nmi_transition = False
+            self.status.nmi_pending = True
+
+        """
+        # NMI Poll every 4 clock cycles
+        if self.ticks & 0x02:
+            if self.status.nmi_hold and self.status.nmi_enable:
+                self.status.nmi_transition = True
+            self.status.nmi_hold = False
+
+            # Figure out the right timing to call this
+            if self.ticks & 0x40:
+                self.status.nmi_valid = not self.status.nmi_valid
+                self.status.nmi_line = self.status.nmi_valid
+                if self.status.nmi_line:
+                    self.status.nmi_hold = True  # hold /NMI for four cycles
+        """
+
+        # If there's no interrupt pending keep normal execution flow
         if not self.status.interrupt_pending:
             cycles = self.fetch_and_execute()
             return cycles
 
+        # NMI trigger has been scheduled, so jump to its vector
         if self.status.nmi_pending:
             self.status.nmi_pending = False
-            # vectors = (
-            #    self.hardware_vectors["emulation"]
-            #    if self.emulation
-            #    else self.hardware_vectors["native"]
-            # )
-            # vector = vectors["NMI"]
             vector = 0xFFFA if self.emulation else 0xFFEA
             return self.interrupt(vector)
-
-        self.status.interrupt_pending = False
 
         return 1
 

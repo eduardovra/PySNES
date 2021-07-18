@@ -498,6 +498,38 @@ class Instruction:
 
         return 0
 
+    def LSR(self, cpu, addr) -> int:
+        opcode = cpu.bus[cpu.current_instruction_PC]
+        if opcode == 0x4A:  # Accumulator
+            value = cpu.A
+        else:
+            if cpu.emulation == 0 and cpu.P.M == 0:
+                value = cpu.bus[addr] | cpu.bus[addr + 1] << 8
+            else:
+                value = cpu.bus[addr]
+
+        if cpu.emulation == 0 and cpu.P.M == 0:
+            cpu.P.C = 1 if value & 0x0001 else 0
+            value = (value >> 1) & 0xFFFF
+            cpu.P.Z = 1 if value == 0 else 0
+            cpu.P.N = 1 if value & 0x8000 else 0
+        else:
+            cpu.P.C = 1 if value & 0x01 else 0
+            value = (value & 0xFF00) | (value >> 1) & 0xFF
+            cpu.P.Z = 1 if value == 0 else 0
+            cpu.P.N = 1 if value & 0x80 else 0
+
+        if opcode == 0x4A:  # Accumulator
+            cpu.A = value
+        else:
+            if cpu.emulation == 0 and cpu.P.M == 0:
+                cpu.bus[addr + 0] = (value >> 0) & 0xFF
+                cpu.bus[addr + 1] = (value >> 8) & 0xFF
+            else:
+                value = cpu.bus[addr] & 0xFF
+
+        return 0
+
     def ASL(self, cpu, addr) -> int:
         """Arithmetic Shift Left"""
         opcode = cpu.bus[cpu.current_instruction_PC]
@@ -1294,8 +1326,6 @@ class Instruction:
 
     def INY(self, cpu, addr) -> int:
         """Increment Index Register Y"""
-        if cpu.Y >= 0xFFFF:
-            print("overflow")
         if cpu.emulation == 0 and cpu.P.X == 0:
             cpu.Y = (cpu.Y + 1) & 0xFFFF
             cpu.P.N = 1 if cpu.Y & 0x8000 else 0
@@ -1380,8 +1410,6 @@ class InstructionSet:
     def execute(self, opcode: int) -> int:
         instruction = self.instructions[opcode]
         self.cpu.current_instruction_PC = self.cpu.PC - 1
-        # if self.cpu.current_instruction_PC == 0xB930:
-        # print("BREAKPOINT")
         # p_debug = instruction.mnemonic in ("JSR", "RTS")
         # p_debug = False
         if self.print_instructions:
@@ -1392,6 +1420,8 @@ class InstructionSet:
                     self.cpu,
                 )
             )
+        if self.cpu.current_instruction_PC == 0x816A:
+            print("BREAKPOINT")
         try:
             cycles = instruction(self.cpu)
         except:

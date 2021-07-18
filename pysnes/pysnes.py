@@ -11,6 +11,7 @@ class PySNES:
         self.cpu = Cpu(rom.hardware_vectors)
         bus = Bus(rom, self.cpu, self.apu)
         self.cpu.attach(bus)
+        self.ticks = 0
 
     def tick(self):
         """
@@ -25,10 +26,12 @@ class PySNES:
         # TODO tick the same number of cycles on the other components (PPU, Timer, etc)
         # TODO Sleep to keep limit frequency on 60Hz
 
+        # self.ticks += 1
+        # return self.ticks > 10000000
         return False
 
 
-if __name__ == "__main__":
+def main():
     rom = "snes_oam_test/1-random.smc"
     # rom = "snes_oam_test/2-low.smc"
     # rom = "snes_adc_sbc/test_adc.smc"
@@ -36,3 +39,10 @@ if __name__ == "__main__":
     pysnes = PySNES(rom)
     while not pysnes.tick():
         pass
+
+
+if __name__ == "__main__":
+    import cProfile
+
+    # cProfile.run("main()", sort="cumulative")
+    main()

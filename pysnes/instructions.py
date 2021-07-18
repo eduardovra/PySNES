@@ -1,4 +1,6 @@
+from collections import deque
 import csv
+from ctypes import c_int16, c_int8
 
 """
 Branch Instructions
@@ -145,7 +147,9 @@ class AddressingMode:
         Low: First operand byte.
         """
         if cpu.current_instruction_mnemonic in self.BRANCH_INSTRUCTIONS:
-            bank = cpu.PB
+            # bank = cpu.PB
+            # Workaround, PB is not being updated where it should, so it can't be used
+            bank = (cpu.PC >> 16) & 0xFF
         else:
             bank = cpu.DB
         addr = cpu.bus[cpu.PC] | cpu.bus[cpu.PC + 1] << 8 | bank << 16
@@ -248,9 +252,11 @@ class AddressingMode:
         operand = cpu.bus[cpu.PC]
         cpu.PC += 1  # TODO not sure...
         # Sign extension
-        if operand & 0x80:  # Negative
-            operand |= 0xFF00
-        addr = (operand + cpu.PC) & 0xFFFF | cpu.PB << 16
+        # if operand & 0x80:  # Negative
+        #    operand |= 0xFF00
+        # addr = (operand + cpu.PC) & 0xFFFF | cpu.PB << 16
+        operand = c_int8(operand)
+        addr = operand.value + cpu.PC
         return addr
 
     def program_counter_relative_long(self, cpu) -> int:
@@ -260,16 +266,20 @@ class AddressingMode:
         High/Low: The Operand double byte, a two's complement signed value, is added
         to the Program Counter (its value is the address of the opcode following this one).
         """
-        operand_tc = cpu.bus[cpu.PC] | cpu.bus[cpu.PC + 1] << 8
+        # operand_tc = cpu.bus[cpu.PC] | cpu.bus[cpu.PC + 1] << 8
+        operand = c_int16(cpu.bus[cpu.PC] | cpu.bus[cpu.PC + 1] << 8)
 
         cpu.PC += 2  # TODO not sure if this should be done before or after
 
         # operand is in two's complement format, convert it to an int
-        operand = (-1) * (0xFFFF + 1 + operand_tc)
-        assert -32768 <= operand <= 32767
-        addr = cpu.PC + operand
+        # operand = (-1) * (0xFFFF + 1 + operand_tc)
+        # assert -32768 <= operand <= 32767
+        # addr = cpu.PC + operand
 
-        return addr | cpu.PB << 16
+        # return addr | cpu.PB << 16
+
+        addr = operand.value + cpu.PC
+        return addr
 
     def direct_page(self, cpu) -> int:
         """
@@ -418,6 +428,7 @@ class Instruction:
             self.instruction_cb = self.mnemonic_not_implemented
 
     def mnemonic_not_implemented(self, cpu, addr):
+        cpu.instruction_set.print_trace(40)
         raise RuntimeError(f"Mnemonic not implemented: {self.mnemonic}")
 
     def BRK(self, cpu, addr):
@@ -1007,7 +1018,7 @@ class Instruction:
             cpu.PC = addr
         elif opcode == 0x22:  # Absolute long
             # Program bank
-            cpu.bus[cpu.S] = cpu.PB
+            cpu.bus[cpu.S] = (pc >> 16) & 0xFF  # cpu.PB
             cpu.S -= 1
             # PC high byte
             cpu.bus[cpu.S] = (pc >> 8) & 0xFF
@@ -1443,6 +1454,7 @@ class InstructionSet:
         self.cpu = cpu
         self.load_instructions()
         self.print_instructions = False
+        self.trace = deque(maxlen=100)
 
     def load_instructions(self) -> None:
         self.instructions = {}
@@ -1452,31 +1464,29 @@ class InstructionSet:
                 instruction = Instruction(row)
                 self.instructions[instruction.opcode] = instruction
 
+    def print_trace(self, entries: int = 20) -> None:
+        for i in range(entries):
+            print(self.trace.pop())
+
     def execute(self, opcode: int) -> int:
         instruction = self.instructions[opcode]
         self.cpu.current_instruction_PC = self.cpu.PC - 1
         # p_debug = instruction.mnemonic in ("JSR", "RTS")
         # p_debug = False
+        debug_str = "\033[92mCPU 0x{:06X} {} {}\033[0m".format(
+            self.cpu.current_instruction_PC,
+            str(instruction).ljust(40),
+            self.cpu,
+        )
+        self.trace.append(debug_str)
         if self.print_instructions:
-            print(
-                "\033[92mCPU 0x{:02X} {} {}\033[0m".format(
-                    self.cpu.current_instruction_PC,
-                    str(instruction).ljust(40),
-                    self.cpu,
-                )
-            )
+            print(debug_str)
         if self.cpu.current_instruction_PC == 0x816A:
             # self.print_instructions = True
             print("BREAKPOINT")
         try:
             cycles = instruction(self.cpu)
         except:
-            print(
-                "\033[92mCPU 0x{:02X} {} {}\033[0m".format(
-                    self.cpu.current_instruction_PC,
-                    str(instruction).ljust(40),
-                    self.cpu,
-                )
-            )
+            print(debug_str)
             raise
         return cycles

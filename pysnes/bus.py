@@ -49,7 +49,7 @@ class Bus:
                     return data
                 return self.dma_ppu2_hw_registers[addr - 0x4200]
 
-        if (0x00 <= bank <= 0x6F) or (0x80 <= bank <= 0xEF):
+        if (0x00 <= bank <= 0x6F) or (0x80 <= bank <= 0xFF):
             if 0x8000 <= addr <= 0xFFFF:
                 if bank >= 0x80:
                     bank -= 0x80  # Mirror of 0x00-0x6F

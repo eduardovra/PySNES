@@ -76,7 +76,7 @@ class AddressingMode:
         "Stack (PC Relative Long)": "stack_pc_relative_long",
         "Stack (Push)": "implied",
         "Stack (Pull)": "implied",
-        "Stack (RTI)": "stack_rti",
+        "Stack (RTI)": "implied",
         "Stack (RTL)": "implied",
         "Stack (RTS)": "implied",
         "Block Move": "block_move",
@@ -1027,6 +1027,35 @@ class Instruction:
         addr = (low | high << 8) + 1
         cpu.PC = addr | bank << 16
         return 6
+
+    def RTI(self, cpu, addr) -> int:
+        """Return from Interrupt"""
+        # P register
+        cpu.S += 1
+        cpu.P.set(cpu.bus[cpu.S], cpu.emulation)
+        if cpu.emulation:
+            cpu.P.X = 1
+            cpu.P.M = 1
+        if cpu.P.X:
+            cpu.X &= 0xFF
+            cpu.Y &= 0xFF
+        # Low byte
+        cpu.S += 1
+        low = cpu.bus[cpu.S]
+        if cpu.emulation:
+            # High byte
+            cpu.S += 1
+            high = cpu.bus[cpu.S]
+            bank = 0
+        else:
+            # High byte and bank
+            cpu.S += 1
+            high = cpu.bus[cpu.S]
+            cpu.S += 1
+            bank = cpu.bus[cpu.S]
+        addr = (low | high << 8) + 1
+        cpu.PC = addr | bank << 16
+        return 0
 
     def PHA(self, cpu, addr) -> int:
         """Push Accumulator"""

@@ -344,6 +344,25 @@ class AddressingMode:
 
         return addr
 
+    def dp_indirect_indexed_y(self, cpu) -> int:
+        """
+        Direct Page Indirect Indexed, Y Addressing
+
+        Effective Address: Found by concatenating the data bank to the double-byte indirect address,
+        then adding Y (16 bits if 65802/65816 native mode, x = 0; else 8).
+        Indirect Address: Located in the Direct Page at the sum of the
+        direct page register and the operand byte, in bank zero.
+        """
+        assert cpu.emulation == 0
+        operand = cpu.bus[cpu.PC]
+        cpu.PC += 1
+
+        indirect_addr = cpu.D + operand
+        addr = cpu.bus[indirect_addr] | cpu.bus[indirect_addr + 1] << 8 | cpu.DB << 16
+        y = cpu.Y if cpu.P.X == 0 else cpu.Y & 0xFF
+
+        return addr + y
+
     def dp_indirect_long(self, cpu) -> int:
         """
         Effective Address:
@@ -384,6 +403,18 @@ class AddressingMode:
         # y = cpu.Y if cpu.P.X == 0 else cpu.Y & 0xFF
         addr = indirect_addr + cpu.Y
 
+        return addr
+
+    def stack_relative(self, cpu) -> int:
+        """
+        Stack Relative Addressing
+
+        Bank: Zero
+        High:Low: The 16-bit sum of the 8-bit Operand and the 16-bit Stack Pointer.
+        """
+        operand = cpu.bus[cpu.PC]
+        cpu.PC += 1
+        addr = (operand + cpu.S) & 0xFFFF
         return addr
 
 

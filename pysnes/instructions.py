@@ -498,7 +498,23 @@ class Instruction:
 
         return 0
 
+    def EOR(self, cpu, addr) -> int:
+        """Exclusive-OR Accumulator with Memory"""
+        if cpu.emulation == 0 and cpu.P.M == 0:
+            data = cpu.bus[addr] | cpu.bus[addr + 1] << 8
+            cpu.A ^= data
+            cpu.P.N = 1 if cpu.A & 0x8000 else 0
+            cpu.P.Z = 1 if (cpu.A & 0xFFFF) == 0 else 0
+        else:
+            data = cpu.bus[addr]
+            cpu.A = (cpu.A & 0xFF00) | (cpu.A ^ data)
+            cpu.P.N = 1 if cpu.A & 0x80 else 0
+            cpu.P.Z = 1 if (cpu.A & 0xFF) == 0 else 0
+
+        return 0
+
     def LSR(self, cpu, addr) -> int:
+        """Logical Shift Right"""
         opcode = cpu.bus[cpu.current_instruction_PC]
         if opcode == 0x4A:  # Accumulator
             value = cpu.A
@@ -1053,7 +1069,7 @@ class Instruction:
             high = cpu.bus[cpu.S]
             cpu.S += 1
             bank = cpu.bus[cpu.S]
-        addr = (low | high << 8) + 1
+        addr = low | high << 8  # + 1
         cpu.PC = addr | bank << 16
         return 0
 
@@ -1404,7 +1420,7 @@ class Instruction:
 
     def ROR(self, cpu, addr) -> int:
         """Rotate Memory or Accumulator Right"""
-        raise
+        raise NotImplementedError
 
     def ORA(self, cpu, addr) -> int:
         """OR Accumulator with Memory"""
@@ -1450,6 +1466,7 @@ class InstructionSet:
                 )
             )
         if self.cpu.current_instruction_PC == 0x816A:
+            # self.print_instructions = True
             print("BREAKPOINT")
         try:
             cycles = instruction(self.cpu)

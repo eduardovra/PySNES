@@ -1,4 +1,5 @@
 import csv
+from ctypes import c_int8, c_uint8
 
 
 class Timer:
@@ -105,6 +106,8 @@ class Apu:
             0x7D,
             0x2E,  # Handled in mnemonic
             0xDE,  # Handled in mnemonic
+            0x6E,  # Handled in mnemonic
+            0xFE,  # Handled in mnemonic
         ],
         "Immediate": [0x68, 0x8D, 0xAD, 0xCD, 0xC8, 0xE8],
         "ImmediateDataToDirectPage": [0x8F, 0x78],
@@ -114,6 +117,7 @@ class Apu:
             0x3F,
             0x4C,
             0x5E,
+            0x65,
             0x6C,
             0x8C,
             0xAC,
@@ -130,7 +134,34 @@ class Apu:
         "IndirectAutoIncremet": [],
         "IndirectPageToIndirectPage": [0x19, 0x39, 0x59, 0x79, 0x99, 0xB9],
         "Relative": [0x90, 0xB0, 0xF0, 0x30, 0xD0, 0x10, 0x50, 0x70, 0x2F],
-        "DirectPage": [0xBA, 0xDA, 0xC4, 0xEB, 0x7E, 0x84, 0xE4, 0xCB, 0xAB],
+        "DirectPage": [
+            0xBA,
+            0xDA,
+            0xC4,
+            0xEB,
+            0x7E,
+            0x84,
+            0xE4,
+            0xCB,
+            0xAB,
+            # Direct Page Bit d.b
+            0x02,
+            0x12,
+            0x22,
+            0x32,
+            0x42,
+            0x52,
+            0x62,
+            0x72,
+            0x82,
+            0x92,
+            0xA2,
+            0xB2,
+            0xC2,
+            0xD2,
+            0xE2,
+            0xF2,
+        ],
         "XIndexedAbsolute": [0x75, 0xD5, 0xF5],
         "XIndexedDirectPage": [0xF4, 0xD4, 0xDB],
         "YIndexedDirectPage": [0xD9],
@@ -199,6 +230,9 @@ class Apu:
             0xF6,0xDA,0x00,0xBA,0xF4,0xC4,0xF4,0xDD,0x5D,0xD0,0xDB,0x1F,0x00,0x00,0xC0,0xFF,
         ))
         # fmt: on
+
+    def __str__(self) -> str:
+        return "%s %s %s" % (hex(self.PC - 1), hex(self.opcode), self.instruction)
 
     def __getitem__(self, addr: int) -> int:
         if 0x0000 <= addr <= 0x00EF:
@@ -387,10 +421,16 @@ class Apu:
         )
 
     def not_implemented_addr_mode(self):
-        raise NotImplementedError("Addressing mode not specified for opcode")
+        print(self)
+        raise NotImplementedError(
+            f"Addressing mode not specified for opcode: {hex(self.opcode)} {self.instruction['Example']}"
+        )
 
     def not_implemented_instruction(self, addr):
-        raise NotImplementedError("Instruction not implemented")
+        print(self)
+        raise NotImplementedError(
+            f"Instruction not implemented: {hex(self.opcode)} {self.instruction['Example']}"
+        )
 
     def tick(self) -> None:
         self.step_timers()
@@ -402,15 +442,15 @@ class Apu:
 
     def fetch_and_execute(self) -> None:
         # Fetch opcode
-        opcode = self[self.PC]
+        self.opcode = self[self.PC]
         self.PC += 1
         # Get reference to instruction metadata
-        # instruction = self.instruction_set[opcode]
+        self.instruction = self.instruction_set[self.opcode]
         # if not (0xFFC0 <= self.PC <= 0xFFFF):  # Skip IPL
         # if not instruction.get("AddressingMode"):  # Unimplemented instructions only
         # if True:
         #    print("\033[93mAPU", hex(self.PC - 1), hex(opcode), instruction, "\033[0m")
-        addr_mode_cb, instruction_cb = self.lookup_table[opcode]
+        addr_mode_cb, instruction_cb = self.lookup_table[self.opcode]
         addr = addr_mode_cb()
         # Execute instruction
         instruction_cb(addr)
@@ -540,6 +580,86 @@ class Apu:
         """V = 0, H = 0"""
         self.V = 0
         self.H = 0
+
+    def CLR1(self, addr: int, bit: int) -> None:
+        # Adding page here because it's not done in the addressing mode implementation
+        page = 0x0100 if self.P else 0x0000
+        addr = addr | page
+        data = self[addr]
+        data &= ~(1 << bit)
+        self[addr] = data
+
+    def CLR1_12(self, addr: int) -> None:
+        """d.0 = 0"""
+        self.CLR1(addr, 0)
+
+    def CLR1_32(self, addr: int) -> None:
+        """d.1 = 0"""
+        self.CLR1(addr, 1)
+
+    def CLR1_52(self, addr: int) -> None:
+        """d.2 = 0"""
+        self.CLR1(addr, 2)
+
+    def CLR1_72(self, addr: int) -> None:
+        """d.3 = 0"""
+        self.CLR1(addr, 3)
+
+    def CLR1_92(self, addr: int) -> None:
+        """d.4 = 0"""
+        self.CLR1(addr, 4)
+
+    def CLR1_B2(self, addr: int) -> None:
+        """d.5 = 0"""
+        self.CLR1(addr, 5)
+
+    def CLR1_D2(self, addr: int) -> None:
+        """d.6 = 0"""
+        self.CLR1(addr, 6)
+
+    def CLR1_F2(self, addr: int) -> None:
+        """d.7 = 0"""
+        self.CLR1(addr, 7)
+
+    def SET1(self, addr: int, bit: int) -> None:
+        # Adding page here because it's not done in the addressing mode implementation
+        page = 0x0100 if self.P else 0x0000
+        addr = addr | page
+        data = self[addr]
+        data |= 1 << bit
+        self[addr] = data
+
+    def SET1_02(self, addr: int) -> None:
+        """d.0 = 1"""
+        self.SET1(addr, 0)
+
+    def SET1_22(self, addr: int) -> None:
+        """d.1 = 1"""
+        self.SET1(addr, 1)
+
+    def SET1_42(self, addr: int) -> None:
+        """d.2 = 1"""
+        self.SET1(addr, 2)
+
+    def SET1_62(self, addr: int) -> None:
+        """d.3 = 1"""
+        self.SET1(addr, 3)
+
+    def SET1_82(self, addr: int) -> None:
+        """d.4 = 1"""
+        self.SET1(addr, 4)
+
+    def SET1_A2(self, addr: int) -> None:
+        """d.5 = 1"""
+        self.SET1(addr, 5)
+
+    def SET1_C2(self, addr: int) -> None:
+        """d.6 = 1"""
+        self.SET1(addr, 6)
+
+    def SET1_E2(self, addr: int) -> None:
+        """d.7 = 1"""
+        self.SET1(addr, 7)
 
     def MOV_D5(self, addr: int) -> None:
         """(a+X) = A"""
@@ -803,6 +923,23 @@ class Apu:
                 displacement = (-1) * ((~displacement & 0xFF) + 1)
             self.PC += displacement
 
+    def DBNZ_FE(self, addr: int) -> None:
+        """Y-- then JNZ"""
+        raise
+
+    def DBNZ_6E(self, addr: int) -> None:
+        """(d)-- then JNZ"""
+        page = self.P << 8
+        addr = self[self.PC] | page
+        self.PC += 1
+        data = c_uint8(self[addr])
+        data.value -= 1
+        self[addr] = data.value
+        displacement = c_int8(self[self.PC])
+        self.PC += 1
+        if data != 0:
+            self.PC += int(displacement.value)
+
     def CALL_3F(self, addr: int) -> None:
         """(SP--)=PCh, (SP--)=PCl, PC=a"""
         self[self.SP] = (self.PC >> 8) & 0xFF
@@ -861,6 +998,14 @@ class Apu:
 
     def CMP_68(self, addr: int) -> None:
         """A - i"""
+        i = self[addr]
+        result = self.A - i
+        self.N = 1 if result < 0x00 else 0
+        self.Z = 1 if result == 0 else 0
+        self.C = 1 if result > 0xFF else 0  # TODO not sure
+
+    def CMP_65(self, addr: int) -> None:
+        """A - (a)"""
         i = self[addr]
         result = self.A - i
         self.N = 1 if result < 0x00 else 0
@@ -940,6 +1085,14 @@ class Apu:
         self.X -= 1
         self.N = 1 if self.X & 0x80 else 0
         self.Z = 1 if self.X == 0 else 0
+
+    def DEC_8C(self, addr: int) -> None:
+        """(a)--"""
+        data = self[addr]
+        data -= 1
+        self[addr] = data & 0xFF
+        self.N = 1 if data & 0x80 else 0
+        self.Z = 1 if data & 0xFF == 0 else 0
 
     def ADC(self, x: int, y: int) -> int:
         result = x + y + self.C

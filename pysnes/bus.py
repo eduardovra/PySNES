@@ -10,6 +10,7 @@ class Bus:
         self.cpu = cpu
         self.apu = apu  # Sound system [0x2140-0x217F]
         self.low_ram = bytearray(0x2000)
+        self.high_ram = bytearray(0xE000)
         self.pp1_apu_hw_registers = bytearray(0xFF)
         self.dma_ppu2_hw_registers = bytearray(0x44FF - 0x4200 + 1)
         self.extended_ram = bytearray(0x7FFFFF - 0x7E8000 + 1)
@@ -55,6 +56,9 @@ class Bus:
                 rom_addr = (bank * 0x8000) + (addr - 0x8000)
                 return self.rom[rom_addr]
 
+        if 0x7E2000 <= abs_addr <= 0x7E7FFF:
+            return self.high_ram[abs_addr - 0x7E2000]
+
         if 0x7E8000 <= abs_addr <= 0x7FFFFF:
             return self.extended_ram[abs_addr - 0x7E8000]
 
@@ -98,6 +102,10 @@ class Bus:
                     return
                 self.dma_ppu2_hw_registers[addr - 0x4200] = data
                 return
+
+        if 0x7E2000 <= abs_addr <= 0x7E7FFF:
+            self.high_ram[abs_addr - 0x7E2000] = data
+            return
 
         if 0x7E8000 <= abs_addr <= 0x7FFFFF:
             self.extended_ram[abs_addr - 0x7E8000] = data

@@ -183,9 +183,9 @@ class Cpu:
         return 1
 
     def fetch_and_execute(self) -> int:
-        opcode = self.bus[self.PC]
+        self.opcode = self.bus[self.PC]
         self.PC += 1
-        cycles = self.instruction_set.execute(opcode)
+        cycles = self.instruction_set.execute(self.opcode)
         return cycles
 
     def interrupt(self, vector: int) -> int:

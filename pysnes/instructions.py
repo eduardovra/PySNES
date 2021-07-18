@@ -428,7 +428,7 @@ class Instruction:
             self.instruction_cb = self.mnemonic_not_implemented
 
     def mnemonic_not_implemented(self, cpu, addr):
-        cpu.instruction_set.print_trace(40)
+        cpu.instruction_set.print_trace()
         raise RuntimeError(f"Mnemonic not implemented: {self.mnemonic}")
 
     def BRK(self, cpu, addr):
@@ -491,6 +491,23 @@ class Instruction:
         """Set interrupt flag"""
         cpu.P.I = 1
         return 2
+
+    def BIT(self, cpu, addr) -> int:
+        """Test Memory Bits against Accumulator"""
+        if cpu.emulation == 0 and cpu.P.M == 0:
+            data = cpu.bus[addr] | cpu.addr[addr + 1] << 8
+            cpu.P.Z = 1 if (data & cpu.A) == 0 else 0
+            if cpu.opcode != 0x89:  # Immediate
+                cpu.P.V = 1 if data & 0x4000 else 0
+                cpu.P.N = 1 if data & 0x8000 else 0
+        else:
+            data = cpu.bus[addr]
+            cpu.P.Z = 1 if (data & (cpu.A & 0xFF)) == 0 else 0
+            if cpu.opcode != 0x89:  # Immediate
+                cpu.P.V = 1 if data & 0x40 else 0
+                cpu.P.N = 1 if data & 0x80 else 0
+
+        return 0
 
     def AND(self, cpu, addr) -> int:
         """And Accumulator with Memory"""
@@ -855,6 +872,32 @@ class Instruction:
             cpu.P.Z = 1 if cpu.X & 0xFFFF == 0 else 0
         else:
             cpu.X = (cpu.X & 0xFF00) | (cpu.Y & 0xFF)
+            cpu.P.N = 1 if cpu.X & 0x80 else 0
+            cpu.P.Z = 1 if cpu.X & 0xFF == 0 else 0
+
+        return 2
+
+    def TXS(self, cpu, addr) -> int:
+        """Transfer X index register to the Stack pointer"""
+        if cpu.emulation == 0 and cpu.P.X == 0:
+            cpu.S = cpu.X
+            cpu.P.N = 1 if cpu.S & 0x8000 else 0
+            cpu.P.Z = 1 if cpu.S & 0xFFFF == 0 else 0
+        else:
+            cpu.S = cpu.X & 0xFF
+            cpu.P.N = 1 if cpu.S & 0x80 else 0
+            cpu.P.Z = 1 if cpu.S & 0xFF == 0 else 0
+
+        return 2
+
+    def TSX(self, cpu, addr) -> int:
+        """Transfer Stack pointer to the X index register"""
+        if cpu.emulation == 0 and cpu.P.X == 0:
+            cpu.X = cpu.S
+            cpu.P.N = 1 if cpu.X & 0x8000 else 0
+            cpu.P.Z = 1 if cpu.X & 0xFFFF == 0 else 0
+        else:
+            cpu.X = (cpu.X & 0xFF00) | (cpu.S & 0xFF)
             cpu.P.N = 1 if cpu.X & 0x80 else 0
             cpu.P.Z = 1 if cpu.X & 0xFF == 0 else 0
 
@@ -1453,7 +1496,7 @@ class InstructionSet:
     def __init__(self, cpu) -> None:
         self.cpu = cpu
         self.load_instructions()
-        self.print_instructions = False
+        self.print_instructions = True
         self.trace = deque(maxlen=100)
 
     def load_instructions(self) -> None:
@@ -1466,7 +1509,10 @@ class InstructionSet:
 
     def print_trace(self, entries: int = 20) -> None:
         for i in range(entries):
-            print(self.trace.pop())
+            try:
+                print(self.trace.pop())
+            except IndexError:
+                pass  # Empty
 
     def execute(self, opcode: int) -> int:
         instruction = self.instructions[opcode]
@@ -1479,14 +1525,13 @@ class InstructionSet:
             self.cpu,
         )
         self.trace.append(debug_str)
+
         if self.print_instructions:
             print(debug_str)
+
         if self.cpu.current_instruction_PC == 0x816A:
             # self.print_instructions = True
             print("BREAKPOINT")
-        try:
-            cycles = instruction(self.cpu)
-        except:
-            print(debug_str)
-            raise
+
+        cycles = instruction(self.cpu)
         return cycles

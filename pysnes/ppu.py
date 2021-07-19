@@ -1,5 +1,24 @@
-from ctypes import c_uint16, c_uint8
+from ctypes import c_uint8, byref
 from typing import Optional
+
+from sdl2 import (
+    SDL_CreateWindow,
+    SDL_CreateRenderer,
+    SDL_INIT_VIDEO,
+    SDL_WINDOW_SHOWN,
+    SDL_RENDERER_ACCELERATED,
+    SDL_Event,
+    SDL_PollEvent,
+    SDL_QUIT,
+    SDL_Init,
+    SDL_Quit,
+    SDL_DestroyRenderer,
+    SDL_RenderClear,
+    SDL_SetRenderDrawColor,
+    SDL_DestroyWindow,
+    SDL_RenderDrawPoint,
+    SDL_RenderPresent,
+)
 
 
 class Ppu:
@@ -18,9 +37,9 @@ class Ppu:
 
         # CGRAM
         self.cgram = bytearray(512)  # Palette Data
-        self.cgadd = c_uint8(0x00)
-        self.cgdata: Optional[c_uint8] = None
-        self.cgdataread: Optional[c_uint8] = None
+        self._cgadd = c_uint8(0x00)
+        self._cgdata: Optional[c_uint8] = None
+        # self._cgdataread: Optional[c_uint8] = None
 
         # OAM
         self.oam = bytearray(512 + 32)  # Object Attribute Memory
@@ -34,11 +53,11 @@ class Ppu:
 
     @vmain.setter
     def vmain(self, data: int) -> None:
+        amounts = (1, 32, 128, 128)
         self._vmain = c_uint8(data)
         self.vmain_addr_increment_mode = data >> 7
-        self.vmain_addr_increment_amount = data & 0x03
+        self.vmain_addr_increment_amount = amounts[data & 0x03]
         self.vmain_addr_remapping = (data >> 2) & 0x03
-        assert self.vmain_addr_increment_amount == 0
         assert self.vmain_addr_remapping == 0
 
     @property
@@ -68,15 +87,46 @@ class Ppu:
         self.increment_vmadd()
 
     def increment_vmadd(self) -> None:
-        amounts = (1, 32, 128, 128)
-        increment_amount = amounts[self.vmain_addr_increment_amount]
-        addr = (self.vmaddl.value | self.vmaddh.value << 8) + increment_amount
+        addr = (
+            self.vmaddl.value | self.vmaddh.value << 8
+        ) + self.vmain_addr_increment_amount
         self.vmaddl.value = (addr >> 0) & 0xFF
         self.vmaddh.value = (addr >> 8) & 0xFF
 
     @property
+    def cgadd(self) -> int:
+        return self._cgadd.value
+
+    @cgadd.setter
+    def cgadd(self, data: int) -> None:
+        self._cgadd = c_uint8(data)
+        self._cgdata = None
+
+    @property
+    def cgdata(self) -> int:
+        base_addr = self._cgadd.value * 2
+        if self._cgdata is None:
+            self._cgdata = c_uint8(self.cgram[base_addr])
+            return self._cgdata.value
+        data = self.cgram[base_addr + 1]
+        self._cgadd.value += 1
+        self._cgdata = None
+        return data
+
+    @cgdata.setter
+    def cgdata(self, data: int) -> None:
+        if self._cgdata is None:
+            self._cgdata = c_uint8(data)
+            return
+        base_addr = self._cgadd.value * 2
+        self.cgram[base_addr + 0] = self._cgdata.value
+        self.cgram[base_addr + 1] = data & 0x7F
+        self._cgadd.value += 1
+        self._cgdata = None
+
+    @property
     def oamdata(self) -> int:
-        return 0  # TODO
+        raise NotImplementedError
 
     @oamdata.setter
     def oamdata(self, data: int) -> None:
@@ -99,3 +149,31 @@ class Ppu:
 
         self.oamaddl.value = (addr >> 0) & 0xFF
         self.oamaddh.value = (addr >> 8) & 0xFF
+
+    def render(self) -> None:
+        # Initialization
+        SDL_Init(SDL_INIT_VIDEO)
+        window = SDL_CreateWindow(b"Eduardo", 0, 0, 320, 240, SDL_WINDOW_SHOWN)
+        renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED)
+        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 0)
+        SDL_RenderClear(renderer)
+
+        # Draw picture
+        SDL_SetRenderDrawColor(renderer, 255, 0, 0, 255)
+        for i in range(240):
+            SDL_RenderDrawPoint(renderer, i, i)
+        SDL_RenderPresent(renderer)
+
+        # Loop
+        running = True
+        event = SDL_Event()
+        while running:
+            while SDL_PollEvent(byref(event)) != 0:
+                if event.type == SDL_QUIT:
+                    running = False
+                    break
+
+        # Housekeeping
+        SDL_DestroyRenderer(renderer)
+        SDL_DestroyWindow(window)
+        SDL_Quit()

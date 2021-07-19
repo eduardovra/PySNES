@@ -33,14 +33,7 @@ class Bus:
             # TODO dont know how to map the other banks yet
             if 0x2100 <= addr <= 0x21FF:
                 if addr == 0x213B:  # CGDATAREAD
-                    base_addr = self.ppu.cgadd.value * 2
-                    if self.ppu.cgdataread is None:
-                        self.ppu.cgdataread = c_uint8(self.ppu.cgram[base_addr])
-                        return self.ppu.cgdataread.value
-                    self.ppu.cgdataread = None
-                    data = self.ppu.cgram[base_addr + 1]
-                    self.ppu.cgadd.value += 1
-                    return data
+                    return self.ppu.cgdata
 
                 if 0x2140 <= addr <= 0x217F:
                     # 0x2140 - 0x204C == 0xF4 [addr of PORT0]
@@ -142,19 +135,10 @@ class Bus:
 
                 # CGRAM registers
                 if addr == 0x2121:  # CGADD
-                    self.ppu.cgadd.value = data
-                    self.ppu.cgdata = None
-                    self.ppu.cgdataread = None
+                    self.ppu.cgadd = data
                     return
                 if addr == 0x2122:  # CGDATA
-                    if self.ppu.cgdata is None:
-                        self.ppu.cgdata = c_uint8(data)
-                        return
-                    base_addr = self.ppu.cgadd.value * 2
-                    self.ppu.cgram[base_addr + 0] = self.ppu.cgdata.value
-                    self.ppu.cgram[base_addr + 1] = data
-                    self.ppu.cgadd.value += 1
-                    self.ppu.cgdata = None
+                    self.ppu.cgdata = data
                     return
 
                 if 0x2140 <= addr <= 0x2143:  # TODO ugly

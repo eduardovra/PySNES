@@ -1560,7 +1560,7 @@ class InstructionSet:
     def __init__(self, cpu) -> None:
         self.cpu = cpu
         self.load_instructions()
-        self.print_instructions = True
+        self.print_instructions = False
         self.trace = deque(maxlen=100)
 
     def load_instructions(self) -> None:
@@ -1593,7 +1593,7 @@ class InstructionSet:
         if self.print_instructions:
             print(debug_str)
 
-        if self.cpu.current_instruction_PC == 0x816A:
+        if self.cpu.current_instruction_PC == 0xE4A9:
             # self.print_instructions = True
             print("BREAKPOINT")
 

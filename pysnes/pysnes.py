@@ -2,6 +2,7 @@ from .rom import Rom
 from .bus import Bus
 from .cpu import Cpu
 from .apu import Apu
+from .ppu import Ppu
 
 
 class PySNES:
@@ -9,7 +10,8 @@ class PySNES:
         rom = Rom(rom_file_path)
         self.apu = Apu()
         self.cpu = Cpu(rom.hardware_vectors)
-        bus = Bus(rom, self.cpu, self.apu)
+        self.ppu = Ppu()
+        bus = Bus(rom, self.cpu, self.apu, self.ppu)
         self.cpu.attach(bus)
         self.ticks = 0
 

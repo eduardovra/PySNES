@@ -1,14 +1,18 @@
+from ctypes import c_uint8
+
 from .rom import Rom
 from .cpu import Cpu
 from .apu import Apu
+from .ppu import Ppu
 
 
 class Bus:
     # TODO consider banks
-    def __init__(self, rom: Rom, cpu: Cpu, apu: Apu) -> None:
+    def __init__(self, rom: Rom, cpu: Cpu, apu: Apu, ppu: Ppu) -> None:
         self.rom = rom  # LoROM section (program memory)
         self.cpu = cpu
         self.apu = apu  # Sound system [0x2140-0x217F]
+        self.ppu = ppu
         self.low_ram = bytearray(0x2000)
         self.high_ram = bytearray(0xE000)
         self.pp1_apu_hw_registers = bytearray(0xFF)
@@ -28,6 +32,16 @@ class Bus:
         if bank == 0x00:
             # TODO dont know how to map the other banks yet
             if 0x2100 <= addr <= 0x21FF:
+                if addr == 0x213B:  # CGDATAREAD
+                    base_addr = self.ppu.cgadd.value * 2
+                    if self.ppu.cgdataread is None:
+                        self.ppu.cgdataread = c_uint8(self.ppu.cgram[base_addr])
+                        return self.ppu.cgdataread.value
+                    self.ppu.cgdataread = None
+                    data = self.ppu.cgram[base_addr + 1]
+                    self.ppu.cgadd.value += 1
+                    return data
+
                 if 0x2140 <= addr <= 0x217F:
                     # 0x2140 - 0x204C == 0xF4 [addr of PORT0]
                     if 0x2140 <= addr <= 0x2143:  # TODO ugly
@@ -56,6 +70,8 @@ class Bus:
                         )  # This bit is unmmaped but the test program keeps reading it
                         | self.cpu.status.v_bank_on << 7
                     )
+                if 0x4300 <= addr <= 0x43FF:
+                    print("READ DMA REGISTER: {}" % hex(addr))
                 return self.dma_ppu2_hw_registers[addr - 0x4200]
 
         if (0x00 <= bank <= 0x6F) or (0x80 <= bank <= 0xFF):
@@ -89,6 +105,58 @@ class Bus:
 
         if bank == 0x00:
             if 0x2100 <= addr <= 0x21FF:
+                if 0x2102 <= addr <= 0x2104:
+                    print("WRITE OAM REGISTER: %s = %s" % (hex(addr), hex(data)))
+                if 0x2115 <= addr <= 0x2119:
+                    print("WRITE VRAM REGISTER: %s = %s" % (hex(addr), hex(data)))
+                if 0x2121 <= addr <= 0x2122:
+                    print("WRITE CGRAM REGISTER: %s = %s" % (hex(addr), hex(data)))
+
+                # OAM registers
+                if addr == 0x2102:  # OAMADDL
+                    self.ppu.oamaddl.value = data
+                    return
+                if addr == 0x2103:  # OAMADDH
+                    self.ppu.oamaddh.value = data
+                    return
+                if addr == 0x2104:  # OAMDATA
+                    self.ppu.oamdata = data
+                    return
+
+                # VRAM registers
+                if addr == 0x2115:  # VMAIN
+                    self.ppu.vmain = data
+                    return
+                if addr == 0x2116:  # VMADDL
+                    self.ppu.vmaddl.value = data
+                    return
+                if addr == 0x2117:  # VMADDH
+                    self.ppu.vmaddh.value = data
+                    return
+                if addr == 0x2118:  # VMDATAL
+                    self.ppu.vmdatal = data
+                    return
+                if addr == 0x2119:  # VMDATAH
+                    self.ppu.vmdatah = data
+                    return
+
+                # CGRAM registers
+                if addr == 0x2121:  # CGADD
+                    self.ppu.cgadd.value = data
+                    self.ppu.cgdata = None
+                    self.ppu.cgdataread = None
+                    return
+                if addr == 0x2122:  # CGDATA
+                    if self.ppu.cgdata is None:
+                        self.ppu.cgdata = c_uint8(data)
+                        return
+                    base_addr = self.ppu.cgadd.value * 2
+                    self.ppu.cgram[base_addr + 0] = self.ppu.cgdata.value
+                    self.ppu.cgram[base_addr + 1] = data
+                    self.ppu.cgadd.value += 1
+                    self.ppu.cgdata = None
+                    return
+
                 if 0x2140 <= addr <= 0x2143:  # TODO ugly
                     # print(f"  CPU write [{hex(addr)}] <== {hex(data)}")
                     self.apu.ports_r[addr - 0x2140] = data
@@ -109,6 +177,8 @@ class Bus:
                             self.cpu.status.nmi_transition = True
                     self.cpu.status.nmi_enable = bool(data & 0x80)
                     return
+                if 0x4300 <= addr <= 0x43FF:
+                    print("WRITE DMA REGISTER: {} = {}" % (hex(addr), hex(data)))
                 self.dma_ppu2_hw_registers[addr - 0x4200] = data
                 return
 

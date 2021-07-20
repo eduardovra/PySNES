@@ -1,5 +1,6 @@
 from ctypes import c_uint8, byref
 from typing import Optional
+from dataclasses import dataclass
 
 from sdl2 import (
     SDL_CreateWindow,
@@ -42,9 +43,7 @@ class Ppu:
         # self._cgdataread: Optional[c_uint8] = None
 
         # OAM
-        self.oam = bytearray(512 + 32)  # Object Attribute Memory
-        # self.oamaddl = c_uint8(0x00)
-        # self.oamaddh = c_uint8(0x00)
+        self.oam = OAM()
         self._oamadd = 0
         self._oamodd = 0
         self._oamdata = 0
@@ -134,7 +133,6 @@ class Ppu:
     def oamaddl(self, data: int) -> None:
         self._oamadd = (self._oamadd & 0x100) | (data & 0xFF)
         self._oamodd = 0
-        # self._oamdata = None
 
     @property
     def oamaddh(self) -> int:
@@ -145,7 +143,6 @@ class Ppu:
         self._oam_priority_activation = bool(data & 0x80)
         self._oamadd = (self._oamadd & 0x0FF) | (data & 1) << 8
         self._oamodd = 0
-        # self._oamdata = None
 
     @property
     def oamdata(self) -> int:
@@ -211,3 +208,66 @@ class Ppu:
         SDL_DestroyRenderer(renderer)
         SDL_DestroyWindow(window)
         SDL_Quit()
+
+
+@dataclass
+class Object:
+    x = 0
+    y = 0
+    character = 0
+    h_flip = False
+    v_flip = False
+    name_select = False
+    priority = 0
+    palette = 0
+    size = False
+
+
+class OAM:
+    def __init__(self) -> None:
+        self.oam = bytearray(512 + 32)  # Object Attribute Memory
+        self.objects = [Object()] * 128
+
+    def __getitem__(self, addr: int) -> int:
+        return self.oam[addr]
+
+    def __setitem__(self, addr: int, data: int) -> None:
+        if self.oam[addr] != data:
+            self.oam[addr] = data
+            self.update_object(addr)
+
+    def update_object(self, addr: int) -> None:
+        if addr & 0x200:
+            self.update_high_table(addr)
+        else:
+            self.update_low_table(addr)
+
+    def update_high_table(self, addr: int) -> None:
+        obj_base = (addr & 0x1F) * 4
+        data = self.oam[addr]
+        for obj_index in range(4):
+            obj_num = obj_base + obj_index
+            obj = self.objects[obj_num]
+            sx = data >> obj_index
+            obj.x = (obj.x & 0xFF) | (sx & 0x01) << 8
+            obj.size = bool(sx & 0x02)
+
+    def update_low_table(self, addr: int) -> None:
+        obj_num = addr // 4
+        obj = self.objects[obj_num]
+
+        data = self.oam[addr + 0]
+        obj.x = obj.x & 0x100 | data & 0xFF
+
+        data = self.oam[addr + 1]
+        obj.y = data & 0xFF
+
+        data = self.oam[addr + 2]
+        obj.character = data & 0xFF
+
+        data = self.oam[addr + 3]
+        obj.name_select = bool(data & 0x01)
+        obj.palette = (data >> 1) & 0x07
+        obj.priority = (data >> 4) & 0x03
+        obj.h_flip = bool(data & 0x40)
+        obj.v_flip = bool(data & 0x80)

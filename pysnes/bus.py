@@ -32,6 +32,9 @@ class Bus:
         if bank == 0x00:
             # TODO dont know how to map the other banks yet
             if 0x2100 <= addr <= 0x21FF:
+                if addr == 0x2138:  # # OAMDATAREAD
+                    return self.ppu.oamdata
+
                 if addr == 0x213B:  # CGDATAREAD
                     return self.ppu.cgdata
 
@@ -107,10 +110,10 @@ class Bus:
 
                 # OAM registers
                 if addr == 0x2102:  # OAMADDL
-                    self.ppu.oamaddl.value = data
+                    self.ppu.oamaddl = data
                     return
                 if addr == 0x2103:  # OAMADDH
-                    self.ppu.oamaddh.value = data
+                    self.ppu.oamaddh = data
                     return
                 if addr == 0x2104:  # OAMDATA
                     self.ppu.oamdata = data

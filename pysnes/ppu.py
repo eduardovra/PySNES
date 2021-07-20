@@ -43,9 +43,11 @@ class Ppu:
 
         # OAM
         self.oam = bytearray(512 + 32)  # Object Attribute Memory
-        self.oamaddl = c_uint8(0x00)
-        self.oamaddh = c_uint8(0x00)
-        self._oamdata: Optional[c_uint8] = None
+        # self.oamaddl = c_uint8(0x00)
+        # self.oamaddh = c_uint8(0x00)
+        self._oamadd = 0
+        self._oamodd = 0
+        self._oamdata = 0
 
     @property
     def vmain(self) -> int:
@@ -125,30 +127,62 @@ class Ppu:
         self._cgdata = None
 
     @property
-    def oamdata(self) -> int:
+    def oamaddl(self) -> int:
         raise NotImplementedError
+
+    @oamaddl.setter
+    def oamaddl(self, data: int) -> None:
+        self._oamadd = (self._oamadd & 0x100) | (data & 0xFF)
+        self._oamodd = 0
+        # self._oamdata = None
+
+    @property
+    def oamaddh(self) -> int:
+        raise NotImplementedError
+
+    @oamaddh.setter
+    def oamaddh(self, data: int) -> None:
+        self._oam_priority_activation = bool(data & 0x80)
+        self._oamadd = (self._oamadd & 0x0FF) | (data & 1) << 8
+        self._oamodd = 0
+        # self._oamdata = None
+
+    @property
+    def oamdata(self) -> int:
+        index = self.oam_index()
+        data = self.oam[index]
+        self.oam_next()
+        return data
 
     @oamdata.setter
     def oamdata(self, data: int) -> None:
-        # The highiest bit of oamaddh contains a priority that
-        # I still don't know what to do with
-        addr = self.oamaddl.value | (self.oamaddh.value << 8) & 0x7F
-        if addr < 512:  # Low table
-            # Write only after high byte is received
-            if self._oamdata is None:
-                self._oamdata = c_uint8(data)
-                return
-            self.oam[addr + 0] = self._oamdata.value
-            self.oam[addr + 1] = data
-            self._oamdata = None
-            addr += 2
-        else:  # High table
-            # Write immediately
-            self.oam[addr] = data
-            addr += 1
+        # Buffer always set by even write
+        if self._oamodd == 0:
+            self._oamdata = data
 
-        self.oamaddl.value = (addr >> 0) & 0xFF
-        self.oamaddh.value = (addr >> 8) & 0xFF
+        # High bank goes directly through
+        if self._oamadd & 0x100:
+            index = self.oam_index()
+            self.oam[index] = data & 0xFF
+
+        # Low bank does word only on odd writes
+        elif self._oamodd == 1:
+            index = self.oam_index()
+            self.oam[index - 1] = self._oamdata
+            self.oam[index - 0] = data & 0xFF
+
+        self.oam_next()
+
+    def oam_index(self) -> int:
+        if self._oamadd & 0x100:
+            return 0x200 | self._oamadd & 0x1F
+        else:
+            return (self._oamadd * 2) + self._oamodd
+
+    def oam_next(self) -> None:
+        self._oamodd ^= 1
+        if self._oamodd == 0:
+            self._oamadd = (self._oamadd + 1) & 0x1FF
 
     def render(self) -> None:
         # Initialization

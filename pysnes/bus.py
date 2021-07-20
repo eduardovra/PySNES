@@ -119,6 +119,23 @@ class Bus:
                     self.ppu.oamdata = data
                     return
 
+                if addr == 0x2105:  # BGMODE
+                    assert data == 0
+                    self.ppu.bgmode = data
+                    return
+                if addr == 0x2107:  # BG1SC
+                    self.ppu.bgnsc_set(1, data)
+                    return
+                if addr == 0x2108:  # BG2SC
+                    self.ppu.bgnsc_set(2, data)
+                    return
+                if addr == 0x2109:  # BG3SC
+                    self.ppu.bgnsc_set(3, data)
+                    return
+                if addr == 0x210A:  # BG4SC
+                    self.ppu.bgnsc_set(4, data)
+                    return
+
                 # VRAM registers
                 if addr == 0x2115:  # VMAIN
                     self.ppu.vmain = data
@@ -142,6 +159,10 @@ class Bus:
                     return
                 if addr == 0x2122:  # CGDATA
                     self.ppu.cgdata = data
+                    return
+
+                if addr == 0x2133:  # SETINI
+                    assert data == 0
                     return
 
                 if 0x2140 <= addr <= 0x2143:  # TODO ugly

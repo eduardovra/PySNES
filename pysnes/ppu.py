@@ -33,20 +33,25 @@ class Ppu:
         self.vmain = c_uint8(0x00).value
         self.vmaddl = c_uint8(0x00)
         self.vmaddh = c_uint8(0x00)
-        # self.vmdatal = c_uint8(0x00).value
-        # self.vmdatah = c_uint8(0x00).value
 
         # CGRAM
         self.cgram = bytearray(512)  # Palette Data
         self._cgadd = c_uint8(0x00)
         self._cgdata: Optional[c_uint8] = None
-        # self._cgdataread: Optional[c_uint8] = None
 
         # OAM
         self.oam = OAM()
         self._oamadd = 0
         self._oamodd = 0
         self._oamdata = 0
+
+        # Background
+        self.bgmode = 0x00
+        self.bgnsc = [Background()] * 4
+        # self.bg1sc = 0x00
+        # self.bg2sc = 0x00
+        # self.bg3sc = 0x00
+        # self.bg4sc = 0x00
 
     @property
     def vmain(self) -> int:
@@ -181,6 +186,10 @@ class Ppu:
         if self._oamodd == 0:
             self._oamadd = (self._oamadd + 1) & 0x1FF
 
+    def bgnsc_set(self, n: int, data: int) -> None:
+        self.bgnsc[n - 1].screen_size = data & 0x03
+        self.bgnsc[n - 1].screen_addr = data >> 2 << 10
+
     def render(self) -> None:
         # Initialization
         SDL_Init(SDL_INIT_VIDEO)
@@ -208,6 +217,12 @@ class Ppu:
         SDL_DestroyRenderer(renderer)
         SDL_DestroyWindow(window)
         SDL_Quit()
+
+
+@dataclass
+class Background:
+    screen_size = 0
+    screen_addr = 0
 
 
 @dataclass

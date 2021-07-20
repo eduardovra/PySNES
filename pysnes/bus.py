@@ -101,12 +101,12 @@ class Bus:
 
         if bank == 0x00:
             if 0x2100 <= addr <= 0x21FF:
-                if 0x2102 <= addr <= 0x2104:
-                    print("WRITE OAM REGISTER: %s = %s" % (hex(addr), hex(data)))
-                if 0x2115 <= addr <= 0x2119:
-                    print("WRITE VRAM REGISTER: %s = %s" % (hex(addr), hex(data)))
-                if 0x2121 <= addr <= 0x2122:
-                    print("WRITE CGRAM REGISTER: %s = %s" % (hex(addr), hex(data)))
+                # if 0x2102 <= addr <= 0x2104:
+                #    print("WRITE OAM REGISTER: %s = %s" % (hex(addr), hex(data)))
+                # if 0x2115 <= addr <= 0x2119:
+                #    print("WRITE VRAM REGISTER: %s = %s" % (hex(addr), hex(data)))
+                # if 0x2121 <= addr <= 0x2122:
+                #    print("WRITE CGRAM REGISTER: %s = %s" % (hex(addr), hex(data)))
 
                 # OAM registers
                 if addr == 0x2102:  # OAMADDL
@@ -121,6 +121,8 @@ class Bus:
 
                 if addr == 0x2105:  # BGMODE
                     assert data == 0
+                    # Mode 0 == 2bpp in all BGs
+                    # DCBA == 0 using 8x8 tiles in all BGs
                     self.ppu.bgmode = data
                     return
                 if addr == 0x2107:  # BG1SC
@@ -134,6 +136,12 @@ class Bus:
                     return
                 if addr == 0x210A:  # BG4SC
                     self.ppu.bgnsc_set(4, data)
+                    return
+                if addr == 0x210B:  # BG12NBA
+                    self.ppu.bg12nba_set(data)
+                    return
+                if addr == 0x210C:  # BG34NBA
+                    self.ppu.bg34nba_set(data)
                     return
 
                 # VRAM registers

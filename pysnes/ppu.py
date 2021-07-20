@@ -188,20 +188,54 @@ class Ppu:
 
     def bgnsc_set(self, n: int, data: int) -> None:
         self.bgnsc[n - 1].screen_size = data & 0x03
-        self.bgnsc[n - 1].screen_addr = data >> 2 << 10
+        self.bgnsc[n - 1].screen_addr = data >> 2 << 10  # Copied from bsnes
+
+    def bg12nba_set(self, data: int) -> None:
+        self.bgnsc[0].tiledata_addr = (data >> 0 & 15) << 12
+        self.bgnsc[1].tiledata_addr = (data >> 4 & 15) << 12
+
+    def bg34nba_set(self, data: int) -> None:
+        self.bgnsc[2].tiledata_addr = (data >> 0 & 15) << 12
+        self.bgnsc[3].tiledata_addr = (data >> 4 & 15) << 12
 
     def render(self) -> None:
         # Initialization
         SDL_Init(SDL_INIT_VIDEO)
-        window = SDL_CreateWindow(b"Eduardo", 0, 0, 320, 240, SDL_WINDOW_SHOWN)
+        window = SDL_CreateWindow(b"Eduardo", 0, 0, 500, 500, SDL_WINDOW_SHOWN)
         renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED)
         SDL_SetRenderDrawColor(renderer, 0, 0, 0, 0)
         SDL_RenderClear(renderer)
 
         # Draw picture
         SDL_SetRenderDrawColor(renderer, 255, 0, 0, 255)
-        for i in range(240):
-            SDL_RenderDrawPoint(renderer, i, i)
+        # for i in range(240):
+        #    SDL_RenderDrawPoint(renderer, i, i)
+        # Draw BG2
+        # 0x1000 comes from BG2SC
+        for line in range(0x1000, 0x1800, 0x10):
+            for col in range(0, 0x10, 2):
+                # print(f"MAP Line: {hex(line)} Column: {hex(col)}")
+                # Parse Tilemap entry
+                entry_addr = line + col
+                low = self.vram[entry_addr + 0]
+                high = self.vram[entry_addr + 1]
+                palette = (high >> 2) & 7
+                priotity = (high >> 5) & 1
+                h_flip = (high >> 6) & 1
+                v_flip = (high >> 7) & 1
+                addr = high & 3 | low
+                print(
+                    f"{hex(entry_addr)} ADDR {hex(addr)} PALETTE {palette} "
+                    f"PRIO {priotity} H_FLIP {h_flip} V_FLIP {v_flip}"
+                )
+
+                # Fetch Tile (character)
+                bg = self.bgnsc[1]
+                tile_addr = bg.tiledata_addr + (addr * 16)
+                # 16 bytes --> 8x8 pixels * 2bpp
+                tile = self.vram[tile_addr : tile_addr + 16]
+                print(" ".join(hex(t) for t in tile))
+
         SDL_RenderPresent(renderer)
 
         # Loop
@@ -223,6 +257,7 @@ class Ppu:
 class Background:
     screen_size = 0
     screen_addr = 0
+    tiledata_addr = 0
 
 
 @dataclass

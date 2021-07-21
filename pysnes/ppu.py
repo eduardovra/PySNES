@@ -223,9 +223,10 @@ class Ppu:
         # Tile Size 8x8
         # Tile Addr 0x2000
         x_offset, y_offset = 0, 0
-        for line in range(0x0000, 0x0800, 0x10):
-            for col in range(0x00, 0x10, 0x02):
-                # print(f"MAP Line: {hex(line)} Column: {hex(col)}")
+        # Each iteration will print a line of 32 tiles x 8x8 pixels
+        for line in range(0x0000, 0x0800, 0x40):
+            # Each iteration will print 1 tile of 8x8 pixels
+            for col in range(0x00, 0x40, 0x02):
                 # Parse Tilemap entry - 2 bytes
                 entry_addr = line + col
                 low = self.vram[entry_addr + 0]
@@ -235,10 +236,10 @@ class Ppu:
                 h_flip = (high >> 6) & 1
                 v_flip = (high >> 7) & 1
                 addr = high & 3 | low
-                print(
-                    f"[{hex(entry_addr)}] ADDR {hex(addr)} PALETTE {palette} "
-                    f"PRIO {priotity} H_FLIP {h_flip} V_FLIP {v_flip}"
-                )
+                # print(
+                #    f"[{hex(entry_addr)}] ADDR {hex(addr)} PALETTE {palette} "
+                #    f"PRIO {priotity} H_FLIP {h_flip} V_FLIP {v_flip}"
+                # )
 
                 # Fetch Tile (character) - 16 bytes
                 # bg = self.bgnsc[0]
@@ -247,65 +248,13 @@ class Ppu:
                 tile_addr = tiledata_addr + (addr * 16)
                 # 16 bytes --> 8x8 pixels * 2bpp
                 tile_data = self.vram[tile_addr : tile_addr + 16]
-                print(" ".join(hex(t) for t in tile_data))
+                # print(" ".join(hex(t) for t in tile_data))
 
-                x, y = x_offset, y_offset
-                for i in range(0, 16, 2):
-                    # Each byte is 4 pixels
-                    # Each line is 8 pixels
-
-                    # Bitplane handling
-                    # The first byte is composed of the first
-                    # 8 least significant bits of the pixel
-                    # and the second byte if composed of the
-                    # 8 most significant bits
-                    color = 0
-                    a = tile_data[i + 0]
-                    b = tile_data[i + 1]
-                    # a = 0x7C
-                    # b = 0x00
-
-                    pixel0 = (b & 0x80) >> 7 << 1 | (a & 0x80) >> 7 << 0
-                    if pixel0:
-                        SDL_RenderDrawPoint(renderer, x, y)
-                    x += 1
-                    pixel1 = (b & 0x40) >> 6 << 1 | (a & 0x40) >> 6 << 0
-                    if pixel1:
-                        SDL_RenderDrawPoint(renderer, x, y)
-                    x += 1
-                    pixel2 = (b & 0x20) >> 5 << 1 | (a & 0x20) >> 5 << 0
-                    if pixel2:
-                        SDL_RenderDrawPoint(renderer, x, y)
-                    x += 1
-                    pixel3 = (b & 0x10) >> 4 << 1 | (a & 0x10) >> 4 << 0
-                    if pixel3:
-                        SDL_RenderDrawPoint(renderer, x, y)
-                    x += 1
-                    pixel4 = (b & 0x08) >> 3 << 1 | (a & 0x08) >> 3 << 0
-                    if pixel4:
-                        SDL_RenderDrawPoint(renderer, x, y)
-                    x += 1
-                    pixel5 = (b & 0x04) >> 2 << 1 | (a & 0x04) >> 2 << 0
-                    if pixel5:
-                        SDL_RenderDrawPoint(renderer, x, y)
-                    x += 1
-                    pixel6 = (b & 0x02) >> 1 << 1 | (a & 0x02) >> 1 << 0
-                    if pixel6:
-                        SDL_RenderDrawPoint(renderer, x, y)
-                    x += 1
-                    pixel7 = (b & 0x01) >> 0 << 1 | (a & 0x01) >> 0 << 0
-                    if pixel7:
-                        SDL_RenderDrawPoint(renderer, x, y)
-                    x += 1
-
-                    x = x_offset
-                    y += 1
-
-                # break  # col loop
+                self.render_tile(renderer, tile_data, x_offset, y_offset)
                 x_offset += 8
                 if x_offset == 8 * 32:  # 32 tiles with 8 pixels width
                     x_offset = 0
-            # break  # line loop
+
             y_offset += 8
 
         SDL_RenderPresent(renderer)
@@ -323,6 +272,57 @@ class Ppu:
         SDL_DestroyRenderer(renderer)
         SDL_DestroyWindow(window)
         SDL_Quit()
+
+    def render_tile(self, renderer, tile_data, x_offset, y_offset):
+        x, y = x_offset, y_offset
+        # Each iteration will print a line of a tile
+        for i in range(0, 16, 2):
+            # Each byte is 4 pixels
+            # Each line is 8 pixels
+
+            # Bitplane handling
+            # The first byte is composed of the first
+            # 8 least significant bits of the pixel
+            # and the second byte if composed of the
+            # 8 most significant bits
+            a = tile_data[i + 0]
+            b = tile_data[i + 1]
+
+            pixel0 = (b & 0x80) >> 7 << 1 | (a & 0x80) >> 7 << 0
+            if pixel0:
+                SDL_RenderDrawPoint(renderer, x, y)
+            x += 1
+            pixel1 = (b & 0x40) >> 6 << 1 | (a & 0x40) >> 6 << 0
+            if pixel1:
+                SDL_RenderDrawPoint(renderer, x, y)
+            x += 1
+            pixel2 = (b & 0x20) >> 5 << 1 | (a & 0x20) >> 5 << 0
+            if pixel2:
+                SDL_RenderDrawPoint(renderer, x, y)
+            x += 1
+            pixel3 = (b & 0x10) >> 4 << 1 | (a & 0x10) >> 4 << 0
+            if pixel3:
+                SDL_RenderDrawPoint(renderer, x, y)
+            x += 1
+            pixel4 = (b & 0x08) >> 3 << 1 | (a & 0x08) >> 3 << 0
+            if pixel4:
+                SDL_RenderDrawPoint(renderer, x, y)
+            x += 1
+            pixel5 = (b & 0x04) >> 2 << 1 | (a & 0x04) >> 2 << 0
+            if pixel5:
+                SDL_RenderDrawPoint(renderer, x, y)
+            x += 1
+            pixel6 = (b & 0x02) >> 1 << 1 | (a & 0x02) >> 1 << 0
+            if pixel6:
+                SDL_RenderDrawPoint(renderer, x, y)
+            x += 1
+            pixel7 = (b & 0x01) >> 0 << 1 | (a & 0x01) >> 0 << 0
+            if pixel7:
+                SDL_RenderDrawPoint(renderer, x, y)
+            x += 1
+
+            x = x_offset
+            y += 1
 
 
 @dataclass

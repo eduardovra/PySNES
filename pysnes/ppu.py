@@ -27,20 +27,32 @@ class Ppu:
     Picture Processor Unit: 15-Bit
     """
 
-    def __init__(self) -> None:
-        # VRAM
-        self.vram = bytearray(64 * 1024)  # Video RAM
-        self.vmain = c_uint8(0x00).value
+    def __init__(
+        self,
+        *,
+        vram_dump: Optional[bytes] = None,
+        cgram_dump: Optional[bytes] = None,
+        oam_dump: Optional[bytes] = None,
+    ) -> None:
+        # VRAM - Video RAM
+        if vram_dump is None:
+            self.vram = bytearray(64 * 1024)
+        else:
+            self.vram = bytearray(vram_dump)
+        self.vmain = 0x00
         self.vmaddl = c_uint8(0x00)
         self.vmaddh = c_uint8(0x00)
 
-        # CGRAM
-        self.cgram = bytearray(512)  # Palette Data
+        # CGRAM - Palette Data
+        if cgram_dump is None:
+            self.cgram = bytearray(512)
+        else:
+            self.cgram = bytearray(cgram_dump)
         self._cgadd = c_uint8(0x00)
         self._cgdata: Optional[c_uint8] = None
 
         # OAM
-        self.oam = OAM()
+        self.oam = OAM(oam_dump=oam_dump)
         self._oamadd = 0
         self._oamodd = 0
         self._oamdata = 0
@@ -48,10 +60,6 @@ class Ppu:
         # Background
         self.bgmode = 0x00
         self.bgnsc = [Background()] * 4
-        # self.bg1sc = 0x00
-        # self.bg2sc = 0x00
-        # self.bg3sc = 0x00
-        # self.bg4sc = 0x00
 
     @property
     def vmain(self) -> int:
@@ -201,21 +209,24 @@ class Ppu:
     def render(self) -> None:
         # Initialization
         SDL_Init(SDL_INIT_VIDEO)
-        window = SDL_CreateWindow(b"Eduardo", 0, 0, 500, 500, SDL_WINDOW_SHOWN)
+        window = SDL_CreateWindow(b"PPU", 0, 0, 1024, 1024, SDL_WINDOW_SHOWN)
         renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED)
         SDL_SetRenderDrawColor(renderer, 0, 0, 0, 0)
         SDL_RenderClear(renderer)
 
         # Draw picture
         SDL_SetRenderDrawColor(renderer, 255, 0, 0, 255)
-        # for i in range(240):
-        #    SDL_RenderDrawPoint(renderer, i, i)
-        # Draw BG2
-        # 0x1000 comes from BG2SC
-        for line in range(0x1000, 0x1800, 0x10):
-            for col in range(0, 0x10, 2):
+        # Draw BG1, Mode 0 - test_oam.smc
+        # Bit Depth 2bpp
+        # Map Size 32x32
+        # Map Addr 0x0000 (comes from BG1SC)
+        # Tile Size 8x8
+        # Tile Addr 0x2000
+        x_offset, y_offset = 0, 0
+        for line in range(0x0000, 0x0800, 0x10):
+            for col in range(0x00, 0x10, 0x02):
                 # print(f"MAP Line: {hex(line)} Column: {hex(col)}")
-                # Parse Tilemap entry
+                # Parse Tilemap entry - 2 bytes
                 entry_addr = line + col
                 low = self.vram[entry_addr + 0]
                 high = self.vram[entry_addr + 1]
@@ -225,16 +236,77 @@ class Ppu:
                 v_flip = (high >> 7) & 1
                 addr = high & 3 | low
                 print(
-                    f"{hex(entry_addr)} ADDR {hex(addr)} PALETTE {palette} "
+                    f"[{hex(entry_addr)}] ADDR {hex(addr)} PALETTE {palette} "
                     f"PRIO {priotity} H_FLIP {h_flip} V_FLIP {v_flip}"
                 )
 
-                # Fetch Tile (character)
-                bg = self.bgnsc[1]
-                tile_addr = bg.tiledata_addr + (addr * 16)
+                # Fetch Tile (character) - 16 bytes
+                # bg = self.bgnsc[0]
+                # tile_addr = bg.tiledata_addr + (addr * 16)
+                tiledata_addr = 0x2000
+                tile_addr = tiledata_addr + (addr * 16)
                 # 16 bytes --> 8x8 pixels * 2bpp
-                tile = self.vram[tile_addr : tile_addr + 16]
-                print(" ".join(hex(t) for t in tile))
+                tile_data = self.vram[tile_addr : tile_addr + 16]
+                print(" ".join(hex(t) for t in tile_data))
+
+                x, y = x_offset, y_offset
+                for i in range(0, 16, 2):
+                    # Each byte is 4 pixels
+                    # Each line is 8 pixels
+
+                    # Bitplane handling
+                    # The first byte is composed of the first
+                    # 8 least significant bits of the pixel
+                    # and the second byte if composed of the
+                    # 8 most significant bits
+                    color = 0
+                    a = tile_data[i + 0]
+                    b = tile_data[i + 1]
+                    # a = 0x7C
+                    # b = 0x00
+
+                    pixel0 = (b & 0x80) >> 7 << 1 | (a & 0x80) >> 7 << 0
+                    if pixel0:
+                        SDL_RenderDrawPoint(renderer, x, y)
+                    x += 1
+                    pixel1 = (b & 0x40) >> 6 << 1 | (a & 0x40) >> 6 << 0
+                    if pixel1:
+                        SDL_RenderDrawPoint(renderer, x, y)
+                    x += 1
+                    pixel2 = (b & 0x20) >> 5 << 1 | (a & 0x20) >> 5 << 0
+                    if pixel2:
+                        SDL_RenderDrawPoint(renderer, x, y)
+                    x += 1
+                    pixel3 = (b & 0x10) >> 4 << 1 | (a & 0x10) >> 4 << 0
+                    if pixel3:
+                        SDL_RenderDrawPoint(renderer, x, y)
+                    x += 1
+                    pixel4 = (b & 0x08) >> 3 << 1 | (a & 0x08) >> 3 << 0
+                    if pixel4:
+                        SDL_RenderDrawPoint(renderer, x, y)
+                    x += 1
+                    pixel5 = (b & 0x04) >> 2 << 1 | (a & 0x04) >> 2 << 0
+                    if pixel5:
+                        SDL_RenderDrawPoint(renderer, x, y)
+                    x += 1
+                    pixel6 = (b & 0x02) >> 1 << 1 | (a & 0x02) >> 1 << 0
+                    if pixel6:
+                        SDL_RenderDrawPoint(renderer, x, y)
+                    x += 1
+                    pixel7 = (b & 0x01) >> 0 << 1 | (a & 0x01) >> 0 << 0
+                    if pixel7:
+                        SDL_RenderDrawPoint(renderer, x, y)
+                    x += 1
+
+                    x = x_offset
+                    y += 1
+
+                # break  # col loop
+                x_offset += 8
+                if x_offset == 8 * 32:  # 32 tiles with 8 pixels width
+                    x_offset = 0
+            # break  # line loop
+            y_offset += 8
 
         SDL_RenderPresent(renderer)
 
@@ -274,8 +346,12 @@ class Object:
 
 
 class OAM:
-    def __init__(self) -> None:
-        self.oam = bytearray(512 + 32)  # Object Attribute Memory
+    def __init__(self, *, oam_dump: Optional[bytes] = None) -> None:
+        # Object Attribute Memory
+        if oam_dump is None:
+            self.oam = bytearray(512 + 32)
+        else:
+            self.oam = bytearray(oam_dump)
         self.objects = [Object()] * 128
 
     def __getitem__(self, addr: int) -> int:
@@ -321,3 +397,25 @@ class OAM:
         obj.priority = (data >> 4) & 0x03
         obj.h_flip = bool(data & 0x40)
         obj.v_flip = bool(data & 0x80)
+
+
+def main():
+    # Memory dumps
+    vram_file = "roms/test_oam-vram.bin"
+    cgram_file = "roms/test_oam-cgram.bin"
+    oam_file = "roms/test_oam-oam.bin"
+    with open(vram_file, "rb") as f:
+        vram_dump = f.read()
+    with open(cgram_file, "rb") as f:
+        cgram_dump = f.read()
+    with open(oam_file, "rb") as f:
+        oam_dump = f.read()
+    ppu = Ppu(vram_dump=vram_dump, cgram_dump=cgram_dump, oam_dump=oam_dump)
+    ppu.render()
+
+
+if __name__ == "__main__":
+    import cProfile
+
+    # cProfile.run("main()", sort="cumulative")
+    main()

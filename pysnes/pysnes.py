@@ -36,7 +36,8 @@ class PySNES:
 
 
 def main():
-    rom = "snes_oam_test/1-random.smc"
+    rom = "roms/test_oam.smc"
+    # rom = "snes_oam_test/1-random.smc"
     # rom = "snes_oam_test/2-low.smc"
     # rom = "snes_adc_sbc/test_adc.smc"
     # rom = "Super Mario World (U) [!].smc"

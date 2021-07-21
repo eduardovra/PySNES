@@ -194,7 +194,7 @@ class Bus:
                     self.cpu.status.nmi_enable = bool(data & 0x80)
                     return
                 if 0x4300 <= addr <= 0x43FF:
-                    print("WRITE DMA REGISTER: {} = {}" % (hex(addr), hex(data)))
+                    print("WRITE DMA REGISTER: %s = %s" % (hex(addr), hex(data)))
                 self.dma_ppu2_hw_registers[addr - 0x4200] = data
                 return
 

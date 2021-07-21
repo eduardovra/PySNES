@@ -209,13 +209,13 @@ class Ppu:
     def render(self) -> None:
         # Initialization
         SDL_Init(SDL_INIT_VIDEO)
-        window = SDL_CreateWindow(b"PPU", 0, 0, 1024, 1024, SDL_WINDOW_SHOWN)
+        window = SDL_CreateWindow(b"PySNES", 0, 0, 512, 512, SDL_WINDOW_SHOWN)
         renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED)
         SDL_SetRenderDrawColor(renderer, 0, 0, 0, 0)
         SDL_RenderClear(renderer)
 
         # Draw picture
-        SDL_SetRenderDrawColor(renderer, 255, 0, 0, 255)
+        # SDL_SetRenderDrawColor(renderer, 255, 0, 0, 255)
         # Draw BG1, Mode 0 - test_oam.smc
         # Bit Depth 2bpp
         # Map Size 32x32
@@ -250,7 +250,7 @@ class Ppu:
                 tile_data = self.vram[tile_addr : tile_addr + 16]
                 # print(" ".join(hex(t) for t in tile_data))
 
-                self.render_tile(renderer, tile_data, x_offset, y_offset)
+                self.render_tile(renderer, tile_data, palette, x_offset, y_offset)
                 x_offset += 8
                 if x_offset == 8 * 32:  # 32 tiles with 8 pixels width
                     x_offset = 0
@@ -273,7 +273,7 @@ class Ppu:
         SDL_DestroyWindow(window)
         SDL_Quit()
 
-    def render_tile(self, renderer, tile_data, x_offset, y_offset):
+    def render_tile(self, renderer, tile_data, palette, x_offset, y_offset):
         x, y = x_offset, y_offset
         # Each iteration will print a line of a tile
         for i in range(0, 16, 2):
@@ -289,40 +289,60 @@ class Ppu:
             b = tile_data[i + 1]
 
             pixel0 = (b & 0x80) >> 7 << 1 | (a & 0x80) >> 7 << 0
-            if pixel0:
-                SDL_RenderDrawPoint(renderer, x, y)
+            # if pixel0:
+            self.set_color(renderer, palette, pixel0)
+            SDL_RenderDrawPoint(renderer, x, y)
             x += 1
             pixel1 = (b & 0x40) >> 6 << 1 | (a & 0x40) >> 6 << 0
-            if pixel1:
-                SDL_RenderDrawPoint(renderer, x, y)
+            # if pixel1:
+            self.set_color(renderer, palette, pixel1)
+            SDL_RenderDrawPoint(renderer, x, y)
             x += 1
             pixel2 = (b & 0x20) >> 5 << 1 | (a & 0x20) >> 5 << 0
-            if pixel2:
-                SDL_RenderDrawPoint(renderer, x, y)
+            # if pixel2:
+            self.set_color(renderer, palette, pixel2)
+            SDL_RenderDrawPoint(renderer, x, y)
             x += 1
             pixel3 = (b & 0x10) >> 4 << 1 | (a & 0x10) >> 4 << 0
-            if pixel3:
-                SDL_RenderDrawPoint(renderer, x, y)
+            # if pixel3:
+            self.set_color(renderer, palette, pixel3)
+            SDL_RenderDrawPoint(renderer, x, y)
             x += 1
             pixel4 = (b & 0x08) >> 3 << 1 | (a & 0x08) >> 3 << 0
-            if pixel4:
-                SDL_RenderDrawPoint(renderer, x, y)
+            # if pixel4:
+            self.set_color(renderer, palette, pixel4)
+            SDL_RenderDrawPoint(renderer, x, y)
             x += 1
             pixel5 = (b & 0x04) >> 2 << 1 | (a & 0x04) >> 2 << 0
-            if pixel5:
-                SDL_RenderDrawPoint(renderer, x, y)
+            # if pixel5:
+            self.set_color(renderer, palette, pixel5)
+            SDL_RenderDrawPoint(renderer, x, y)
             x += 1
             pixel6 = (b & 0x02) >> 1 << 1 | (a & 0x02) >> 1 << 0
-            if pixel6:
-                SDL_RenderDrawPoint(renderer, x, y)
+            # if pixel6:
+            self.set_color(renderer, palette, pixel6)
+            SDL_RenderDrawPoint(renderer, x, y)
             x += 1
             pixel7 = (b & 0x01) >> 0 << 1 | (a & 0x01) >> 0 << 0
-            if pixel7:
-                SDL_RenderDrawPoint(renderer, x, y)
+            # if pixel7:
+            self.set_color(renderer, palette, pixel7)
+            SDL_RenderDrawPoint(renderer, x, y)
             x += 1
 
             x = x_offset
             y += 1
+
+    def set_color(self, renderer, palette, color):
+        # 4 colors (2bpp palette) x 2 bytes each color
+        palette_index = palette * 4 * 2
+        color_index = palette_index + color * 2
+        data = self.cgram[color_index] | self.cgram[color_index + 1] << 8
+        r = data >> 0 & 0x1F
+        g = data >> 5 & 0x1F
+        b = data >> 10 & 0x1F
+        alpha = 255 if color else 0
+        # Multiply the colors to make them more vibrant
+        SDL_SetRenderDrawColor(renderer, r << 3, g << 3, b << 3, alpha)
 
 
 @dataclass

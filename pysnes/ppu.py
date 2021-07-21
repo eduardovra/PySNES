@@ -19,6 +19,10 @@ from sdl2 import (
     SDL_DestroyWindow,
     SDL_RenderDrawPoint,
     SDL_RenderPresent,
+    SDL_SetRenderDrawBlendMode,
+    SDL_BLENDMODE_BLEND,
+    SDL_ALPHA_OPAQUE,
+    SDL_ALPHA_TRANSPARENT,
 )
 
 
@@ -211,7 +215,7 @@ class Ppu:
         SDL_Init(SDL_INIT_VIDEO)
         window = SDL_CreateWindow(b"PySNES", 0, 0, 512, 512, SDL_WINDOW_SHOWN)
         renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED)
-        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 0)
+        SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND)
         SDL_RenderClear(renderer)
 
         # Draw picture
@@ -340,9 +344,11 @@ class Ppu:
         r = data >> 0 & 0x1F
         g = data >> 5 & 0x1F
         b = data >> 10 & 0x1F
-        alpha = 255 if color else 0
+        alpha = SDL_ALPHA_OPAQUE if color else SDL_ALPHA_TRANSPARENT
+        # TODO Try to enable again when all background are being rendered
+        alpha = SDL_ALPHA_OPAQUE
         # Multiply the colors to make them more vibrant
-        SDL_SetRenderDrawColor(renderer, r << 3, g << 3, b << 3, alpha)
+        SDL_SetRenderDrawColor(renderer, r << 3, g << 3, b << 3, SDL_ALPHA_OPAQUE)
 
 
 @dataclass

@@ -219,7 +219,49 @@ class Ppu:
         SDL_RenderClear(renderer)
 
         # Draw picture
-        # SDL_SetRenderDrawColor(renderer, 255, 0, 0, 255)
+        self.draw_background(renderer, 0x0000)  # BG2
+        self.draw_background(renderer, 0x2000)  # BG1
+
+        SDL_RenderPresent(renderer)
+
+        # Loop
+        running = True
+        event = SDL_Event()
+        while running:
+            while SDL_PollEvent(byref(event)) != 0:
+                if event.type == SDL_QUIT:
+                    running = False
+                    break
+
+        # Housekeeping
+        SDL_DestroyRenderer(renderer)
+        SDL_DestroyWindow(window)
+        SDL_Quit()
+
+    def draw_background(self, renderer, tiledata_addr):
+        """
+        https://bin.smwcentral.net/u/4842/regs.txt
+        Mode 0
+        ------
+
+        In Mode 0, you have 4 BGs of 4 colors each. To calculate the starting palette
+        entry for a particular tile, you calculate:
+        ppp*4 + (BG#-1)*32
+
+        The background priority is (from 'front' to 'back'):
+        Sprites with priority 3
+        BG1 tiles with priority 1
+        BG2 tiles with priority 1
+        Sprites with priority 2
+        BG1 tiles with priority 0
+        BG2 tiles with priority 0
+        Sprites with priority 1
+        BG3 tiles with priority 1
+        BG4 tiles with priority 1
+        Sprites with priority 0
+        BG3 tiles with priority 0
+        BG4 tiles with priority 0
+        """
         # Draw BG1, Mode 0 - test_oam.smc
         # Bit Depth 2bpp
         # Map Size 32x32
@@ -240,101 +282,54 @@ class Ppu:
                 h_flip = (high >> 6) & 1
                 v_flip = (high >> 7) & 1
                 addr = high & 3 | low
-                # print(
-                #    f"[{hex(entry_addr)}] ADDR {hex(addr)} PALETTE {palette} "
-                #    f"PRIO {priotity} H_FLIP {h_flip} V_FLIP {v_flip}"
-                # )
 
                 # Fetch Tile (character) - 16 bytes
                 # bg = self.bgnsc[0]
                 # tile_addr = bg.tiledata_addr + (addr * 16)
-                tiledata_addr = 0x2000
+                # tiledata_addr = 0x2000
                 tile_addr = tiledata_addr + (addr * 16)
                 # 16 bytes --> 8x8 pixels * 2bpp
                 tile_data = self.vram[tile_addr : tile_addr + 16]
-                # print(" ".join(hex(t) for t in tile_data))
 
-                self.render_tile(renderer, tile_data, palette, x_offset, y_offset)
+                self.render_tile(
+                    renderer, tile_data, palette, h_flip, v_flip, x_offset, y_offset
+                )
                 x_offset += 8
                 if x_offset == 8 * 32:  # 32 tiles with 8 pixels width
                     x_offset = 0
 
             y_offset += 8
 
-        SDL_RenderPresent(renderer)
+    def render_tile(
+        self, renderer, tile_data, palette, h_flip, v_flip, x_offset, y_offset
+    ):
+        x_sequence = range(x_offset, x_offset + 8)
+        if h_flip:
+            x_sequence = range(x_offset + 7, x_offset - 1, -1)
+        y_sequence = range(y_offset, y_offset + 8)
+        if v_flip:
+            y_sequence = range(y_offset + 7, y_offset - 1, -1)
 
-        # Loop
-        running = True
-        event = SDL_Event()
-        while running:
-            while SDL_PollEvent(byref(event)) != 0:
-                if event.type == SDL_QUIT:
-                    running = False
-                    break
-
-        # Housekeeping
-        SDL_DestroyRenderer(renderer)
-        SDL_DestroyWindow(window)
-        SDL_Quit()
-
-    def render_tile(self, renderer, tile_data, palette, x_offset, y_offset):
-        x, y = x_offset, y_offset
         # Each iteration will print a line of a tile
-        for i in range(0, 16, 2):
+        for i, y in zip(range(0, 16, 2), y_sequence):
             # Each byte is 4 pixels
             # Each line is 8 pixels
+            pixel_sequence = range(7, -1, -1)
+            for pixel, x in zip(pixel_sequence, x_sequence):
+                self.draw_point(renderer, i, tile_data, palette, pixel, x, y)
 
-            # Bitplane handling
-            # The first byte is composed of the first
-            # 8 least significant bits of the pixel
-            # and the second byte if composed of the
-            # 8 most significant bits
-            a = tile_data[i + 0]
-            b = tile_data[i + 1]
-
-            pixel0 = (b & 0x80) >> 7 << 1 | (a & 0x80) >> 7 << 0
-            # if pixel0:
-            self.set_color(renderer, palette, pixel0)
-            SDL_RenderDrawPoint(renderer, x, y)
-            x += 1
-            pixel1 = (b & 0x40) >> 6 << 1 | (a & 0x40) >> 6 << 0
-            # if pixel1:
-            self.set_color(renderer, palette, pixel1)
-            SDL_RenderDrawPoint(renderer, x, y)
-            x += 1
-            pixel2 = (b & 0x20) >> 5 << 1 | (a & 0x20) >> 5 << 0
-            # if pixel2:
-            self.set_color(renderer, palette, pixel2)
-            SDL_RenderDrawPoint(renderer, x, y)
-            x += 1
-            pixel3 = (b & 0x10) >> 4 << 1 | (a & 0x10) >> 4 << 0
-            # if pixel3:
-            self.set_color(renderer, palette, pixel3)
-            SDL_RenderDrawPoint(renderer, x, y)
-            x += 1
-            pixel4 = (b & 0x08) >> 3 << 1 | (a & 0x08) >> 3 << 0
-            # if pixel4:
-            self.set_color(renderer, palette, pixel4)
-            SDL_RenderDrawPoint(renderer, x, y)
-            x += 1
-            pixel5 = (b & 0x04) >> 2 << 1 | (a & 0x04) >> 2 << 0
-            # if pixel5:
-            self.set_color(renderer, palette, pixel5)
-            SDL_RenderDrawPoint(renderer, x, y)
-            x += 1
-            pixel6 = (b & 0x02) >> 1 << 1 | (a & 0x02) >> 1 << 0
-            # if pixel6:
-            self.set_color(renderer, palette, pixel6)
-            SDL_RenderDrawPoint(renderer, x, y)
-            x += 1
-            pixel7 = (b & 0x01) >> 0 << 1 | (a & 0x01) >> 0 << 0
-            # if pixel7:
-            self.set_color(renderer, palette, pixel7)
-            SDL_RenderDrawPoint(renderer, x, y)
-            x += 1
-
-            x = x_offset
-            y += 1
+    def draw_point(self, renderer, i, tile_data, palette, pixel, x, y):
+        # Bitplane handling
+        # The first byte is composed of the first
+        # 8 least significant bits of the pixel
+        # and the second byte if composed of the
+        # 8 most significant bits
+        a = tile_data[i + 0]
+        b = tile_data[i + 1]
+        mask = 1 << pixel
+        color = (b & mask) >> pixel << 1 | (a & mask) >> pixel << 0
+        self.set_color(renderer, palette, color)
+        SDL_RenderDrawPoint(renderer, x, y)
 
     def set_color(self, renderer, palette, color):
         # 4 colors (2bpp palette) x 2 bytes each color
@@ -348,7 +343,7 @@ class Ppu:
         # TODO Try to enable again when all background are being rendered
         alpha = SDL_ALPHA_OPAQUE
         # Multiply the colors to make them more vibrant
-        SDL_SetRenderDrawColor(renderer, r << 3, g << 3, b << 3, SDL_ALPHA_OPAQUE)
+        SDL_SetRenderDrawColor(renderer, r << 3, g << 3, b << 3, alpha)
 
 
 @dataclass

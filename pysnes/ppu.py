@@ -301,8 +301,14 @@ class Ppu:
         BG4 tiles with priority 0
         """
         assert self.bgmode == 0
-        self.draw_background(renderer, self.bg2)
-        self.draw_background(renderer, self.bg1)
+        self.draw_background(renderer, self.bg4, False)
+        self.draw_background(renderer, self.bg3, False)
+        self.draw_background(renderer, self.bg4, True)
+        self.draw_background(renderer, self.bg3, True)
+        self.draw_background(renderer, self.bg2, False)
+        self.draw_background(renderer, self.bg1, False)
+        self.draw_background(renderer, self.bg2, True)
+        self.draw_background(renderer, self.bg1, True)
 
         SDL_RenderPresent(renderer)
 
@@ -320,7 +326,9 @@ class Ppu:
         SDL_DestroyWindow(window)
         SDL_Quit()
 
-    def draw_background(self, renderer, bg: Background) -> None:
+    def draw_background(
+        self, renderer, bg: Background, priority_selector: bool
+    ) -> None:
         x_offset, y_offset = 0, 0
         line_start = bg.screen_addr * 2  # Each addr corresponds to 2 bytes
         line_end = line_start + 0x800  # Total size of BG in memory
@@ -335,13 +343,13 @@ class Ppu:
                 # Parse Tilemap entry - 2 bytes
                 entry_addr = line + col
                 tile = Tilemap.from_buffer(self.vram, entry_addr)
+                if tile.priority == priority_selector:
+                    # Fetch Tile (character) - 16 bytes
+                    tile_addr = bg.tiledata_addr + (tile.addr * 16)
+                    # 16 bytes --> 8x8 pixels * 2bpp
+                    tile_data = self.vram[tile_addr : tile_addr + 16]
+                    self.draw_tile(renderer, tile, tile_data, x_offset, y_offset)
 
-                # Fetch Tile (character) - 16 bytes
-                tile_addr = bg.tiledata_addr + (tile.addr * 16)
-                # 16 bytes --> 8x8 pixels * 2bpp
-                tile_data = self.vram[tile_addr : tile_addr + 16]
-
-                self.draw_tile(renderer, tile, tile_data, x_offset, y_offset)
                 x_offset += 8
                 if x_offset == 8 * 32:  # 32 tiles with 8 pixels width
                     x_offset = 0

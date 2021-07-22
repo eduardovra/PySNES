@@ -106,7 +106,10 @@ class Ppu:
 
         # Background
         self.bgmode = 0x00
-        self.bgnsc = [Background(), Background(), Background(), Background()]
+        self.bg1 = Background()
+        self.bg2 = Background()
+        self.bg3 = Background()
+        self.bg4 = Background()
 
     @property
     def vmain(self) -> int:
@@ -241,17 +244,29 @@ class Ppu:
         if self._oamodd == 0:
             self._oamadd = (self._oamadd + 1) & 0x1FF
 
-    def bgnsc_set(self, n: int, data: int) -> None:
-        self.bgnsc[n - 1].screen_size = data & 0x03
-        self.bgnsc[n - 1].screen_addr = data >> 2 << 10  # Copied from bsnes
+    def bg1sc_set(self, data: int) -> None:
+        self.bg1.screen_size = data & 0x03
+        self.bg1.screen_addr = data >> 2 << 10  # Copied from bsnes
+
+    def bg2sc_set(self, data: int) -> None:
+        self.bg2.screen_size = data & 0x03
+        self.bg2.screen_addr = data >> 2 << 10  # Copied from bsnes
+
+    def bg3sc_set(self, data: int) -> None:
+        self.bg3.screen_size = data & 0x03
+        self.bg3.screen_addr = data >> 2 << 10  # Copied from bsnes
+
+    def bg4sc_set(self, data: int) -> None:
+        self.bg4.screen_size = data & 0x03
+        self.bg4.screen_addr = data >> 2 << 10  # Copied from bsnes
 
     def bg12nba_set(self, data: int) -> None:
-        self.bgnsc[0].tiledata_addr = (data >> 0 & 15) << 12
-        self.bgnsc[1].tiledata_addr = (data >> 4 & 15) << 12
+        self.bg1.tiledata_addr = (data >> 0 & 15) << 12
+        self.bg2.tiledata_addr = (data >> 4 & 15) << 12
 
     def bg34nba_set(self, data: int) -> None:
-        self.bgnsc[2].tiledata_addr = (data >> 0 & 15) << 12
-        self.bgnsc[3].tiledata_addr = (data >> 4 & 15) << 12
+        self.bg3.tiledata_addr = (data >> 0 & 15) << 12
+        self.bg4.tiledata_addr = (data >> 4 & 15) << 12
 
     def render(self) -> None:
         # Initialization
@@ -286,9 +301,8 @@ class Ppu:
         BG4 tiles with priority 0
         """
         assert self.bgmode == 0
-        bg1, bg2, bg3, bg4 = self.bgnsc
-        self.draw_background(renderer, bg2)  # BG2
-        self.draw_background(renderer, bg1)  # BG1
+        self.draw_background(renderer, self.bg2)
+        self.draw_background(renderer, self.bg1)
 
         SDL_RenderPresent(renderer)
 
@@ -458,8 +472,8 @@ def main():
     # Tile Size 8x8
     # Tile Addr 0x2000
     ppu.bgmode = 0
-    ppu.bgnsc_set(0, 0)
-    ppu.bgnsc_set(1, 0)
+    ppu.bg1sc_set(0)
+    ppu.bg2sc_set(0)
     ppu.bg12nba_set(
         0x02
     )  # TODO I'm not sure about this number, have to check when running the real ROM

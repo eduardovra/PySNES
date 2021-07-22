@@ -126,16 +126,16 @@ class Bus:
                     self.ppu.bgmode = data
                     return
                 if addr == 0x2107:  # BG1SC
-                    self.ppu.bgnsc_set(1, data)
+                    self.ppu.bg1sc_set(data)
                     return
                 if addr == 0x2108:  # BG2SC
-                    self.ppu.bgnsc_set(2, data)
+                    self.ppu.bg2sc_set(data)
                     return
                 if addr == 0x2109:  # BG3SC
-                    self.ppu.bgnsc_set(3, data)
+                    self.ppu.bg3sc_set(data)
                     return
                 if addr == 0x210A:  # BG4SC
-                    self.ppu.bgnsc_set(4, data)
+                    self.ppu.bg4sc_set(data)
                     return
                 if addr == 0x210B:  # BG12NBA
                     self.ppu.bg12nba_set(data)

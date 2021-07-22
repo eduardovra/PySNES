@@ -274,6 +274,9 @@ class Ppu:
         window = SDL_CreateWindow(b"PySNES", 0, 0, 512, 512, SDL_WINDOW_SHOWN)
         renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED)
         SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND)
+
+        # Default background color
+        self.set_color(renderer, 0, 0)
         SDL_RenderClear(renderer)
 
         # Draw picture

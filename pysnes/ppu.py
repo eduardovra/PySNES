@@ -1,4 +1,9 @@
-from ctypes import c_uint8, byref
+from ctypes import (
+    c_uint16,
+    c_uint8,
+    byref,
+    LittleEndianStructure,
+)
 from typing import Optional
 from dataclasses import dataclass
 
@@ -24,6 +29,44 @@ from sdl2 import (
     SDL_ALPHA_OPAQUE,
     SDL_ALPHA_TRANSPARENT,
 )
+
+
+@dataclass
+class Background:
+    screen_size = 0
+    screen_addr = 0
+    tiledata_addr = 0
+
+
+@dataclass
+class Object:
+    x = 0
+    y = 0
+    character = 0
+    h_flip = False
+    v_flip = False
+    name_select = False
+    priority = 0
+    palette = 0
+    size = False
+
+
+class Tilemap(LittleEndianStructure):
+    """
+    palette = (high >> 2) & 7
+    priotity = (high >> 5) & 1
+    h_flip = (high >> 6) & 1
+    v_flip = (high >> 7) & 1
+    addr = high & 3 | low
+    """
+
+    _fields_ = [
+        ("addr", c_uint16, 10),
+        ("palette", c_uint16, 3),
+        ("priority", c_uint16, 1),
+        ("h_flip", c_uint16, 1),
+        ("v_flip", c_uint16, 1),
+    ]
 
 
 class Ppu:
@@ -63,7 +106,7 @@ class Ppu:
 
         # Background
         self.bgmode = 0x00
-        self.bgnsc = [Background()] * 4
+        self.bgnsc = [Background(), Background(), Background(), Background()]
 
     @property
     def vmain(self) -> int:
@@ -219,26 +262,6 @@ class Ppu:
         SDL_RenderClear(renderer)
 
         # Draw picture
-        self.draw_background(renderer, 0x0000)  # BG2
-        self.draw_background(renderer, 0x2000)  # BG1
-
-        SDL_RenderPresent(renderer)
-
-        # Loop
-        running = True
-        event = SDL_Event()
-        while running:
-            while SDL_PollEvent(byref(event)) != 0:
-                if event.type == SDL_QUIT:
-                    running = False
-                    break
-
-        # Housekeeping
-        SDL_DestroyRenderer(renderer)
-        SDL_DestroyWindow(window)
-        SDL_Quit()
-
-    def draw_background(self, renderer, tiledata_addr):
         """
         https://bin.smwcentral.net/u/4842/regs.txt
         Mode 0
@@ -262,52 +285,61 @@ class Ppu:
         BG3 tiles with priority 0
         BG4 tiles with priority 0
         """
-        # Draw BG1, Mode 0 - test_oam.smc
-        # Bit Depth 2bpp
-        # Map Size 32x32
-        # Map Addr 0x0000 (comes from BG1SC)
-        # Tile Size 8x8
-        # Tile Addr 0x2000
+        assert self.bgmode == 0
+        bg1, bg2, bg3, bg4 = self.bgnsc
+        self.draw_background(renderer, bg2)  # BG2
+        self.draw_background(renderer, bg1)  # BG1
+
+        SDL_RenderPresent(renderer)
+
+        # Loop
+        running = True
+        event = SDL_Event()
+        while running:
+            while SDL_PollEvent(byref(event)) != 0:
+                if event.type == SDL_QUIT:
+                    running = False
+                    break
+
+        # Housekeeping
+        SDL_DestroyRenderer(renderer)
+        SDL_DestroyWindow(window)
+        SDL_Quit()
+
+    def draw_background(self, renderer, bg: Background) -> None:
         x_offset, y_offset = 0, 0
+        line_start = bg.screen_addr * 2  # Each addr corresponds to 2 bytes
+        line_end = line_start + 0x800  # Total size of BG in memory
+        line_step = 0x40
         # Each iteration will print a line of 32 tiles x 8x8 pixels
-        for line in range(0x0000, 0x0800, 0x40):
+        for line in range(line_start, line_end, line_step):
+            col_start = 0x00
+            col_end = 0x40
+            col_step = 0x02
             # Each iteration will print 1 tile of 8x8 pixels
-            for col in range(0x00, 0x40, 0x02):
+            for col in range(col_start, col_end, col_step):
                 # Parse Tilemap entry - 2 bytes
                 entry_addr = line + col
-                low = self.vram[entry_addr + 0]
-                high = self.vram[entry_addr + 1]
-                palette = (high >> 2) & 7
-                priotity = (high >> 5) & 1
-                h_flip = (high >> 6) & 1
-                v_flip = (high >> 7) & 1
-                addr = high & 3 | low
+                tile = Tilemap.from_buffer(self.vram, entry_addr)
 
                 # Fetch Tile (character) - 16 bytes
-                # bg = self.bgnsc[0]
-                # tile_addr = bg.tiledata_addr + (addr * 16)
-                # tiledata_addr = 0x2000
-                tile_addr = tiledata_addr + (addr * 16)
+                tile_addr = bg.tiledata_addr + (tile.addr * 16)
                 # 16 bytes --> 8x8 pixels * 2bpp
                 tile_data = self.vram[tile_addr : tile_addr + 16]
 
-                self.render_tile(
-                    renderer, tile_data, palette, h_flip, v_flip, x_offset, y_offset
-                )
+                self.draw_tile(renderer, tile, tile_data, x_offset, y_offset)
                 x_offset += 8
                 if x_offset == 8 * 32:  # 32 tiles with 8 pixels width
                     x_offset = 0
 
             y_offset += 8
 
-    def render_tile(
-        self, renderer, tile_data, palette, h_flip, v_flip, x_offset, y_offset
-    ):
+    def draw_tile(self, renderer, tile, tile_data, x_offset, y_offset) -> None:
         x_sequence = range(x_offset, x_offset + 8)
-        if h_flip:
+        if tile.h_flip:
             x_sequence = range(x_offset + 7, x_offset - 1, -1)
         y_sequence = range(y_offset, y_offset + 8)
-        if v_flip:
+        if tile.v_flip:
             y_sequence = range(y_offset + 7, y_offset - 1, -1)
 
         # Each iteration will print a line of a tile
@@ -316,9 +348,9 @@ class Ppu:
             # Each line is 8 pixels
             pixel_sequence = range(7, -1, -1)
             for pixel, x in zip(pixel_sequence, x_sequence):
-                self.draw_point(renderer, i, tile_data, palette, pixel, x, y)
+                self.draw_point(renderer, i, tile_data, tile.palette, pixel, x, y)
 
-    def draw_point(self, renderer, i, tile_data, palette, pixel, x, y):
+    def draw_point(self, renderer, i, tile_data, palette, pixel, x, y) -> None:
         # Bitplane handling
         # The first byte is composed of the first
         # 8 least significant bits of the pixel
@@ -328,10 +360,15 @@ class Ppu:
         b = tile_data[i + 1]
         mask = 1 << pixel
         color = (b & mask) >> pixel << 1 | (a & mask) >> pixel << 0
-        self.set_color(renderer, palette, color)
-        SDL_RenderDrawPoint(renderer, x, y)
+        # 00 is supposed to be considered transparent in all palettes,
+        # so I shouldn't draw it, but if I don't the background becomes
+        # all black. I'm guessing there should be some kind of default
+        # color (blue) that must be used when no pixel is drawn in a dot
+        if color:
+            self.set_color(renderer, palette, color)
+            SDL_RenderDrawPoint(renderer, x, y)
 
-    def set_color(self, renderer, palette, color):
+    def set_color(self, renderer, palette, color) -> None:
         # 4 colors (2bpp palette) x 2 bytes each color
         palette_index = palette * 4 * 2
         color_index = palette_index + color * 2
@@ -339,31 +376,11 @@ class Ppu:
         r = data >> 0 & 0x1F
         g = data >> 5 & 0x1F
         b = data >> 10 & 0x1F
-        alpha = SDL_ALPHA_OPAQUE if color else SDL_ALPHA_TRANSPARENT
+        # alpha = SDL_ALPHA_OPAQUE if color else SDL_ALPHA_TRANSPARENT
         # TODO Try to enable again when all background are being rendered
         alpha = SDL_ALPHA_OPAQUE
         # Multiply the colors to make them more vibrant
         SDL_SetRenderDrawColor(renderer, r << 3, g << 3, b << 3, alpha)
-
-
-@dataclass
-class Background:
-    screen_size = 0
-    screen_addr = 0
-    tiledata_addr = 0
-
-
-@dataclass
-class Object:
-    x = 0
-    y = 0
-    character = 0
-    h_flip = False
-    v_flip = False
-    name_select = False
-    priority = 0
-    palette = 0
-    size = False
 
 
 class OAM:
@@ -432,6 +449,22 @@ def main():
     with open(oam_file, "rb") as f:
         oam_dump = f.read()
     ppu = Ppu(vram_dump=vram_dump, cgram_dump=cgram_dump, oam_dump=oam_dump)
+
+    # Setup registers
+    # Draw BG1, Mode 0 - test_oam.smc
+    # Bit Depth 2bpp
+    # Map Size 32x32
+    # Map Addr 0x0000 (comes from BG1SC)
+    # Tile Size 8x8
+    # Tile Addr 0x2000
+    ppu.bgmode = 0
+    ppu.bgnsc_set(0, 0)
+    ppu.bgnsc_set(1, 0)
+    ppu.bg12nba_set(
+        0x02
+    )  # TODO I'm not sure about this number, have to check when running the real ROM
+    ppu.bg34nba_set(0x00)
+
     ppu.render()
 
 

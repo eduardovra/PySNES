@@ -4,7 +4,7 @@ from ctypes import (
     byref,
     LittleEndianStructure,
 )
-from typing import Optional
+from typing import Optional, Union
 from dataclasses import dataclass
 
 from sdl2 import (
@@ -278,7 +278,7 @@ class Ppu:
         SDL_RenderSetScale(renderer, 2, 2)
 
         # Default background color
-        self.set_color(renderer, 0, 0)
+        self.set_color(renderer, 2, 0, 0)
         SDL_RenderClear(renderer)
 
         # Draw picture
@@ -311,7 +311,7 @@ class Ppu:
         # self.draw_background(renderer, self.bg4, True)
         # self.draw_background(renderer, self.bg3, True)
         # self.draw_background(renderer, self.bg2, False)
-        self.draw_background(renderer, self.bg1, False)
+        self.draw_background(renderer, self.bg1, 2, False)
         # self.draw_background(renderer, self.bg2, True)
         # self.draw_background(renderer, self.bg1, True)
         self.draw_objects(renderer)
@@ -333,10 +333,10 @@ class Ppu:
         SDL_Quit()
 
     def draw_background(
-        self, renderer, bg: Background, priority_selector: bool
+        self, renderer, bg: Background, bpp: int, priority_selector: bool
     ) -> None:
         x_offset, y_offset = 0, 0
-        line_start = bg.screen_addr * 2  # Each addr corresponds to 2 bytes
+        line_start = bg.screen_addr * 2  # Each addr corresponds to 2 bytes in VRAM
         line_end = line_start + 0x800  # Total size of BG in memory
         line_step = 0x40
         # Each iteration will print a line of 32 tiles x 8x8 pixels
@@ -351,10 +351,13 @@ class Ppu:
                 tile = Tilemap.from_buffer(self.vram, entry_addr)
                 if tile.priority == priority_selector:
                     # Fetch Tile (character) - 16 bytes
-                    tile_addr = bg.tiledata_addr + (tile.addr * 16)
+                    tile_width = 8
+                    tile_height = 8
+                    tile_size = (tile_width * tile_height * bpp) // 8
+                    tile_addr = bg.tiledata_addr + (tile.addr * tile_size)
                     # 16 bytes --> 8x8 pixels * 2bpp
-                    tile_data = self.vram[tile_addr : tile_addr + 16]
-                    self.draw_tile(renderer, tile, tile_data, x_offset, y_offset)
+                    tile_data = self.vram[tile_addr : tile_addr + tile_size]
+                    self.draw_tile(renderer, tile, tile_data, bpp, x_offset, y_offset)
 
                 x_offset += 8
                 if x_offset == 8 * 32:  # 32 tiles with 8 pixels width
@@ -363,7 +366,13 @@ class Ppu:
             y_offset += 8
 
     def draw_tile(
-        self, renderer, tile: Tilemap, tile_data: bytes, x_offset: int, y_offset: int
+        self,
+        renderer,
+        tile: Union[Tilemap, Object],
+        tile_data: bytes,
+        bpp: int,
+        x_offset: int,
+        y_offset: int,
     ) -> None:
         x_sequence = range(x_offset, x_offset + 8)
         if tile.h_flip:
@@ -378,13 +387,14 @@ class Ppu:
             # Each line is 8 pixels
             pixel_sequence = range(7, -1, -1)
             for pixel, x in zip(pixel_sequence, x_sequence):
-                self.draw_point(renderer, i, tile_data, tile.palette, pixel, x, y)
+                self.draw_point(renderer, i, tile_data, bpp, tile.palette, pixel, x, y)
 
     def draw_point(
         self,
         renderer,
         i: int,
         tile_data: bytes,
+        bpp: int,
         palette: int,
         pixel: int,
         x: int,
@@ -395,21 +405,25 @@ class Ppu:
         # 8 least significant bits of the pixel
         # and the second byte if composed of the
         # 8 most significant bits
+        mask = 1 << pixel
         a = tile_data[i + 0]
         b = tile_data[i + 1]
-        mask = 1 << pixel
         color = (b & mask) >> pixel << 1 | (a & mask) >> pixel << 0
+        if bpp >= 4:
+            a = tile_data[i + 16]
+            b = tile_data[i + 17]
+            color |= (b & mask) >> pixel << 3 | (a & mask) >> pixel << 2
         # 00 is supposed to be considered transparent in all palettes,
         # so I shouldn't draw it, but if I don't the background becomes
         # all black. I'm guessing there should be some kind of default
         # color (blue) that must be used when no pixel is drawn in a dot
         if color:
-            self.set_color(renderer, palette, color)
+            self.set_color(renderer, bpp, palette, color)
             SDL_RenderDrawPoint(renderer, x, y)
 
-    def set_color(self, renderer, palette: int, color: int) -> None:
+    def set_color(self, renderer, bpp: int, palette: int, color: int) -> None:
         # 4 colors (2bpp palette) x 2 bytes each color
-        palette_index = palette * 4 * 2
+        palette_index = palette * (bpp ** 2) * 2
         color_index = palette_index + color * 2
         data = self.cgram[color_index] | self.cgram[color_index + 1] << 8
         r = data >> 0 & 0x1F
@@ -422,6 +436,7 @@ class Ppu:
         SDL_SetRenderDrawColor(renderer, r << 3, g << 3, b << 3, alpha)
 
     def draw_objects(self, renderer) -> None:
+        bpp = 4
         for obj in self.oam.objects:
             # Draw object if it's within the visible area
             # TODO assuming 8x8 tiles
@@ -429,13 +444,16 @@ class Ppu:
             x_visible = obj.x > -8 and obj.x < 256 - 8
             y_visible = obj.y > -8 and obj.y < 224  # TODO probably wrong
             if x_visible and y_visible:
+                tile_width = 8
+                tile_height = 8
+                tile_size = (tile_width * tile_height * bpp) // 8
                 # Fetch Tile (character) - 16 bytes
                 tile_addr = (
-                    0xC000 + obj.character * 16
+                    0xC000 + obj.character * tile_size
                 )  # TODO figure out how to calc this ($2101)
                 # 16 bytes --> 8x8 pixels * 2bpp
-                tile_data = self.vram[tile_addr : tile_addr + 16]
-                self.draw_tile(renderer, obj, tile_data, obj.x, obj.y)
+                tile_data = self.vram[tile_addr : tile_addr + tile_size]
+                self.draw_tile(renderer, obj, tile_data, bpp, obj.x, obj.y)
 
 
 class OAM:
@@ -489,7 +507,9 @@ class OAM:
 
         data = self.oam[addr + 3]
         obj.name_select = bool(data & 0x01)
-        obj.palette = (data >> 1) & 0x07
+        obj.palette = (
+            (data >> 1) & 0x07
+        ) + 8  # Objects use the palettes present in the second half of CGRAM
         obj.priority = (data >> 4) & 0x03
         obj.h_flip = bool(data & 0x40)
         obj.v_flip = bool(data & 0x80)

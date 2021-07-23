@@ -304,14 +304,15 @@ class Ppu:
         BG4 tiles with priority 0
         """
         assert self.bgmode == 0
-        self.draw_background(renderer, self.bg4, False)
-        self.draw_background(renderer, self.bg3, False)
-        self.draw_background(renderer, self.bg4, True)
-        self.draw_background(renderer, self.bg3, True)
-        self.draw_background(renderer, self.bg2, False)
+        # self.draw_background(renderer, self.bg4, False)
+        # self.draw_background(renderer, self.bg3, False)
+        # self.draw_background(renderer, self.bg4, True)
+        # self.draw_background(renderer, self.bg3, True)
+        # self.draw_background(renderer, self.bg2, False)
         self.draw_background(renderer, self.bg1, False)
-        self.draw_background(renderer, self.bg2, True)
-        self.draw_background(renderer, self.bg1, True)
+        # self.draw_background(renderer, self.bg2, True)
+        # self.draw_background(renderer, self.bg1, True)
+        self.draw_objects(renderer)
 
         SDL_RenderPresent(renderer)
 
@@ -359,7 +360,9 @@ class Ppu:
 
             y_offset += 8
 
-    def draw_tile(self, renderer, tile, tile_data, x_offset, y_offset) -> None:
+    def draw_tile(
+        self, renderer, tile: Tilemap, tile_data: bytes, x_offset: int, y_offset: int
+    ) -> None:
         x_sequence = range(x_offset, x_offset + 8)
         if tile.h_flip:
             x_sequence = range(x_offset + 7, x_offset - 1, -1)
@@ -375,7 +378,16 @@ class Ppu:
             for pixel, x in zip(pixel_sequence, x_sequence):
                 self.draw_point(renderer, i, tile_data, tile.palette, pixel, x, y)
 
-    def draw_point(self, renderer, i, tile_data, palette, pixel, x, y) -> None:
+    def draw_point(
+        self,
+        renderer,
+        i: int,
+        tile_data: bytes,
+        palette: int,
+        pixel: int,
+        x: int,
+        y: int,
+    ) -> None:
         # Bitplane handling
         # The first byte is composed of the first
         # 8 least significant bits of the pixel
@@ -393,7 +405,7 @@ class Ppu:
             self.set_color(renderer, palette, color)
             SDL_RenderDrawPoint(renderer, x, y)
 
-    def set_color(self, renderer, palette, color) -> None:
+    def set_color(self, renderer, palette: int, color: int) -> None:
         # 4 colors (2bpp palette) x 2 bytes each color
         palette_index = palette * 4 * 2
         color_index = palette_index + color * 2
@@ -407,15 +419,33 @@ class Ppu:
         # Multiply the colors to make them more vibrant
         SDL_SetRenderDrawColor(renderer, r << 3, g << 3, b << 3, alpha)
 
+    def draw_objects(self, renderer) -> None:
+        for obj in self.oam.objects:
+            # Draw object if it's within the visible area
+            # TODO assuming 8x8 tiles
+            # TODO handle wrapping
+            x_visible = obj.x > -8 and obj.x < 256 - 8
+            y_visible = obj.y > -8 and obj.y < 224  # TODO probably wrong
+            if x_visible and y_visible:
+                # Fetch Tile (character) - 16 bytes
+                tile_addr = (
+                    0xC000 + obj.character * 16
+                )  # TODO figure out how to calc this ($2101)
+                # 16 bytes --> 8x8 pixels * 2bpp
+                tile_data = self.vram[tile_addr : tile_addr + 16]
+                self.draw_tile(renderer, obj, tile_data, obj.x, obj.y)
+
 
 class OAM:
     def __init__(self, *, oam_dump: Optional[bytes] = None) -> None:
         # Object Attribute Memory
-        if oam_dump is None:
-            self.oam = bytearray(512 + 32)
-        else:
-            self.oam = bytearray(oam_dump)
-        self.objects = [Object()] * 128
+        self.oam = bytearray(512 + 32)
+        self.objects = [Object() for i in range(128)]
+
+        # Load objects from dump file
+        if oam_dump:
+            for addr, data in enumerate(oam_dump):
+                self[addr] = data
 
     def __getitem__(self, addr: int) -> int:
         return self.oam[addr]
@@ -443,6 +473,7 @@ class OAM:
 
     def update_low_table(self, addr: int) -> None:
         obj_num = addr // 4
+        addr = obj_num * 4
         obj = self.objects[obj_num]
 
         data = self.oam[addr + 0]
@@ -452,7 +483,7 @@ class OAM:
         obj.y = data & 0xFF
 
         data = self.oam[addr + 2]
-        obj.character = data & 0xFF
+        obj.character = obj.character & 0x100 | data & 0xFF
 
         data = self.oam[addr + 3]
         obj.name_select = bool(data & 0x01)

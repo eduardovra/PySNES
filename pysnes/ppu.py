@@ -29,6 +29,7 @@ from sdl2 import (
     SDL_ALPHA_OPAQUE,
     SDL_ALPHA_TRANSPARENT,
 )
+from sdl2.render import SDL_RenderSetScale
 
 
 @dataclass
@@ -271,9 +272,10 @@ class Ppu:
     def render(self) -> None:
         # Initialization
         SDL_Init(SDL_INIT_VIDEO)
-        window = SDL_CreateWindow(b"PySNES", 0, 0, 512, 512, SDL_WINDOW_SHOWN)
+        window = SDL_CreateWindow(b"PySNES", 0, 0, 768, 768, SDL_WINDOW_SHOWN)
         renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED)
         SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND)
+        SDL_RenderSetScale(renderer, 2, 2)
 
         # Default background color
         self.set_color(renderer, 0, 0)

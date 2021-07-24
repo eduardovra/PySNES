@@ -104,6 +104,7 @@ class Ppu:
         self._oamadd = 0
         self._oamodd = 0
         self._oamdata = 0
+        self.obsel_set(0)
 
         # Background
         self.bgmode = 0x00
@@ -188,6 +189,12 @@ class Ppu:
         self.cgram[base_addr + 1] = data & 0x7F
         self._cgadd.value += 1
         self._cgdata = None
+
+    def obsel_set(self, data: int) -> None:
+        """OBSEL - Object Size and Character Address"""
+        self.oam_tiledata_address = (data & 7) << 13
+        self.oam_nameselect = data >> 3 & 3
+        self.oam_base_size = data >> 5 & 7
 
     @property
     def oamaddl(self) -> int:
@@ -406,13 +413,12 @@ class Ppu:
         # and the second byte if composed of the
         # 8 most significant bits
         mask = 1 << pixel
-        a = tile_data[i + 0]
-        b = tile_data[i + 1]
-        color = (b & mask) >> pixel << 1 | (a & mask) >> pixel << 0
+        # 2bpp
+        l, h = tile_data[i + 0], tile_data[i + 1]
+        color = (h & mask) >> pixel << 1 | (l & mask) >> pixel << 0
         if bpp >= 4:
-            a = tile_data[i + 16]
-            b = tile_data[i + 17]
-            color |= (b & mask) >> pixel << 3 | (a & mask) >> pixel << 2
+            l, h = tile_data[i + 16], tile_data[i + 17]
+            color |= (h & mask) >> pixel << 3 | (l & mask) >> pixel << 2
         # 00 is supposed to be considered transparent in all palettes,
         # so I shouldn't draw it, but if I don't the background becomes
         # all black. I'm guessing there should be some kind of default
@@ -449,7 +455,7 @@ class Ppu:
                 tile_size = (tile_width * tile_height * bpp) // 8
                 # Fetch Tile (character) - 16 bytes
                 tile_addr = (
-                    0xC000 + obj.character * tile_size
+                    self.oam_tiledata_address + obj.character * tile_size
                 )  # TODO figure out how to calc this ($2101)
                 # 16 bytes --> 8x8 pixels * 2bpp
                 tile_data = self.vram[tile_addr : tile_addr + tile_size]
@@ -542,6 +548,10 @@ def main():
         0x02
     )  # TODO I'm not sure about this number, have to check when running the real ROM
     ppu.bg34nba_set(0x00)
+
+    # OAM base address 0xC000
+    # OAM base size 3 == 16x16 and 32x32 sprites
+    ppu.obsel_set(0x66)
 
     ppu.render()
 

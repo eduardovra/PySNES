@@ -109,6 +109,9 @@ class Bus:
                 #    print("WRITE CGRAM REGISTER: %s = %s" % (hex(addr), hex(data)))
 
                 # OAM registers
+                if addr == 0x2101:  # OBSEL
+                    self.ppu.obsel_set(data)
+                    return
                 if addr == 0x2102:  # OAMADDL
                     self.ppu.oamaddl = data
                     return

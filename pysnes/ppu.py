@@ -390,48 +390,144 @@ class Ppu:
         tiles to be drawn accordingly to width and height,
         then call self.draw_tile to render them
         """
-        if tile_width == 8 and tile_height == 8:
-            # 8x8 - draw character 00
-            self.draw_tile(renderer, tile, tile_data, bpp, x_offset, y_offset)
-        if tile_width == 16 and tile_height == 16:
-            # 16x16 - draw character 00 01
-            #                        10 11
-            tile_size = 8 * bpp
-            index = 0x00 * tile_size
+        tile_size = 8 * bpp
+
+        # 8x8 - draw character 00
+        self.draw_tile(renderer, tile, tile_data, bpp, x_offset, y_offset)
+
+        # 16x16 - draw characters 00 01
+        #                         10 11
+        if tile_width >= 16:
             self.draw_tile(
                 renderer,
                 tile,
-                tile_data[index : index + tile_size],
-                bpp,
-                x_offset + 0,
-                y_offset + 0,
-            )
-            index = 0x01 * tile_size
-            self.draw_tile(
-                renderer,
-                tile,
-                tile_data[index : index + tile_size],
+                tile_data[0x01 * tile_size :],
                 bpp,
                 x_offset + 8,
                 y_offset + 0,
             )
-            index = 0x10 * tile_size
+        if tile_height >= 16:
             self.draw_tile(
                 renderer,
                 tile,
-                tile_data[index : index + tile_size],
+                tile_data[0x10 * tile_size :],
                 bpp,
                 x_offset + 0,
                 y_offset + 8,
             )
-            index = 0x11 * tile_size
+        if tile_width >= 16 and tile_height >= 16:
             self.draw_tile(
                 renderer,
                 tile,
-                tile_data[index : index + tile_size],
+                tile_data[0x11 * tile_size :],
                 bpp,
                 x_offset + 8,
                 y_offset + 8,
+            )
+
+        # 32x32 - draw characters 00 01 02 03
+        #                         10 11 12 13
+        #                         20 21 22 23
+        #                         30 31 32 33
+        if tile_width >= 32:
+            self.draw_tile(
+                renderer,
+                tile,
+                tile_data[0x02 * tile_size :],
+                bpp,
+                x_offset + 16,
+                y_offset + 0,
+            )
+            self.draw_tile(
+                renderer,
+                tile,
+                tile_data[0x03 * tile_size :],
+                bpp,
+                x_offset + 24,
+                y_offset + 0,
+            )
+        if tile_height >= 32:
+            self.draw_tile(
+                renderer,
+                tile,
+                tile_data[0x20 * tile_size :],
+                bpp,
+                x_offset + 0,
+                y_offset + 16,
+            )
+            self.draw_tile(
+                renderer,
+                tile,
+                tile_data[0x30 * tile_size :],
+                bpp,
+                x_offset + 0,
+                y_offset + 24,
+            )
+        if tile_width >= 32 and tile_height >= 32:
+            self.draw_tile(
+                renderer,
+                tile,
+                tile_data[0x12 * tile_size :],
+                bpp,
+                x_offset + 16,
+                y_offset + 8,
+            )
+            self.draw_tile(
+                renderer,
+                tile,
+                tile_data[0x13 * tile_size :],
+                bpp,
+                x_offset + 24,
+                y_offset + 8,
+            )
+            self.draw_tile(
+                renderer,
+                tile,
+                tile_data[0x21 * tile_size :],
+                bpp,
+                x_offset + 8,
+                y_offset + 16,
+            )
+            self.draw_tile(
+                renderer,
+                tile,
+                tile_data[0x31 * tile_size :],
+                bpp,
+                x_offset + 8,
+                y_offset + 24,
+            )
+
+            self.draw_tile(
+                renderer,
+                tile,
+                tile_data[0x22 * tile_size :],
+                bpp,
+                x_offset + 16,
+                y_offset + 16,
+            )
+            self.draw_tile(
+                renderer,
+                tile,
+                tile_data[0x23 * tile_size :],
+                bpp,
+                x_offset + 24,
+                y_offset + 16,
+            )
+            self.draw_tile(
+                renderer,
+                tile,
+                tile_data[0x32 * tile_size :],
+                bpp,
+                x_offset + 16,
+                y_offset + 24,
+            )
+            self.draw_tile(
+                renderer,
+                tile,
+                tile_data[0x33 * tile_size :],
+                bpp,
+                x_offset + 24,
+                y_offset + 24,
             )
 
     def draw_tile(
@@ -518,6 +614,10 @@ class Ppu:
                 tile_addr = (
                     self.oam_tiledata_address + obj.character * tile_size
                 )  # TODO figure out how to calc this ($2101)
+                tile_addr = (
+                    self.oam_tiledata_address
+                    + obj.character * 32  # Worked for 32x32, 16x16, 8x8 (4bpp)
+                )  # TODO why 32 ???
                 tile_data = self.vram[tile_addr:]
                 self.draw_tiles(
                     renderer, obj, tile_data, tile_width, tile_height, bpp, obj.x, obj.y
@@ -638,7 +738,8 @@ def main():
     # OAM base address 0xC000
     # OAM base size 3 == 16x16 and 32x32 sprites
     # ppu.obsel_set(0x66)
-    ppu.obsel_set(0x06)
+    # ppu.obsel_set(0x06)  # base size 0
+    ppu.obsel_set(0x46)  # base size 2
 
     ppu.render()
 

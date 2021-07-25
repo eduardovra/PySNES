@@ -364,13 +364,75 @@ class Ppu:
                     tile_addr = bg.tiledata_addr + (tile.addr * tile_size)
                     # 16 bytes --> 8x8 pixels * 2bpp
                     tile_data = self.vram[tile_addr : tile_addr + tile_size]
-                    self.draw_tile(renderer, tile, tile_data, bpp, x_offset, y_offset)
+                    self.draw_tiles(
+                        renderer, tile, tile_data, 8, 8, bpp, x_offset, y_offset
+                    )
 
                 x_offset += 8
                 if x_offset == 8 * 32:  # 32 tiles with 8 pixels width
                     x_offset = 0
 
             y_offset += 8
+
+    def draw_tiles(
+        self,
+        renderer,
+        tile: Union[Tilemap, Object],
+        tile_data: bytes,
+        tile_width: int,
+        tile_height: int,
+        bpp: int,
+        x_offset: int,
+        y_offset: int,
+    ) -> None:
+        """
+        Determines the number of horizontal and vertical
+        tiles to be drawn accordingly to width and height,
+        then call self.draw_tile to render them
+        """
+        if tile_width == 8 and tile_height == 8:
+            # 8x8 - draw character 00
+            self.draw_tile(renderer, tile, tile_data, bpp, x_offset, y_offset)
+        if tile_width == 16 and tile_height == 16:
+            # 16x16 - draw character 00 01
+            #                        10 11
+            tile_size = 8 * bpp
+            index = 0x00 * tile_size
+            self.draw_tile(
+                renderer,
+                tile,
+                tile_data[index : index + tile_size],
+                bpp,
+                x_offset + 0,
+                y_offset + 0,
+            )
+            index = 0x01 * tile_size
+            self.draw_tile(
+                renderer,
+                tile,
+                tile_data[index : index + tile_size],
+                bpp,
+                x_offset + 8,
+                y_offset + 0,
+            )
+            index = 0x10 * tile_size
+            self.draw_tile(
+                renderer,
+                tile,
+                tile_data[index : index + tile_size],
+                bpp,
+                x_offset + 0,
+                y_offset + 8,
+            )
+            index = 0x11 * tile_size
+            self.draw_tile(
+                renderer,
+                tile,
+                tile_data[index : index + tile_size],
+                bpp,
+                x_offset + 8,
+                y_offset + 8,
+            )
 
     def draw_tile(
         self,
@@ -381,18 +443,21 @@ class Ppu:
         x_offset: int,
         y_offset: int,
     ) -> None:
+        """Draw one 8x8 tile"""
         x_sequence = range(x_offset, x_offset + 8)
         if tile.h_flip:
-            x_sequence = range(x_offset + 7, x_offset - 1, -1)
+            x_sequence = list(reversed(x_sequence))
         y_sequence = range(y_offset, y_offset + 8)
         if tile.v_flip:
-            y_sequence = range(y_offset + 7, y_offset - 1, -1)
+            y_sequence = list(reversed(y_sequence))
 
+        # Iterator for lines in the tile
+        line_sequence = range(0, 16, 2)
+        # Iterator for pixels in lines
+        pixel_sequence = list(reversed(range(8)))
         # Each iteration will print a line of a tile
-        for i, y in zip(range(0, 16, 2), y_sequence):
-            # Each byte is 4 pixels
-            # Each line is 8 pixels
-            pixel_sequence = range(7, -1, -1)
+        for i, y in zip(line_sequence, y_sequence):
+            # Each iteration will print a pixel from the line
             for pixel, x in zip(pixel_sequence, x_sequence):
                 self.draw_point(renderer, i, tile_data, bpp, tile.palette, pixel, x, y)
 
@@ -419,10 +484,7 @@ class Ppu:
         if bpp >= 4:
             l, h = tile_data[i + 16], tile_data[i + 17]
             color |= (h & mask) >> pixel << 3 | (l & mask) >> pixel << 2
-        # 00 is supposed to be considered transparent in all palettes,
-        # so I shouldn't draw it, but if I don't the background becomes
-        # all black. I'm guessing there should be some kind of default
-        # color (blue) that must be used when no pixel is drawn in a dot
+        # 00 is considered transparent in all palettes
         if color:
             self.set_color(renderer, bpp, palette, color)
             SDL_RenderDrawPoint(renderer, x, y)
@@ -442,24 +504,48 @@ class Ppu:
         SDL_SetRenderDrawColor(renderer, r << 3, g << 3, b << 3, alpha)
 
     def draw_objects(self, renderer) -> None:
-        bpp = 4
         for obj in self.oam.objects:
-            # Draw object if it's within the visible area
+            # Draw object if it's within the visible area (256x224)
             # TODO assuming 8x8 tiles
             # TODO handle wrapping
-            x_visible = obj.x > -8 and obj.x < 256 - 8
+            x_visible = obj.x > -8 and obj.x < 256 - 8  # TODO hardcoded tile size
             y_visible = obj.y > -8 and obj.y < 224  # TODO probably wrong
             if x_visible and y_visible:
-                tile_width = 8
-                tile_height = 8
+                bpp = 4  # Always 4bpp for objects
+                tile_width, tile_height = self.get_obj_dimensions(obj.size)
                 tile_size = (tile_width * tile_height * bpp) // 8
                 # Fetch Tile (character) - 16 bytes
                 tile_addr = (
                     self.oam_tiledata_address + obj.character * tile_size
                 )  # TODO figure out how to calc this ($2101)
-                # 16 bytes --> 8x8 pixels * 2bpp
-                tile_data = self.vram[tile_addr : tile_addr + tile_size]
-                self.draw_tile(renderer, obj, tile_data, bpp, obj.x, obj.y)
+                tile_data = self.vram[tile_addr:]
+                self.draw_tiles(
+                    renderer, obj, tile_data, tile_width, tile_height, bpp, obj.x, obj.y
+                )
+
+    def get_obj_dimensions(self, obj_size: int) -> tuple[int, int]:
+        """
+        000 =  8x8  and 16x16 sprites
+        001 =  8x8  and 32x32 sprites
+        010 =  8x8  and 64x64 sprites
+        011 = 16x16 and 32x32 sprites
+        100 = 16x16 and 64x64 sprites
+        101 = 32x32 and 64x64 sprites
+        110 = 16x32 and 32x64 sprites (Not officially supported)
+        111 = 16x32 and 32x32 sprites (Not officially supported)
+        """
+        table = (
+            ((8, 8), (16, 16)),
+            ((8, 8), (32, 32)),
+            ((8, 8), (64, 64)),
+            ((16, 16), (32, 32)),
+            ((16, 16), (64, 64)),
+            ((32, 32), (64, 64)),
+            ((16, 32), (32, 64)),
+            ((16, 32), (32, 32)),
+        )
+
+        return table[self.oam_base_size][obj_size]
 
 
 class OAM:
@@ -551,7 +637,8 @@ def main():
 
     # OAM base address 0xC000
     # OAM base size 3 == 16x16 and 32x32 sprites
-    ppu.obsel_set(0x66)
+    # ppu.obsel_set(0x66)
+    ppu.obsel_set(0x06)
 
     ppu.render()
 

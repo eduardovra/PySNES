@@ -357,15 +357,16 @@ class Ppu:
                 entry_addr = line + col
                 tile = Tilemap.from_buffer(self.vram, entry_addr)
                 if tile.priority == priority_selector:
-                    # Fetch Tile (character) - 16 bytes
-                    tile_width = 8
-                    tile_height = 8
-                    tile_size = (tile_width * tile_height * bpp) // 8
-                    tile_addr = bg.tiledata_addr + (tile.addr * tile_size)
-                    # 16 bytes --> 8x8 pixels * 2bpp
-                    tile_data = self.vram[tile_addr : tile_addr + tile_size]
                     self.draw_tiles(
-                        renderer, tile, tile_data, 8, 8, bpp, x_offset, y_offset
+                        renderer=renderer,
+                        bpp=bpp,
+                        x_offset=x_offset,
+                        y_offset=y_offset,
+                        tile=tile,
+                        tile_base_addr=bg.tiledata_addr,
+                        tile_width=8,
+                        tile_height=8,
+                        tile_addr=tile.addr,
                     )
 
                 x_offset += 8
@@ -377,13 +378,15 @@ class Ppu:
     def draw_tiles(
         self,
         renderer,
-        tile: Union[Tilemap, Object],
-        tile_data: bytes,
-        tile_width: int,
-        tile_height: int,
         bpp: int,
         x_offset: int,
         y_offset: int,
+        tile: Union[Tilemap, Object],
+        tile_base_addr: int,
+        tile_width: int,
+        tile_height: int,
+        tile_addr: Optional[int] = None,
+        tile_character: Optional[int] = None,
     ) -> None:
         """
         Determines the number of horizontal and vertical
@@ -394,7 +397,6 @@ class Ppu:
 
         for tile_v in range(0, tile_height // 8, 1):
             for tile_h in range(0, tile_width // 8, 1):
-                offset = tile_v << 4 | tile_h
                 if tile.h_flip:
                     x = x_offset + tile_width - 8 - tile_h * 8
                 else:
@@ -405,10 +407,17 @@ class Ppu:
                 else:
                     y = y_offset + tile_v * 8
 
+                if tile_character is not None:
+                    tile_addr = ((tile_character + tile_v << 4) & 0xF0) | (
+                        (tile_character + tile_h) & 0x0F
+                    )
+
+                tile_data = self.vram[tile_base_addr + tile_addr * tile_size :]  # type: ignore
+
                 self.draw_tile(
                     renderer,
                     tile,
-                    tile_data[offset * tile_size :],
+                    tile_data,
                     bpp,
                     x,
                     y,
@@ -491,20 +500,18 @@ class Ppu:
             x_visible = obj.x > -8 and obj.x < 256 - 8  # TODO hardcoded tile size
             y_visible = obj.y > -8 and obj.y < 224  # TODO probably wrong
             if x_visible and y_visible:
-                bpp = 4  # Always 4bpp for objects
                 tile_width, tile_height = self.get_obj_dimensions(obj.size)
-                tile_size = (tile_width * tile_height * bpp) // 8
-                # Fetch Tile (character) - 16 bytes
-                tile_addr = (
-                    self.oam_tiledata_address + obj.character * tile_size
-                )  # TODO figure out how to calc this ($2101)
-                tile_addr = (
-                    self.oam_tiledata_address
-                    + obj.character * 32  # Worked for 32x32, 16x16, 8x8 (4bpp)
-                )  # TODO why 32 ???
-                tile_data = self.vram[tile_addr:]
+
                 self.draw_tiles(
-                    renderer, obj, tile_data, tile_width, tile_height, bpp, obj.x, obj.y
+                    renderer=renderer,
+                    bpp=4,  # Always 4bpp for objects
+                    x_offset=obj.x,
+                    y_offset=obj.y,
+                    tile=obj,
+                    tile_base_addr=self.oam_tiledata_address,
+                    tile_width=tile_width,
+                    tile_height=tile_height,
+                    tile_character=obj.character,
                 )
 
     def get_obj_dimensions(self, obj_size: int) -> tuple[int, int]:

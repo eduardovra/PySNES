@@ -374,38 +374,6 @@ class Ppu:
 
             y_offset += 8
 
-    # fmt: off
-    TILE_MATRIX = {
-        8: {8: (0x00,)},
-        16: {
-            16: (
-                0x00,0x01,
-                0x10,0x11,
-            )
-        },
-        32: {
-            32: (
-                0x00,0x01,0x02,0x03,
-                0x10,0x11,0x12,0x13,
-                0x20,0x21,0x22,0x23,
-                0x30,0x31,0x32,0x33,
-            ),
-        },
-        64: {
-            64: (
-                0x00,0x01,0x02,0x03,0x04,0x05,0x06,0x07,
-                0x10,0x11,0x12,0x13,0x14,0x15,0x16,0x17,
-                0x20,0x21,0x22,0x23,0x24,0x25,0x26,0x27,
-                0x30,0x31,0x32,0x33,0x34,0x35,0x36,0x37,
-                0x40,0x41,0x42,0x43,0x44,0x45,0x46,0x47,
-                0x50,0x51,0x52,0x53,0x54,0x55,0x56,0x57,
-                0x60,0x61,0x62,0x63,0x64,0x65,0x66,0x67,
-                0x70,0x71,0x72,0x73,0x74,0x75,0x76,0x77,
-            )
-        },
-    }
-    # fmt: on
-
     def draw_tiles(
         self,
         renderer,
@@ -423,17 +391,28 @@ class Ppu:
         then call self.draw_tile to render them
         """
         tile_size = 8 * bpp  # TODO Why 8 ?
-        offsets = self.TILE_MATRIX[tile_width][tile_height]
 
-        for offset in offsets:
-            self.draw_tile(
-                renderer,
-                tile,
-                tile_data[offset * tile_size :],
-                bpp,
-                x_offset + (offset & 0xF) * 8,
-                y_offset + (offset >> 4) * 8,
-            )
+        for tile_v in range(0, tile_height // 8, 1):
+            for tile_h in range(0, tile_width // 8, 1):
+                offset = tile_v << 4 | tile_h
+                if tile.h_flip:
+                    x = x_offset + tile_width - 8 - tile_h * 8
+                else:
+                    x = x_offset + tile_h * 8
+
+                if tile.v_flip:
+                    y = y_offset + tile_height - 8 - tile_v * 8
+                else:
+                    y = y_offset + tile_v * 8
+
+                self.draw_tile(
+                    renderer,
+                    tile,
+                    tile_data[offset * tile_size :],
+                    bpp,
+                    x,
+                    y,
+                )
 
     def draw_tile(
         self,
@@ -641,11 +620,10 @@ def main():
     ppu.bg34nba_set(0x00)
 
     # OAM base address 0xC000
-
     # ppu.obsel_set(0x06)  # base size 0
-    ppu.obsel_set(0x26)  # base size 1
-    # ppu.obsel_set(0x46)  # base size 2
-    # ppu.obsel_set(0x66) # base size 3
+    # ppu.obsel_set(0x26)  # base size 1
+    ppu.obsel_set(0x46)  # base size 2
+    # ppu.obsel_set(0x66)  # base size 3
 
     ppu.render()
 

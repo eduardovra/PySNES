@@ -37,6 +37,8 @@ class Background:
     screen_size = 0
     screen_addr = 0
     tiledata_addr = 0
+    main_screen_enable = True
+    sub_screen_enable = True
 
 
 @dataclass
@@ -105,6 +107,8 @@ class Ppu:
         self._oamodd = 0
         self._oamdata = 0
         self.obsel_set(0)
+        self.oam_main_screen_enable = True
+        self.oam_sub_screen_enable = True
 
         # Background
         self.bgmode = 0x00
@@ -276,6 +280,20 @@ class Ppu:
         self.bg3.tiledata_addr = (data >> 0 & 15) << 12
         self.bg4.tiledata_addr = (data >> 4 & 15) << 12
 
+    def tm_set(self, data: int) -> None:
+        self.bg1.main_screen_enable = bool(data >> 0 & 1)
+        self.bg2.main_screen_enable = bool(data >> 1 & 1)
+        self.bg3.main_screen_enable = bool(data >> 2 & 1)
+        self.bg4.main_screen_enable = bool(data >> 3 & 1)
+        self.oam_main_screen_enable = bool(data >> 4 & 1)
+
+    def ts_set(self, data: int) -> None:
+        self.bg1.sub_screen_enable = bool(data >> 0 & 1)
+        self.bg2.sub_screen_enable = bool(data >> 1 & 1)
+        self.bg3.sub_screen_enable = bool(data >> 2 & 1)
+        self.bg4.sub_screen_enable = bool(data >> 3 & 1)
+        self.oam_sub_screen_enable = bool(data >> 4 & 1)
+
     def render(self) -> None:
         # Initialization
         SDL_Init(SDL_INIT_VIDEO)
@@ -313,14 +331,14 @@ class Ppu:
         BG4 tiles with priority 0
         """
         assert self.bgmode == 0
-        # self.draw_background(renderer, self.bg4, False)
-        # self.draw_background(renderer, self.bg3, False)
-        # self.draw_background(renderer, self.bg4, True)
-        # self.draw_background(renderer, self.bg3, True)
-        # self.draw_background(renderer, self.bg2, False)
+        self.draw_background(renderer, self.bg4, 2, False)
+        self.draw_background(renderer, self.bg3, 2, False)
+        self.draw_background(renderer, self.bg4, 2, True)
+        self.draw_background(renderer, self.bg3, 2, True)
+        self.draw_background(renderer, self.bg2, 2, False)
         self.draw_background(renderer, self.bg1, 2, False)
-        # self.draw_background(renderer, self.bg2, True)
-        # self.draw_background(renderer, self.bg1, True)
+        self.draw_background(renderer, self.bg2, 2, True)
+        self.draw_background(renderer, self.bg1, 2, True)
         self.draw_objects(renderer)
 
         SDL_RenderPresent(renderer)
@@ -342,6 +360,9 @@ class Ppu:
     def draw_background(
         self, renderer, bg: Background, bpp: int, priority_selector: bool
     ) -> None:
+        if not bg.main_screen_enable:
+            return
+
         x_offset, y_offset = 0, 0
         line_start = bg.screen_addr * 2  # Each addr corresponds to 2 bytes in VRAM
         line_end = line_start + 0x800  # Total size of BG in memory
@@ -631,6 +652,10 @@ def main():
     # ppu.obsel_set(0x26)  # base size 1
     ppu.obsel_set(0x46)  # base size 2
     # ppu.obsel_set(0x66)  # base size 3
+
+    # Main/Sub screen enable
+    ppu.tm_set(0x11)
+    ppu.ts_set(0x11)
 
     ppu.render()
 

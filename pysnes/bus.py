@@ -176,6 +176,14 @@ class Bus:
                     assert data == 0
                     return
 
+                if addr == 0x212C:  # TM
+                    self.ppu.tm_set(data)
+                    return
+
+                if addr == 0x212D:  # TS
+                    self.ppu.ts_set(data)
+                    return
+
                 if 0x2140 <= addr <= 0x2143:  # TODO ugly
                     # print(f"  CPU write [{hex(addr)}] <== {hex(data)}")
                     self.apu.ports_r[addr - 0x2140] = data

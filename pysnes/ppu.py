@@ -93,6 +93,8 @@ class Ppu:
         self.vmaddl = c_uint8(0x00)
         self.vmaddh = c_uint8(0x00)
 
+        self.inidisp_set(0)
+
         # CGRAM - Palette Data
         if cgram_dump is None:
             self.cgram = bytearray(512)
@@ -116,6 +118,11 @@ class Ppu:
         self.bg2 = Background()
         self.bg3 = Background()
         self.bg4 = Background()
+
+    def inidisp_set(self, data: int) -> None:
+        # TODO reset OAM addr if writing while on first blank line
+        self.display_brightness = data >> 0 & 15
+        self.display_disable = data >> 7 & 1
 
     @property
     def vmain(self) -> int:

@@ -526,7 +526,7 @@ class Instruction:
     def BIT(self, cpu, addr) -> int:
         """Test Memory Bits against Accumulator"""
         if cpu.emulation == 0 and cpu.P.M == 0:
-            data = cpu.bus[addr] | cpu.addr[addr + 1] << 8
+            data = cpu.bus[addr] | cpu.bus[addr + 1] << 8
             cpu.P.Z = 1 if (data & cpu.A) == 0 else 0
             if cpu.opcode != 0x89:  # Immediate
                 cpu.P.V = 1 if data & 0x4000 else 0

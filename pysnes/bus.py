@@ -1,5 +1,4 @@
-from ctypes import c_uint8
-
+from pysnes.controller import Controller
 from .rom import Rom
 from .cpu import Cpu
 from .apu import Apu
@@ -18,6 +17,8 @@ class Bus:
         self.pp1_apu_hw_registers = bytearray(0xFF)
         self.dma_ppu2_hw_registers = bytearray(0x44FF - 0x4200 + 1)
         self.extended_ram = bytearray(0x7FFFFF - 0x7E8000 + 1)
+        self.controller_port1 = Controller()
+        self.controller_port2 = Controller()
 
     def __getitem__(self, abs_addr: int) -> int:
         assert 0x000000 <= abs_addr <= 0xFFFFFF, "Address outside 24 bit range"
@@ -47,6 +48,14 @@ class Bus:
                         return self.apu.ports_w[addr - 0x2140]
                     return self.apu[addr - 0x204C]
                 return self.pp1_apu_hw_registers[addr - 0x2100]
+
+            elif addr == 0x4016:  # JOYSER0
+                return self.controller_port1.data()
+
+            elif addr == 0x4017:  # JOYSER1
+                data = 0x1C  # pins are connected to GND
+                return data | self.controller_port2.data()
+
             elif 0x4200 <= addr <= 0x44FF:
                 if addr == 0x4210:  # RDNMI - NMI Flag and 5A22 Version
                     data = (
@@ -108,6 +117,10 @@ class Bus:
                 # if 0x2121 <= addr <= 0x2122:
                 #    print("WRITE CGRAM REGISTER: %s = %s" % (hex(addr), hex(data)))
 
+                if addr == 0x2100:  # INIDISP
+                    self.ppu.inidisp_set(data)
+                    return
+
                 # OAM registers
                 if addr == 0x2101:  # OBSEL
                     self.ppu.obsel_set(data)
@@ -121,6 +134,9 @@ class Bus:
                 if addr == 0x2104:  # OAMDATA
                     self.ppu.oamdata = data
                     return
+
+                if addr == 0x2106:  # MOSAIC
+                    return  # TODO
 
                 if addr == 0x2105:  # BGMODE
                     assert data == 0
@@ -147,6 +163,23 @@ class Bus:
                     self.ppu.bg34nba_set(data)
                     return
 
+                if addr == 0x210D:  # BG1HOFS
+                    return  # TODO
+                if addr == 0x210E:  # BG1VOFS
+                    return  # TODO
+                if addr == 0x210F:  # BG2HOFS
+                    return  # TODO
+                if addr == 0x2110:  # BG2VOFS
+                    return  # TODO
+                if addr == 0x2111:  # BG3HOFS
+                    return  # TODO
+                if addr == 0x2112:  # BG3VOFS
+                    return  # TODO
+                if addr == 0x2113:  # BG4HOFS
+                    return  # TODO
+                if addr == 0x2114:  # BG4VOFS
+                    return  # TODO
+
                 # VRAM registers
                 if addr == 0x2115:  # VMAIN
                     self.ppu.vmain = data
@@ -164,6 +197,9 @@ class Bus:
                     self.ppu.vmdatah = data
                     return
 
+                if 0x211A <= addr <= 0x2120:  # M7SEL
+                    return  # TODO
+
                 # CGRAM registers
                 if addr == 0x2121:  # CGADD
                     self.ppu.cgadd = data
@@ -171,6 +207,9 @@ class Bus:
                 if addr == 0x2122:  # CGDATA
                     self.ppu.cgdata = data
                     return
+
+                if 0x2123 <= addr <= 0x2132:
+                    return  # TODO
 
                 if addr == 0x2133:  # SETINI
                     assert data == 0
@@ -188,9 +227,18 @@ class Bus:
                     # print(f"  CPU write [{hex(addr)}] <== {hex(data)}")
                     self.apu.ports_r[addr - 0x2140] = data
                     return
-                else:
-                    self.pp1_apu_hw_registers[addr - 0x2100] = data
-                    return
+                # else:
+                #    self.pp1_apu_hw_registers[addr - 0x2100] = data
+                #    return
+
+            elif addr == 0x4016:  # JOYSER0
+                self.controller_port1.latch(data & 1)
+                self.controller_port2.latch(data & 1)
+                return
+
+            elif addr == 0x4017:  # JOYSER1
+                return  # Writes to this addr are ignored
+
             elif 0x4200 <= addr <= 0x44FF:
                 if addr == 0x4200:  # NMITIMEN
                     self.cpu.status.hirq_enable = bool(data & 0x10)

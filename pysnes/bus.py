@@ -1,8 +1,8 @@
-from pysnes.controller import Controller
 from .rom import Rom
 from .cpu import Cpu
 from .apu import Apu
 from .ppu import Ppu
+from .controller import Controller
 
 
 class Bus:
@@ -110,12 +110,12 @@ class Bus:
 
         if bank == 0x00:
             if 0x2100 <= addr <= 0x21FF:
-                # if 0x2102 <= addr <= 0x2104:
-                #    print("WRITE OAM REGISTER: %s = %s" % (hex(addr), hex(data)))
-                # if 0x2115 <= addr <= 0x2119:
-                #    print("WRITE VRAM REGISTER: %s = %s" % (hex(addr), hex(data)))
-                # if 0x2121 <= addr <= 0x2122:
-                #    print("WRITE CGRAM REGISTER: %s = %s" % (hex(addr), hex(data)))
+                if 0x2102 <= addr <= 0x2104:
+                    print("WRITE OAM REGISTER: %s = %s" % (hex(addr), hex(data)))
+                if 0x2115 <= addr <= 0x2119:
+                    print("WRITE VRAM REGISTER: %s = %s" % (hex(addr), hex(data)))
+                if 0x2121 <= addr <= 0x2122:
+                    print("WRITE CGRAM REGISTER: %s = %s" % (hex(addr), hex(data)))
 
                 if addr == 0x2100:  # INIDISP
                     self.ppu.inidisp_set(data)
@@ -239,6 +239,15 @@ class Bus:
             elif addr == 0x4017:  # JOYSER1
                 return  # Writes to this addr are ignored
 
+            elif addr == 0x420B:  # MDMAEN
+                print("WRITE DMA REGISTER: %s = %s" % (hex(addr), hex(data)))
+                self.cpu.dma.mdmaen_set(data)
+                return
+
+            elif addr == 0x420C:  # HDMAEN
+                print("WRITE HDMA REGISTER: %s = %s" % (hex(addr), hex(data)))
+                return
+
             elif 0x4200 <= addr <= 0x44FF:
                 if addr == 0x4200:  # NMITIMEN
                     self.cpu.status.hirq_enable = bool(data & 0x10)
@@ -252,8 +261,12 @@ class Bus:
                             self.cpu.status.nmi_transition = True
                     self.cpu.status.nmi_enable = bool(data & 0x80)
                     return
+
                 if 0x4300 <= addr <= 0x43FF:
                     print("WRITE DMA REGISTER: %s = %s" % (hex(addr), hex(data)))
+                    self.cpu.dma[addr] = data
+                    return
+
                 self.dma_ppu2_hw_registers[addr - 0x4200] = data
                 return
 

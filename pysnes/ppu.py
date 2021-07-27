@@ -92,6 +92,8 @@ class Ppu:
         self.vmain = 0x00
         self.vmaddl = c_uint8(0x00)
         self.vmaddh = c_uint8(0x00)
+        self._vmdatal = c_uint8(0x00)
+        self._vmdatah = c_uint8(0x00)
 
         self.inidisp_set(0)
 
@@ -144,7 +146,7 @@ class Ppu:
     @vmdatal.setter
     def vmdatal(self, data: int) -> None:
         self._vmdatal = c_uint8(data)
-        if self.vmain_addr_increment_mode:
+        if not self.vmain_addr_increment_mode:
             self.write_vram(data)
 
     @property
@@ -154,13 +156,16 @@ class Ppu:
     @vmdatah.setter
     def vmdatah(self, data: int) -> None:
         self._vmdatah = c_uint8(data)
-        if not self.vmain_addr_increment_mode:
+        if self.vmain_addr_increment_mode:
             self.write_vram(data)
 
     def write_vram(self, data: int) -> None:
         base_addr = (self.vmaddl.value | self.vmaddh.value << 8) * 2
         self.vram[base_addr + 0] = self._vmdatal.value
         self.vram[base_addr + 1] = self._vmdatah.value
+        print(
+            f"WRITE VRAM MEMORY {hex(base_addr)} = {hex(self._vmdatal.value)} {hex(base_addr+1)} = {hex(self._vmdatah.value)}"
+        )
         self.increment_vmadd()
 
     def increment_vmadd(self) -> None:

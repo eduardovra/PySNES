@@ -2,6 +2,7 @@ from typing import TYPE_CHECKING
 from dataclasses import dataclass
 
 from .instructions import InstructionSet
+from .dma import DMA
 
 if TYPE_CHECKING:
     from .bus import Bus
@@ -124,6 +125,7 @@ class Cpu:
 
     def attach(self, bus: "Bus") -> None:
         self.bus = bus
+        self.dma = DMA(bus)  # TODO Ugly
 
     def tick(self) -> int:
         self.ticks += 1

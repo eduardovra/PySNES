@@ -7,6 +7,7 @@ from .bus import Bus
 from .cpu import Cpu
 from .apu import Apu
 from .ppu import Ppu
+from .controller import Controller
 
 
 class PySNES:
@@ -15,10 +16,10 @@ class PySNES:
         self.apu = Apu()
         self.cpu = Cpu(rom.hardware_vectors)
         self.ppu = Ppu()
-        bus = Bus(rom, self.cpu, self.apu, self.ppu)
+        self.controllers = [Controller(), Controller()]
+        bus = Bus(rom, self.cpu, self.apu, self.ppu, self.controllers)
         self.cpu.attach(bus)
         self.ticks = 0
-        self.pressed_keys = set()
         self.setup_sdl()
 
     def setup_sdl(self) -> None:
@@ -51,11 +52,11 @@ class PySNES:
                 self.teardown_sdl()
                 return True
             elif self.event.type == SDL_KEYUP:
-                self.pressed_keys.remove(self.event.key.keysym.sym)
-                print(self.pressed_keys)
+                controller = self.controllers[0]
+                controller.pressed_keys.remove(self.event.key.keysym.sym)
             elif self.event.type == SDL_KEYDOWN:
-                self.pressed_keys.add(self.event.key.keysym.sym)
-                print(self.pressed_keys)
+                controller = self.controllers[0]
+                controller.pressed_keys.add(self.event.key.keysym.sym)
 
         # To determine the exact length of any CPU instruction,
         # you must examine its behavior for each cycle,
@@ -74,10 +75,10 @@ class PySNES:
 
 def main():
     rom = "roms/test_oam.smc"
-    # rom = "snes_oam_test/1-random.smc"
-    # rom = "snes_oam_test/2-low.smc"
-    # rom = "snes_adc_sbc/test_adc.smc"
-    # rom = "Super Mario World (U) [!].smc"
+    # rom = "roms/snes_oam_test/1-random.smc"
+    # rom = "roms/snes_oam_test/2-low.smc"
+    # rom = "roms/snes_adc_sbc/test_adc.smc"
+    # rom = "roms/Super Mario World (U) [!].smc"
     pysnes = PySNES(rom)
     while not pysnes.tick():
         pass

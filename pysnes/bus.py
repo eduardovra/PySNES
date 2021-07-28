@@ -1,3 +1,5 @@
+from typing import List
+
 from .rom import Rom
 from .cpu import Cpu
 from .apu import Apu
@@ -6,8 +8,9 @@ from .controller import Controller
 
 
 class Bus:
-    # TODO consider banks
-    def __init__(self, rom: Rom, cpu: Cpu, apu: Apu, ppu: Ppu) -> None:
+    def __init__(
+        self, rom: Rom, cpu: Cpu, apu: Apu, ppu: Ppu, controllers: List[Controller]
+    ) -> None:
         self.rom = rom  # LoROM section (program memory)
         self.cpu = cpu
         self.apu = apu  # Sound system [0x2140-0x217F]
@@ -17,8 +20,7 @@ class Bus:
         self.pp1_apu_hw_registers = bytearray(0xFF)
         self.dma_ppu2_hw_registers = bytearray(0x44FF - 0x4200 + 1)
         self.extended_ram = bytearray(0x7FFFFF - 0x7E8000 + 1)
-        self.controller_port1 = Controller()
-        self.controller_port2 = Controller()
+        self.controller_port1, self.controller_port2 = controllers
 
     def __getitem__(self, abs_addr: int) -> int:
         assert 0x000000 <= abs_addr <= 0xFFFFFF, "Address outside 24 bit range"
@@ -47,7 +49,7 @@ class Bus:
                         # )
                         return self.apu.ports_w[addr - 0x2140]
                     return self.apu[addr - 0x204C]
-                return self.pp1_apu_hw_registers[addr - 0x2100]
+                # return self.pp1_apu_hw_registers[addr - 0x2100]
 
             elif addr == 0x4016:  # JOYSER0
                 return self.controller_port1.data()

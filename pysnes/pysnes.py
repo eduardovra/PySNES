@@ -19,18 +19,23 @@ class PySNES:
         """
         Process one frame
         """
-        if self.cpu.PC == 0xE4A9:
+        # if self.cpu.PC == 0x0181EB:
+        if self.ticks == 150000:
             print("++++ BREAK ++++")
             self.ppu.render()  # Render frame
             return True
 
+        # To determine the exact length of any CPU instruction,
+        # you must examine its behavior for each cycle,
+        # and count 6, 8, or 12 master cycles as appropriate.
         cycles = self.cpu.tick()
         self.apu.tick()
+        self.ppu.tick()
 
         # TODO tick the same number of cycles on the other components (PPU, Timer, etc)
         # TODO Sleep to keep limit frequency on 60Hz
 
-        # self.ticks += 1
+        self.ticks += 1
         # return self.ticks > 10000000
         return False
 

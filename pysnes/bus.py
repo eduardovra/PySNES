@@ -110,10 +110,10 @@ class Bus:
 
         if bank == 0x00:
             if 0x2100 <= addr <= 0x21FF:
-                if 0x2102 <= addr <= 0x2104:
-                    print("WRITE OAM REGISTER: %s = %s" % (hex(addr), hex(data)))
-                if 0x2115 <= addr <= 0x2119:
-                    print("WRITE VRAM REGISTER: %s = %s" % (hex(addr), hex(data)))
+                # if 0x2102 <= addr <= 0x2104:
+                #    print("WRITE OAM REGISTER: %s = %s" % (hex(addr), hex(data)))
+                # if 0x2115 <= addr <= 0x2119:
+                #    print("WRITE VRAM REGISTER: %s = %s" % (hex(addr), hex(data)))
                 if 0x2121 <= addr <= 0x2122:
                     print("WRITE CGRAM REGISTER: %s = %s" % (hex(addr), hex(data)))
 
@@ -208,12 +208,8 @@ class Bus:
                     self.ppu.cgdata = data
                     return
 
-                if 0x2123 <= addr <= 0x2132:
+                if 0x2123 <= addr <= 0x212B:
                     return  # TODO
-
-                if addr == 0x2133:  # SETINI
-                    assert data == 0
-                    return
 
                 if addr == 0x212C:  # TM
                     self.ppu.tm_set(data)
@@ -221,6 +217,13 @@ class Bus:
 
                 if addr == 0x212D:  # TS
                     self.ppu.ts_set(data)
+                    return
+
+                if 0x212E <= addr <= 0x2132:
+                    return  # TODO
+
+                if addr == 0x2133:  # SETINI
+                    assert data == 0
                     return
 
                 if 0x2140 <= addr <= 0x2143:  # TODO ugly
@@ -240,12 +243,12 @@ class Bus:
                 return  # Writes to this addr are ignored
 
             elif addr == 0x420B:  # MDMAEN
-                print("WRITE DMA REGISTER: %s = %s" % (hex(addr), hex(data)))
+                # print("WRITE DMA REGISTER: %s = %s" % (hex(addr), hex(data)))
                 self.cpu.dma.mdmaen_set(data)
                 return
 
             elif addr == 0x420C:  # HDMAEN
-                print("WRITE HDMA REGISTER: %s = %s" % (hex(addr), hex(data)))
+                # print("WRITE HDMA REGISTER: %s = %s" % (hex(addr), hex(data)))
                 return
 
             elif 0x4200 <= addr <= 0x44FF:
@@ -263,7 +266,7 @@ class Bus:
                     return
 
                 if 0x4300 <= addr <= 0x43FF:
-                    print("WRITE DMA REGISTER: %s = %s" % (hex(addr), hex(data)))
+                    # print("WRITE DMA REGISTER: %s = %s" % (hex(addr), hex(data)))
                     self.cpu.dma[addr] = data
                     return
 

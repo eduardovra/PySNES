@@ -20,7 +20,6 @@ class Channel:
     transfer_size: int = 0
 
     def do_transfer(self) -> None:
-        print(self)
         # source_address == 0x8000
         # source_bank == 0x03
         # target_address == 0x18 --> $2118 --> VRAM Write

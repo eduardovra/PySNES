@@ -163,9 +163,6 @@ class Ppu:
         base_addr = (self.vmaddl.value | self.vmaddh.value << 8) * 2
         self.vram[base_addr + 0] = self._vmdatal.value
         self.vram[base_addr + 1] = self._vmdatah.value
-        print(
-            f"WRITE VRAM MEMORY {hex(base_addr)} = {hex(self._vmdatal.value)} {hex(base_addr+1)} = {hex(self._vmdatah.value)}"
-        )
         self.increment_vmadd()
 
     def increment_vmadd(self) -> None:
@@ -306,6 +303,19 @@ class Ppu:
         self.bg4.sub_screen_enable = bool(data >> 3 & 1)
         self.oam_sub_screen_enable = bool(data >> 4 & 1)
 
+    def tick(self) -> None:
+        """
+        The SNES master clock runs at about 21.477MHz NTSC
+        The SNES runs 1 scanline every 1364 master cycles
+        Frames are 262 scanlines in non-interlace mode
+
+        For 60 frames/s:
+        Each frame should be drawn every 16.6ms
+        Each scanline should be drawn every 63.5us
+
+
+        """
+
     def render(self) -> None:
         # Initialization
         SDL_Init(SDL_INIT_VIDEO)
@@ -389,6 +399,8 @@ class Ppu:
                 # Parse Tilemap entry - 2 bytes
                 entry_addr = line + col
                 tile = Tilemap.from_buffer(self.vram, entry_addr)
+                if tile.palette != 0:
+                    print(tile)
                 if tile.priority == priority_selector:
                     self.draw_tiles(
                         renderer=renderer,
@@ -396,7 +408,7 @@ class Ppu:
                         x_offset=x_offset,
                         y_offset=y_offset,
                         tile=tile,
-                        tile_base_addr=bg.tiledata_addr,
+                        tile_base_addr=bg.tiledata_addr * 2,
                         tile_width=8,
                         tile_height=8,
                         tile_addr=tile.addr,
@@ -655,7 +667,7 @@ def main():
     ppu.bg1sc_set(0)
     ppu.bg2sc_set(0)
     ppu.bg12nba_set(
-        0x02
+        0x01
     )  # TODO I'm not sure about this number, have to check when running the real ROM
     ppu.bg34nba_set(0x00)
 

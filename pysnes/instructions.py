@@ -1544,14 +1544,14 @@ class Instruction:
         """OR Accumulator with Memory"""
         if cpu.emulation == 0 and cpu.P.M == 0:
             value = cpu.bus[addr] | cpu.bus[addr + 1] << 8
-            result = cpu.A | value
-            cpu.P.N = 1 if result & 0x8000 else 0
-            cpu.P.Z = 1 if (result & 0xFFFF) == 0 else 0
+            cpu.A = cpu.A | value
+            cpu.P.N = 1 if cpu.A & 0x8000 else 0
+            cpu.P.Z = 1 if (cpu.A & 0xFFFF) == 0 else 0
         else:
             value = cpu.bus[addr]
-            result = (cpu.A & 0xFF) | value
-            cpu.P.N = 1 if result & 0x80 else 0
-            cpu.P.Z = 1 if (result & 0xFF) == 0 else 0
+            cpu.A = (cpu.A & 0xFF00) | (cpu.A | value)
+            cpu.P.N = 1 if cpu.A & 0x80 else 0
+            cpu.P.Z = 1 if (cpu.A & 0xFF) == 0 else 0
 
         return 0
 
@@ -1560,7 +1560,7 @@ class InstructionSet:
     def __init__(self, cpu) -> None:
         self.cpu = cpu
         self.load_instructions()
-        self.print_instructions = False
+        self.print_instructions = True
         self.trace = deque(maxlen=100)
 
     def load_instructions(self) -> None:

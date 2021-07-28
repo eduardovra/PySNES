@@ -399,8 +399,6 @@ class Ppu:
                 # Parse Tilemap entry - 2 bytes
                 entry_addr = line + col
                 tile = Tilemap.from_buffer(self.vram, entry_addr)
-                if tile.palette != 0:
-                    print(tile)
                 if tile.priority == priority_selector:
                     self.draw_tiles(
                         renderer=renderer,
@@ -436,7 +434,7 @@ class Ppu:
         """
         Determines the number of horizontal and vertical
         tiles to be drawn accordingly to width and height,
-        then call self.draw_tile to render them
+        then calls self.draw_tile to render them
         """
         tile_size = 8 * bpp  # TODO Why 8 ?
 

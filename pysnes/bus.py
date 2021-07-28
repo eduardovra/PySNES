@@ -112,10 +112,10 @@ class Bus:
             if 0x2100 <= addr <= 0x21FF:
                 # if 0x2102 <= addr <= 0x2104:
                 #    print("WRITE OAM REGISTER: %s = %s" % (hex(addr), hex(data)))
-                # if 0x2115 <= addr <= 0x2119:
-                #    print("WRITE VRAM REGISTER: %s = %s" % (hex(addr), hex(data)))
-                if 0x2121 <= addr <= 0x2122:
-                    print("WRITE CGRAM REGISTER: %s = %s" % (hex(addr), hex(data)))
+                if 0x2115 <= addr <= 0x2119:
+                    print("WRITE VRAM REGISTER: %s = %s" % (hex(addr), hex(data)))
+                # if 0x2121 <= addr <= 0x2122:
+                #    print("WRITE CGRAM REGISTER: %s = %s" % (hex(addr), hex(data)))
 
                 if addr == 0x2100:  # INIDISP
                     self.ppu.inidisp_set(data)

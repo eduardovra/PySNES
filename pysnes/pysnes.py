@@ -1,3 +1,7 @@
+from ctypes import byref
+
+from sdl2 import *
+
 from .rom import Rom
 from .bus import Bus
 from .cpu import Cpu
@@ -14,29 +18,57 @@ class PySNES:
         bus = Bus(rom, self.cpu, self.apu, self.ppu)
         self.cpu.attach(bus)
         self.ticks = 0
+        self.pressed_keys = set()
+        self.setup_sdl()
+
+    def setup_sdl(self) -> None:
+        # Initialization
+        SDL_Init(SDL_INIT_VIDEO)
+        self.window = SDL_CreateWindow(b"PySNES", 0, 0, 768, 768, SDL_WINDOW_SHOWN)
+        self.renderer = SDL_CreateRenderer(self.window, -1, SDL_RENDERER_ACCELERATED)
+        SDL_SetRenderDrawBlendMode(self.renderer, SDL_BLENDMODE_BLEND)
+        SDL_RenderSetScale(self.renderer, 2, 2)
+        self.event = SDL_Event()
+
+    def teardown_sdl(self) -> None:
+        SDL_DestroyRenderer(self.renderer)
+        SDL_DestroyWindow(self.window)
+        SDL_Quit()
 
     def tick(self):
         """
         Process one frame
         """
         # if self.cpu.PC == 0x0181EB:
-        if self.ticks == 150000:
-            print("++++ BREAK ++++")
-            self.ppu.render()  # Render frame
-            return True
+        # if self.ticks == 150000:
+        #    print("++++ BREAK ++++")
+        #    self.ppu.render()  # Render frame
+        #    return True
+
+        # Capture inputs
+        while SDL_PollEvent(byref(self.event)) != 0:
+            if self.event.type == SDL_QUIT:
+                self.teardown_sdl()
+                return True
+            elif self.event.type == SDL_KEYUP:
+                self.pressed_keys.remove(self.event.key.keysym.sym)
+                print(self.pressed_keys)
+            elif self.event.type == SDL_KEYDOWN:
+                self.pressed_keys.add(self.event.key.keysym.sym)
+                print(self.pressed_keys)
 
         # To determine the exact length of any CPU instruction,
         # you must examine its behavior for each cycle,
         # and count 6, 8, or 12 master cycles as appropriate.
         cycles = self.cpu.tick()
         self.apu.tick()
-        self.ppu.tick()
+        self.ppu.tick(12 * 5, self.renderer)
 
         # TODO tick the same number of cycles on the other components (PPU, Timer, etc)
-        # TODO Sleep to keep limit frequency on 60Hz
+        # TODO Sleep to limit frequency on 60Hz
 
         self.ticks += 1
-        # return self.ticks > 10000000
+
         return False
 
 

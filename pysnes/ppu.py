@@ -7,32 +7,7 @@ from ctypes import (
 from typing import Optional, Union
 from dataclasses import dataclass
 
-from sdl2 import (
-    SDL_CreateWindow,
-    SDL_CreateRenderer,
-    SDL_INIT_VIDEO,
-    SDL_WINDOW_SHOWN,
-    SDL_RENDERER_ACCELERATED,
-    SDL_Event,
-    SDL_PollEvent,
-    SDL_QUIT,
-    SDL_KEYDOWN,
-    SDL_KEYUP,
-    # SDL_KeyboardEvent,
-    SDL_Init,
-    SDL_Quit,
-    SDL_DestroyRenderer,
-    SDL_RenderClear,
-    SDL_SetRenderDrawColor,
-    SDL_DestroyWindow,
-    SDL_RenderDrawPoint,
-    SDL_RenderPresent,
-    SDL_SetRenderDrawBlendMode,
-    SDL_RenderSetScale,
-    SDL_BLENDMODE_BLEND,
-    SDL_ALPHA_OPAQUE,
-    SDL_ALPHA_TRANSPARENT,
-)
+from sdl2 import *
 
 
 @dataclass
@@ -123,6 +98,9 @@ class Ppu:
         self.bg2 = Background()
         self.bg3 = Background()
         self.bg4 = Background()
+
+        # Clock
+        self.ticks = 0
 
     def inidisp_set(self, data: int) -> None:
         # TODO reset OAM addr if writing while on first blank line
@@ -306,7 +284,7 @@ class Ppu:
         self.bg4.sub_screen_enable = bool(data >> 3 & 1)
         self.oam_sub_screen_enable = bool(data >> 4 & 1)
 
-    def tick(self) -> None:
+    def tick(self, cycles: int, renderer) -> None:
         """
         The SNES master clock runs at about 21.477MHz NTSC
         The SNES runs 1 scanline every 1364 master cycles
@@ -315,44 +293,13 @@ class Ppu:
         For 60 frames/s:
         Each frame should be drawn every 16.6ms
         Each scanline should be drawn every 63.5us
-
-
         """
+        self.ticks += 1
+        if self.ticks >= 1364:
+            self.ticks = 0
+            self.render(renderer)
 
-    def render(self) -> None:
-        # Initialization
-        SDL_Init(SDL_INIT_VIDEO)
-        window = SDL_CreateWindow(b"PySNES", 0, 0, 768, 768, SDL_WINDOW_SHOWN)
-        renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED)
-        SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND)
-        SDL_RenderSetScale(renderer, 2, 2)
-
-        pressed_keys = set()
-
-        # Loop
-        running = True
-        event = SDL_Event()
-        while running:
-            # Capture inputs
-            while SDL_PollEvent(byref(event)) != 0:
-                if event.type == SDL_QUIT:
-                    running = False
-                    break
-                elif event.type == SDL_KEYUP:
-                    pressed_keys.remove(event.key.keysym.sym)
-                    print(pressed_keys)
-                elif event.type == SDL_KEYDOWN:
-                    pressed_keys.add(event.key.keysym.sym)
-                    print(pressed_keys)
-            # Render screen
-            self.render_screen(renderer)
-
-        # Housekeeping
-        SDL_DestroyRenderer(renderer)
-        SDL_DestroyWindow(window)
-        SDL_Quit()
-
-    def render_screen(self, renderer) -> None:
+    def render(self, renderer) -> None:
         # Default background color
         self.set_color(renderer, 2, 0, 0)
         SDL_RenderClear(renderer)

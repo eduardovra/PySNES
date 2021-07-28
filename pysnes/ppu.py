@@ -16,6 +16,9 @@ from sdl2 import (
     SDL_Event,
     SDL_PollEvent,
     SDL_QUIT,
+    SDL_KEYDOWN,
+    SDL_KEYUP,
+    # SDL_KeyboardEvent,
     SDL_Init,
     SDL_Quit,
     SDL_DestroyRenderer,
@@ -25,11 +28,11 @@ from sdl2 import (
     SDL_RenderDrawPoint,
     SDL_RenderPresent,
     SDL_SetRenderDrawBlendMode,
+    SDL_RenderSetScale,
     SDL_BLENDMODE_BLEND,
     SDL_ALPHA_OPAQUE,
     SDL_ALPHA_TRANSPARENT,
 )
-from sdl2.render import SDL_RenderSetScale
 
 
 @dataclass
@@ -324,6 +327,32 @@ class Ppu:
         SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND)
         SDL_RenderSetScale(renderer, 2, 2)
 
+        pressed_keys = set()
+
+        # Loop
+        running = True
+        event = SDL_Event()
+        while running:
+            # Capture inputs
+            while SDL_PollEvent(byref(event)) != 0:
+                if event.type == SDL_QUIT:
+                    running = False
+                    break
+                elif event.type == SDL_KEYUP:
+                    pressed_keys.remove(event.key.keysym.sym)
+                    print(pressed_keys)
+                elif event.type == SDL_KEYDOWN:
+                    pressed_keys.add(event.key.keysym.sym)
+                    print(pressed_keys)
+            # Render screen
+            self.render_screen(renderer)
+
+        # Housekeeping
+        SDL_DestroyRenderer(renderer)
+        SDL_DestroyWindow(window)
+        SDL_Quit()
+
+    def render_screen(self, renderer) -> None:
         # Default background color
         self.set_color(renderer, 2, 0, 0)
         SDL_RenderClear(renderer)
@@ -364,20 +393,6 @@ class Ppu:
         self.draw_objects(renderer)
 
         SDL_RenderPresent(renderer)
-
-        # Loop
-        running = True
-        event = SDL_Event()
-        while running:
-            while SDL_PollEvent(byref(event)) != 0:
-                if event.type == SDL_QUIT:
-                    running = False
-                    break
-
-        # Housekeeping
-        SDL_DestroyRenderer(renderer)
-        SDL_DestroyWindow(window)
-        SDL_Quit()
 
     def draw_background(
         self, renderer, bg: Background, bpp: int, priority_selector: bool

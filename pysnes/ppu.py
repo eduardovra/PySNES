@@ -1,7 +1,6 @@
 from ctypes import (
     c_uint16,
     c_uint8,
-    byref,
     LittleEndianStructure,
 )
 from typing import Optional, Union
@@ -555,7 +554,7 @@ class Ppu:
                     x_offset=obj.x,
                     y_offset=obj.y,
                     tile=obj,
-                    tile_base_addr=self.oam_tiledata_address,
+                    tile_base_addr=self.oam_tiledata_address * 2,  # Indexed in words
                     tile_width=tile_width,
                     tile_height=tile_height,
                     tile_character=obj.character,
@@ -674,10 +673,10 @@ def main():
     ppu.bg34nba_set(0x00)
 
     # OAM base address 0xC000
-    # ppu.obsel_set(0x06)  # base size 0
-    # ppu.obsel_set(0x26)  # base size 1
-    ppu.obsel_set(0x46)  # base size 2
-    # ppu.obsel_set(0x66)  # base size 3
+    # ppu.obsel_set(0x03)  # base size 0
+    # ppu.obsel_set(0x23)  # base size 1
+    ppu.obsel_set(0x43)  # base size 2
+    # ppu.obsel_set(0x63)  # base size 3
 
     # Main/Sub screen enable
     ppu.tm_set(0x11)

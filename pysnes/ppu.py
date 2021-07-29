@@ -255,10 +255,10 @@ class Ppu:
         self.oam_next()
 
     def oam_index(self) -> int:
+        addr = (self._oamadd * 2) + self._oamodd
         if self._oamadd & 0x100:
-            return 0x200 | self._oamadd & 0x1F
-        else:
-            return (self._oamadd * 2) + self._oamodd
+            return 0x200 | addr & 0x1F
+        return addr
 
     def oam_next(self) -> None:
         self._oamodd ^= 1

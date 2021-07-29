@@ -239,6 +239,15 @@ class Bus:
                     assert data == 0
                     return
 
+                if addr == 0x2134:  # MPYL
+                    return  # Not writable
+                if addr == 0x2135:  # MPYM
+                    return  # Not writable
+                if addr == 0x2136:  # MPYH
+                    return  # Not writable
+                if addr == 0x2137:  # SLHV
+                    return  # Not writable
+
                 if 0x2140 <= addr <= 0x2143:  # TODO ugly
                     # print(f"  CPU write [{hex(addr)}] <== {hex(data)}")
                     self.apu.ports_r[addr - 0x2140] = data
@@ -290,6 +299,14 @@ class Bus:
         if 0x7E8000 <= abs_addr <= 0x7FFFFF:
             self.extended_ram[abs_addr - 0x7E8000] = data
             return
+
+        # TODO Just for testing the ROM
+        print(
+            "\033[93mWritting unmamped memory region: 0x{:06X} = 0x{:02X}\033[0m".format(
+                abs_addr, data
+            )
+        )
+        return
 
         raise RuntimeError(
             "Error writting unmamped memory region: 0x{:06X}".format(abs_addr)

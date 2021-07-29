@@ -1619,9 +1619,5 @@ class InstructionSet:
         if self.print_instructions:
             print(debug_str)
 
-        if self.cpu.current_instruction_PC == 0xE4A9:
-            # self.print_instructions = True
-            print("BREAKPOINT")
-
         cycles = instruction(self.cpu)
         return cycles

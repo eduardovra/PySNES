@@ -17,7 +17,6 @@ class Bus:
         self.ppu = ppu
         self.low_ram = bytearray(0x2000)
         self.high_ram = bytearray(0xE000)
-        self.pp1_apu_hw_registers = bytearray(0xFF)
         self.dma_ppu2_hw_registers = bytearray(0x44FF - 0x4200 + 1)
         self.extended_ram = bytearray(0x7FFFFF - 0x7E8000 + 1)
         self.controller_port1, self.controller_port2 = controllers
@@ -61,7 +60,6 @@ class Bus:
                         # )
                         return self.apu.ports_w[addr - 0x2140]
                     return self.apu[addr - 0x204C]
-                # return self.pp1_apu_hw_registers[addr - 0x2100]
 
             elif addr == 0x4016:  # JOYSER0
                 return self.controller_port1.data()
@@ -245,9 +243,6 @@ class Bus:
                     # print(f"  CPU write [{hex(addr)}] <== {hex(data)}")
                     self.apu.ports_r[addr - 0x2140] = data
                     return
-                # else:
-                #    self.pp1_apu_hw_registers[addr - 0x2100] = data
-                #    return
 
             elif addr == 0x4016:  # JOYSER0
                 self.controller_port1.latch(data & 1)

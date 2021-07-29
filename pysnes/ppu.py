@@ -57,11 +57,15 @@ class Ppu:
 
     def __init__(
         self,
+        cpu,
         *,
         vram_dump: Optional[bytes] = None,
         cgram_dump: Optional[bytes] = None,
         oam_dump: Optional[bytes] = None,
     ) -> None:
+        # CPU ref is used to control NMI line on V-Blank
+        self.cpu = cpu
+
         # VRAM - Video RAM
         if vram_dump is None:
             self.vram = bytearray(64 * 1024)
@@ -101,6 +105,11 @@ class Ppu:
 
         # Clock
         self.ticks = 0
+        self.master_cycles = 0
+
+        self.field = 0  # 0 for even frames, 1 for odd frames
+        self.h_counter = 0
+        self.v_counter = 0
 
     def inidisp_set(self, data: int) -> None:
         # TODO reset OAM addr if writing while on first blank line
@@ -183,6 +192,17 @@ class Ppu:
         self.cgram[base_addr + 1] = data & 0x7F
         self._cgadd.value += 1
         self._cgdata = None
+
+    @property
+    def stat78(self) -> int:
+        # TODO implement the other fields
+        return self.field << 7
+
+    @property
+    def slhv(self) -> int:
+        """When read, the H/V counter (as read from $213C and $213D) will be latched to
+        the current X and Y position if bit 7 of $4201 is set. The data actually read is open bus."""
+        return 0  # TODO
 
     def obsel_set(self, data: int) -> None:
         """OBSEL - Object Size and Character Address"""
@@ -284,20 +304,42 @@ class Ppu:
         self.bg4.sub_screen_enable = bool(data >> 3 & 1)
         self.oam_sub_screen_enable = bool(data >> 4 & 1)
 
-    def tick(self, cycles: int, renderer) -> None:
+    def tick(self, master_cycles: int, renderer) -> None:
         """
         The SNES master clock runs at about 21.477MHz NTSC
         The SNES runs 1 scanline every 1364 master cycles
         Frames are 262 scanlines in non-interlace mode
+        There are always 340 dots ('pixels') per scanline
 
         For 60 frames/s:
         Each frame should be drawn every 16.6ms
         Each scanline should be drawn every 63.5us
         """
         self.ticks += 1
-        if self.ticks >= 1364:
-            self.ticks = 0
+        self.master_cycles += master_cycles
+        self.h_counter = self.master_cycles // 4  # Each dot takes ~4 master cycles
+
+        # Wrap H counter
+        if self.h_counter > 339:
+            # H counter range is 0-339, but visible part is 22-277
+            self.master_cycles = 0
+            self.h_counter = 0
+            self.v_counter += 1
+
+        # Wrap V counter
+        if self.v_counter == 262:
+            # V counter range is 0-261, but visible part is 1-224
+            self.v_counter = 0
+            # Flip even/odd frame
+            self.field ^= 1
             self.render(renderer)
+
+        # H-Blank is 62 dots
+        self.cpu.status.h_blank_on = not (22 <= self.h_counter <= 277)
+        # V-Blank is 38 scanlines
+        self.cpu.status.v_blank_on = not (1 <= self.v_counter <= 224)
+        # NMI line
+        self.cpu.status.nmi_line = self.cpu.status.v_blank_on
 
     def render(self, renderer) -> None:
         # Default background color

@@ -21,8 +21,10 @@ class CpuStatus:
     nmi_hold: bool = False
     nmi_valid: bool = False
 
-    v_blank_ticks: int = 0
-    v_bank_on: bool = False
+    nmi_line_last = False
+
+    h_blank_on: bool = False
+    v_blank_on: bool = False
 
     @property
     def interrupt_pending(self) -> bool:
@@ -130,26 +132,12 @@ class Cpu:
     def tick(self) -> int:
         self.ticks += 1
 
-        # Update the NMI line to reflect the v-bank period
-        # I still don't know how to determine the correct
-        # moment to trigger the line, so I'm establishing
-        # something random:
-        # 10000 ticks for v-bank off, 1000 ticks v-bank on
-        if self.status.v_blank_ticks:
-            self.status.v_blank_ticks -= 1
-        else:
-            if self.status.v_bank_on:
-                # Transition to low
-                self.status.v_bank_on = False
-                self.status.nmi_line = False
-                self.status.v_blank_ticks = 10000
-            else:
-                # Transition to high
-                self.status.v_bank_on = True
-                self.status.nmi_line = True
-                self.status.v_blank_ticks = 1000
-                if self.status.nmi_enable:
-                    self.status.nmi_transition = True
+        # Read NMI line
+        if self.status.nmi_line and not self.status.nmi_line_last:
+            # Transition to high
+            if self.status.nmi_enable:
+                self.status.nmi_transition = True
+        self.status.nmi_line_last = self.status.nmi_line
 
         # Test for NMI rising edge and trigger interrupt on next iteration
         if self.status.nmi_transition:

@@ -35,11 +35,23 @@ class Bus:
         if bank == 0x00:
             # TODO dont know how to map the other banks yet
             if 0x2100 <= addr <= 0x21FF:
+                if addr == 0x2137:  # SLHV
+                    return self.ppu.slhv
+
                 if addr == 0x2138:  # # OAMDATAREAD
                     return self.ppu.oamdata
 
                 if addr == 0x213B:  # CGDATAREAD
                     return self.ppu.cgdata
+
+                if addr == 0x213C:  # OPHCT
+                    return self.ppu.h_counter
+
+                if addr == 0x213D:  # OPVCT
+                    return self.ppu.v_counter
+
+                if addr == 0x213F:  # STAT78
+                    return self.ppu.stat78
 
                 if 0x2140 <= addr <= 0x217F:
                     # 0x2140 - 0x204C == 0xF4 [addr of PORT0]
@@ -75,7 +87,8 @@ class Bus:
                         (
                             1 << 5
                         )  # This bit is unmmaped but the test program keeps reading it
-                        | self.cpu.status.v_bank_on << 7
+                        | self.cpu.status.h_blank_on << 6
+                        | self.cpu.status.v_blank_on << 7
                     )
                 if 0x4300 <= addr <= 0x43FF:
                     print("READ DMA REGISTER: {}" % hex(addr))
@@ -100,7 +113,7 @@ class Bus:
 
     def __setitem__(self, abs_addr: int, data: int) -> None:
         assert 0x000000 <= abs_addr <= 0xFFFFFF, "Address outside 24 bit range"
-        assert 0x00 <= data <= 0xFF
+        assert 0x00 <= data <= 0xFF, "Data outside 8 bit range"
 
         bank = abs_addr >> 16
         addr = abs_addr & 0xFFFF

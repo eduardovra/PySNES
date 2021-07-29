@@ -15,7 +15,7 @@ class PySNES:
         rom = Rom(rom_file_path)
         self.apu = Apu()
         self.cpu = Cpu(rom.hardware_vectors)
-        self.ppu = Ppu()
+        self.ppu = Ppu(self.cpu)  # Pass CPU reference so PPU can control the NMI line
         self.controllers = [Controller(), Controller()]
         bus = Bus(rom, self.cpu, self.apu, self.ppu, self.controllers)
         self.cpu.attach(bus)
@@ -23,7 +23,6 @@ class PySNES:
         self.setup_sdl()
 
     def setup_sdl(self) -> None:
-        # Initialization
         SDL_Init(SDL_INIT_VIDEO)
         self.window = SDL_CreateWindow(b"PySNES", 0, 0, 768, 768, SDL_WINDOW_SHOWN)
         self.renderer = SDL_CreateRenderer(self.window, -1, SDL_RENDERER_ACCELERATED)
@@ -46,7 +45,7 @@ class PySNES:
         #    self.ppu.render()  # Render frame
         #    return True
 
-        # Capture inputs
+        # Capture inputs from keyboard using SDL
         while SDL_PollEvent(byref(self.event)) != 0:
             if self.event.type == SDL_QUIT:
                 self.teardown_sdl()
@@ -61,11 +60,16 @@ class PySNES:
         # To determine the exact length of any CPU instruction,
         # you must examine its behavior for each cycle,
         # and count 6, 8, or 12 master cycles as appropriate.
-        cycles = self.cpu.tick()
-        self.apu.tick()
-        self.ppu.tick(12 * 5, self.renderer)
+        master_cycles = self.cpu.tick()
+        master_cycles = 8 * 5  # TODO discard CPU value for now
 
-        # TODO tick the same number of cycles on the other components (PPU, Timer, etc)
+        # Tick PPU with the number of master cycles used by the CPU
+        # as it runs on the same clock source
+        self.ppu.tick(master_cycles, self.renderer)
+
+        # TODO figure out
+        self.apu.tick()
+
         # TODO Sleep to limit frequency on 60Hz
 
         self.ticks += 1

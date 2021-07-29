@@ -189,6 +189,28 @@ class AddressingMode:
         addr = cpu.X + operand
         return addr
 
+    def absolute_indexed_indirect(self, cpu) -> int:
+        """
+        Effective Address:
+        Bank: Program Bank Register (PBR).
+        High/Low: The Indirect Address.
+        Indirect Address: Located in the Program Bank at the sum of the Operand
+        double byte and X (16 bits if 65802/65816 native mode, x = 0 ; else 8 bits).
+        """
+        bank = cpu.PC & 0xFF0000
+        operand = cpu.bus[cpu.PC] | cpu.bus[cpu.PC + 1] << 8
+        cpu.PC += 2
+
+        # TODO I'm not sure if X is to be masked. Confirm in bsnes
+        if cpu.emulation == 0 and cpu.P.X == 0:
+            indirect_addr = bank | operand + cpu.X
+        else:
+            indirect_addr = bank | operand + (cpu.X & 0xFF)
+
+        addr = cpu.bus[indirect_addr] | cpu.bus[indirect_addr + 1] << 8 | bank
+
+        return addr
+
     def absolute_indexed_x(self, cpu) -> int:
         """
         Absolute Indexed, X Addressing
@@ -461,6 +483,10 @@ class Instruction:
     def mnemonic_not_implemented(self, cpu, addr):
         cpu.instruction_set.print_trace()
         raise RuntimeError(f"Mnemonic not implemented: {self.mnemonic}")
+
+    def NOP(self, cpu, addr):
+        """No Operation"""
+        return 2
 
     def BRK(self, cpu, addr):
         """Software Break"""

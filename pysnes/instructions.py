@@ -232,13 +232,10 @@ class AddressingMode:
         Effective Address: The Data Bank Register is concatenated to the 16-bit Operand:
         the 24-bit result is added to Y (16 bits if 65802/65816 native mode, x = 0; else 8).
         """
-        indirect_addr = cpu.bus[cpu.PC] | cpu.bus[cpu.PC + 1] << 8 | cpu.DB << 16
+        indirect_addr = (cpu.bus[cpu.PC] | cpu.bus[cpu.PC + 1] << 8) + cpu.Y
         cpu.PC += 2
-        if cpu.emulation == 0 and cpu.P.X == 0:
-            addr = indirect_addr + (cpu.Y & 0xFFFF)
-        else:
-            addr = indirect_addr + (cpu.Y & 0xFF)
-        return addr & 0xFFFFFF
+        addr = (indirect_addr & 0xFFFF) | cpu.DB << 16
+        return addr
 
     def stack_interrupt(self, cpu) -> int:
         """
@@ -793,8 +790,6 @@ class Instruction:
 
     def LDX(self, cpu, addr) -> int:
         """Load X Register from Memory"""
-        opcode = cpu.bus[cpu.current_instruction_PC]
-
         cpu.X = cpu.bus[addr]
         cpu.P.N = 1 if cpu.X & 0x80 else 0
         cpu.P.Z = 1 if (cpu.X & 0xFF) == 0 else 0
@@ -804,7 +799,7 @@ class Instruction:
             cpu.P.Z = 1 if (cpu.X & 0xFFFF) == 0 else 0
 
         # Workaround
-        if opcode == 0xA2:  # Immediate
+        if self.opcode == 0xA2:  # Immediate
             if cpu.P.M == 0 and cpu.P.X == 1:
                 cpu.PC -= 1
             elif cpu.P.M == 1 and cpu.P.X == 0:
@@ -814,8 +809,6 @@ class Instruction:
 
     def LDY(self, cpu, addr) -> int:
         """Load Y Register from Memory"""
-        opcode = cpu.bus[cpu.current_instruction_PC]
-
         cpu.Y = cpu.bus[addr]
         cpu.P.N = 1 if cpu.Y & 0x80 else 0
         if cpu.emulation == 0 and cpu.P.X == 0:
@@ -824,7 +817,7 @@ class Instruction:
         cpu.P.Z = 1 if cpu.Y == 0 else 0
 
         # Workaround
-        if opcode == 0xA0:  # Immediate
+        if self.opcode == 0xA0:  # Immediate
             if cpu.P.M == 0 and cpu.P.X == 1:
                 cpu.PC -= 1
             elif cpu.P.M == 1 and cpu.P.X == 0:
@@ -1239,6 +1232,7 @@ class Instruction:
 
     def PHB(self, cpu, addr) -> int:
         """Push Data Bank register"""
+        print(f"Pushing DB to stack {cpu.DB}")
         cpu.bus[cpu.S] = cpu.DB
         cpu.S -= 1
         return 3
@@ -1247,6 +1241,7 @@ class Instruction:
         """Pulls a byte off the stack into the data bank register"""
         cpu.S += 1
         cpu.DB = cpu.bus[cpu.S]
+        print(f"Pulled DB from stack {cpu.DB}")
         cpu.P.N = 1 if cpu.DB & 0x80 else 0
         cpu.P.Z = 1 if (cpu.DB & 0xFF) == 0 else 0
         return 0
@@ -1272,7 +1267,8 @@ class Instruction:
 
     def PHK(self, cpu, addr) -> int:
         """Pushes the 8 bit contents of the program bank register on stack"""
-        cpu.bus[cpu.S] = cpu.PB
+        # cpu.bus[cpu.S] = cpu.PB
+        cpu.bus[cpu.S] = (cpu.PC >> 16) & 0xFF
         cpu.S -= 1
         return 3
 
@@ -1615,6 +1611,11 @@ class InstructionSet:
             self.cpu,
         )
         self.trace.append(debug_str)
+
+        # if self.cpu.current_instruction_PC == 0x05D9A5:
+        # if self.cpu.current_instruction_PC == 0x05D8B7:
+        # if self.cpu.current_instruction_PC == 0x05D8C2:
+        #    self.print_instructions = True
 
         if self.print_instructions:
             print(debug_str)

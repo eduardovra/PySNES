@@ -152,7 +152,6 @@ class Bus:
                     return  # TODO
 
                 if addr == 0x2105:  # BGMODE
-                    assert data == 0
                     # Mode 0 == 2bpp in all BGs
                     # DCBA == 0 using 8x8 tiles in all BGs
                     self.ppu.bgmode = data
@@ -268,6 +267,7 @@ class Bus:
 
             elif addr == 0x420C:  # HDMAEN
                 # print("WRITE HDMA REGISTER: %s = %s" % (hex(addr), hex(data)))
+                self.cpu.dma.hdmaen_set(data)
                 return
 
             elif 0x4200 <= addr <= 0x44FF:

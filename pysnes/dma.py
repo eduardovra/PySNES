@@ -18,6 +18,11 @@ class Channel:
     source_address: int = 0
     source_bank: int = 0
     transfer_size: int = 0
+    indirect_bank: int = 0
+    hdma_address: int = 0
+    line_counter: int = 0
+    unknown: int = 0
+    hdma_enable: int = 0
 
     def do_transfer(self) -> None:
         # source_address == 0x8000
@@ -28,14 +33,18 @@ class Channel:
         # transfer_mode == 0x1 --> 2 bytes to 2 registers (write once)
         # fixed_transfer == 0x0 --> increment/decrement dma source addr
         # reverse_transfer == 0 --> Increment
-        assert self.transfer_mode == 1
+        assert self.transfer_mode in (0, 1)
         assert self.reverse_transfer == 0
         assert self.direction == 0
 
         target_addr = 0x2100 | self.target_address  # B bus
         for index in range(self.transfer_size):
             data = self.bus[self.source_bank << 16 | self.source_address]
-            self.bus[target_addr + (index & 1)] = data
+            if self.transfer_mode == 0:  # Write 1 byte, B0->$21xx
+                self.bus[target_addr] = data
+            elif self.transfer_mode == 1:  # Write 2 bytes, B0->$21xx B1->$21XX+1
+                self.bus[target_addr + (index & 1)] = data
+
             if not self.fixed_transfer:
                 self.source_address += 1
 
@@ -82,9 +91,37 @@ class DMA:
             channel.transfer_size = channel.transfer_size & 0x00FF | data << 8
             return
 
+        if addr == 0x4307:  # DASBx
+            channel.indirect_bank = data
+            return
+
+        if addr == 0x4308:  # A2AxL
+            channel.hdma_address = channel.hdma_address & 0xFF00 | data << 0
+            return
+
+        if addr == 0x4309:  # A2AxH
+            channel.hdma_address = channel.hdma_address & 0x00FF | data << 8
+            return
+
+        if addr == 0x430A:  # NTRLx
+            channel.line_counter = data
+            return
+
+        if addr == 0x430B:  # ???x
+            channel.unknown = data
+            return
+
+        if addr == 0x430F:  # ???x ($43xb mirror)
+            channel.unknown = data
+            return
+
         raise RuntimeError("Address not mapped in DMA: 0x{:06X}".format(abs_addr))
 
     def mdmaen_set(self, data: int) -> None:
         for enable_bit, channel in enumerate(self.channels):
             if data & (1 << enable_bit):
                 channel.do_transfer()
+
+    def hdmaen_set(self, data: int) -> None:
+        for enable_bit, channel in enumerate(self.channels):
+            channel.hdma_enable = data & (1 << enable_bit)

@@ -15,8 +15,8 @@ class Rom:
         # Strip out potential header
         self.smc_header_length = len(self.rom) % 0x400
         self.rom = self.rom[self.smc_header_length :]
-
         rom_type = None
+        page_offset = 0
 
         # Look for the presence of ascii characters in the memory regions
         # to determine the right header offset
@@ -24,29 +24,31 @@ class Rom:
         # LoROM
         if all(31 < char < 127 for char in self.rom[0x7FC0 : 0x7FC0 + 21]):
             rom_type = "LoROM"
+            page_offset = 0x7F00
         # HiROM
         if all(31 < char < 127 for char in self.rom[0xFFC0 : 0xFFC0 + 21]):
             rom_type = "HiROM"
+            page_offset = 0xFF00
 
         assert rom_type == "LoROM"
 
         # SNES header is located in the last 64 bytes of the first bank: 0x7FC0 - 0xFFFF
         self.snes_header = {
             "game_title": self.rom[
-                0x7FC0 : 0x7FC0 + 21
+                page_offset + 0xC0 : page_offset + 0xC0 + 21
             ],  # 21 bytes, usually uppercase ASCII.
             "mapping_mode": self.rom[
-                0x7FD5
+                page_offset + 0xD5
             ],  # 001ABBBB; A==1 means FastROM ($10). If BBBB is the mapping mode.
             "rom_type": self.rom[
-                0x7FD6
+                page_offset + 0xD6
             ],  # Denotes that the cartridge contains expansion chips, SRAM, batteries, etc.
-            "rom_size": 0x400 << self.rom[0x7FD7],
-            "sram_size": 0x400 << self.rom[0x7FD8],
-            "developer_id": self.rom[0x7FD9],
-            "version": self.rom[0x7FDB],
-            "checksum_complement": self.rom[0x7FDC],
-            "checksum": self.rom[0x7FDE],
+            "rom_size": 0x400 << self.rom[page_offset + 0xD7],
+            "sram_size": 0x400 << self.rom[page_offset + 0xD8],
+            "developer_id": self.rom[page_offset + 0xD9],
+            "version": self.rom[page_offset + 0xDB],
+            "checksum_complement": self.rom[page_offset + 0xDC],
+            "checksum": self.rom[page_offset + 0xDE],
         }
 
         print(f"{self.snes_header=}")
@@ -60,6 +62,7 @@ class Rom:
         assert self.snes_header["mapping_mode"] in (
             0x20,  # LoROM+SNES - For SMW
             0x30,  # LoROM + FastROM+SNES - For the test ROM
+            0x31,  # HiROM + FastROM
         )
 
         """

@@ -14,6 +14,7 @@ class Background:
     screen_size = 0
     screen_addr = 0
     tiledata_addr = 0
+    tile_size = 0
     main_screen_enable = True
     sub_screen_enable = True
 
@@ -96,7 +97,7 @@ class Ppu:
         self.oam_sub_screen_enable = True
 
         # Background
-        self.bgmode = 0x00
+        self._bgmode = 0x00
         self.bg1 = Background()
         self.bg2 = Background()
         self.bg3 = Background()
@@ -114,6 +115,19 @@ class Ppu:
         # TODO reset OAM addr if writing while on first blank line
         self.display_brightness = data >> 0 & 15
         self.display_disable = data >> 7 & 1
+
+    @property
+    def bgmode(self) -> int:
+        raise NotImplementedError
+
+    @bgmode.setter
+    def bgmode(self, data: int) -> None:
+        self._bgmode = data >> 0 & 7
+        self._bgpriority = data >> 3 & 1
+        self.bg1.tile_size = data >> 4 & 1
+        self.bg2.tile_size = data >> 5 & 1
+        self.bg3.tile_size = data >> 6 & 1
+        self.bg4.tile_size = data >> 7 & 1
 
     @property
     def vmain(self) -> int:
@@ -345,7 +359,12 @@ class Ppu:
         self.set_color(renderer, 2, 0, 0)
         SDL_RenderClear(renderer)
 
+        # Check F-Blank
+        if self.display_disable:
+            return
+
         # Draw picture
+        assert self._bgmode in (0, 1)
         """
         https://bin.smwcentral.net/u/4842/regs.txt
         Mode 0
@@ -369,16 +388,40 @@ class Ppu:
         BG3 tiles with priority 0
         BG4 tiles with priority 0
         """
-        assert self.bgmode == 0
-        self.draw_background(renderer, self.bg4, 2, False)
-        self.draw_background(renderer, self.bg3, 2, False)
-        self.draw_background(renderer, self.bg4, 2, True)
-        self.draw_background(renderer, self.bg3, 2, True)
-        self.draw_background(renderer, self.bg2, 2, False)
-        self.draw_background(renderer, self.bg1, 2, False)
-        self.draw_background(renderer, self.bg2, 2, True)
-        self.draw_background(renderer, self.bg1, 2, True)
-        self.draw_objects(renderer)
+        if self._bgmode == 0:
+            self.draw_background(renderer, self.bg4, 2, False)
+            self.draw_background(renderer, self.bg3, 2, False)
+            self.draw_background(renderer, self.bg4, 2, True)
+            self.draw_background(renderer, self.bg3, 2, True)
+            self.draw_background(renderer, self.bg2, 2, False)
+            self.draw_background(renderer, self.bg1, 2, False)
+            self.draw_background(renderer, self.bg2, 2, True)
+            self.draw_background(renderer, self.bg1, 2, True)
+            self.draw_objects(renderer)
+        elif self._bgmode == 1:
+            """
+            BG3 tiles with priority 1 if bit 3 of $2105 is set
+            Sprites with priority 3
+            BG1 tiles with priority 1
+            BG2 tiles with priority 1
+            Sprites with priority 2
+            BG1 tiles with priority 0
+            BG2 tiles with priority 0
+            Sprites with priority 1
+            BG3 tiles with priority 1 if bit 3 of $2105 is clear
+            Sprites with priority 0
+            BG3 tiles with priority 0
+            """
+            # self.draw_background(renderer, self.bg3, 2, False)
+            # if self._bgpriority == 0:
+            #    self.draw_background(renderer, self.bg3, 2, True)
+            # self.draw_background(renderer, self.bg2, 4, False)
+            # self.draw_background(renderer, self.bg1, 4, False)
+            # self.draw_background(renderer, self.bg2, 4, True)
+            # self.draw_background(renderer, self.bg1, 4, True)
+            self.draw_objects(renderer)
+            # if self._bgpriority == 1:
+            #    self.draw_background(renderer, self.bg3, 2, True)
 
         SDL_RenderPresent(renderer)
 
@@ -441,8 +484,8 @@ class Ppu:
         """
         tile_size = 8 * bpp  # TODO Why 8 ?
 
-        for tile_v in range(0, tile_height // 8, 1):
-            for tile_h in range(0, tile_width // 8, 1):
+        for tile_v in range(tile_height // 8):
+            for tile_h in range(tile_width // 8):
                 if tile.h_flip:
                     x = x_offset + tile_width - 8 - tile_h * 8
                 else:
@@ -454,11 +497,10 @@ class Ppu:
                     y = y_offset + tile_v * 8
 
                 if tile_character is not None:
-                    tile_addr = ((tile_character + tile_v << 4) & 0xF0) | (
-                        (tile_character + tile_h) & 0x0F
-                    )
+                    tile_addr = tile_character + (tile_h | tile_v << 4)
 
-                tile_data = self.vram[tile_base_addr + tile_addr * tile_size :]  # type: ignore
+                vram_index = tile_base_addr + tile_addr * tile_size  # type: ignore
+                tile_data = self.vram[vram_index:]
 
                 self.draw_tile(
                     renderer,
@@ -541,11 +583,11 @@ class Ppu:
     def draw_objects(self, renderer) -> None:
         for obj in self.oam.objects:
             # Draw object if it's within the visible area (256x224)
-            # TODO assuming 8x8 tiles
             # TODO handle wrapping
-            x_visible = obj.x > -8 and obj.x < 256 - 8  # TODO hardcoded tile size
-            y_visible = obj.y > -8 and obj.y < 224  # TODO probably wrong
-            if x_visible and y_visible:
+            # x_visible = obj.x > -8 and obj.x < 256 - 8  # TODO hardcoded tile size
+            # y_visible = obj.y > -8 and obj.y < 224  # TODO probably wrong
+            # if x_visible and y_visible:
+            if obj.y != 240:  # Games seem to use this value to hide the objects
                 tile_width, tile_height = self.get_obj_dimensions(obj.size)
 
                 self.draw_tiles(
@@ -616,7 +658,7 @@ class OAM:
         for obj_index in range(4):
             obj_num = obj_base + obj_index
             obj = self.objects[obj_num]
-            sx = data >> obj_index
+            sx = data >> (obj_index * 2)
             obj.x = (obj.x & 0xFF) | (sx & 0x01) << 8
             obj.size = bool(sx & 0x02)
 
@@ -646,16 +688,25 @@ class OAM:
 
 def main():
     # Memory dumps
-    vram_file = "roms/test_oam-vram.bin"
-    cgram_file = "roms/test_oam-cgram.bin"
-    oam_file = "roms/test_oam-oam.bin"
+    # vram_file = "roms/test_oam-vram.bin"
+    # cgram_file = "roms/test_oam-cgram.bin"
+    # oam_file = "roms/test_oam-oam.bin"
+    vram_file = "roms/Super Mario World (U) [!]-vram.bin"
+    cgram_file = "roms/Super Mario World (U) [!]-cgram.bin"
+    oam_file = "roms/Super Mario World (U) [!]-oam.bin"
     with open(vram_file, "rb") as f:
         vram_dump = f.read()
     with open(cgram_file, "rb") as f:
         cgram_dump = f.read()
     with open(oam_file, "rb") as f:
         oam_dump = f.read()
-    ppu = Ppu(vram_dump=vram_dump, cgram_dump=cgram_dump, oam_dump=oam_dump)
+    ppu = Ppu(None, vram_dump=vram_dump, cgram_dump=cgram_dump, oam_dump=oam_dump)
+
+    SDL_Init(SDL_INIT_VIDEO)
+    window = SDL_CreateWindow(b"PySNES", 0, 0, 768, 768, SDL_WINDOW_SHOWN)
+    renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED)
+    SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND)
+    SDL_RenderSetScale(renderer, 2, 2)
 
     # Setup registers
     # Draw BG1, Mode 0 - test_oam.smc
@@ -664,25 +715,25 @@ def main():
     # Map Addr 0x0000 (comes from BG1SC)
     # Tile Size 8x8
     # Tile Addr 0x2000
-    ppu.bgmode = 0
+    ppu.bgmode = 1
     ppu.bg1sc_set(0)
     ppu.bg2sc_set(0)
-    ppu.bg12nba_set(
-        0x01
-    )  # TODO I'm not sure about this number, have to check when running the real ROM
+    ppu.bg12nba_set(0x01)
     ppu.bg34nba_set(0x00)
 
     # OAM base address 0xC000
-    # ppu.obsel_set(0x03)  # base size 0
+    ppu.obsel_set(0x03)  # base size 0
     # ppu.obsel_set(0x23)  # base size 1
-    ppu.obsel_set(0x43)  # base size 2
+    # ppu.obsel_set(0x43)  # base size 2
     # ppu.obsel_set(0x63)  # base size 3
 
     # Main/Sub screen enable
     ppu.tm_set(0x11)
     ppu.ts_set(0x11)
 
-    ppu.render()
+    ppu.render(renderer)
+
+    return
 
 
 if __name__ == "__main__":

@@ -9,6 +9,11 @@ class Rom:
         return self.rom[addr]
 
     def load_rom_file(self):
+        """
+        SFC and SMC files are usually identical. It’s just a different choice in file extension.
+        “SMC” comes from Super MagiCom, a floppy-based cart copying device for backup/piracy.
+        The original .smc files produced by the device contained a 512 byte header.
+        """
         with open(self.rom_file_path, "rb") as f:
             self.rom = f.read()
 
@@ -22,15 +27,19 @@ class Rom:
         # to determine the right header offset
 
         # LoROM
-        if all(31 < char < 127 for char in self.rom[0x7FC0 : 0x7FC0 + 21]):
+        if len(self.rom) >= 0x7FFF and all(
+            31 < char < 127 for char in self.rom[0x7FC0 : 0x7FC0 + 21]
+        ):
             rom_type = "LoROM"
             page_offset = 0x7F00
         # HiROM
-        if all(31 < char < 127 for char in self.rom[0xFFC0 : 0xFFC0 + 21]):
+        if len(self.rom) >= 0xFFFF and all(
+            31 < char < 127 for char in self.rom[0xFFC0 : 0xFFC0 + 21]
+        ):
             rom_type = "HiROM"
             page_offset = 0xFF00
 
-        assert rom_type == "LoROM"
+        # assert rom_type == "LoROM"
 
         # SNES header is located in the last 64 bytes of the first bank: 0x7FC0 - 0xFFFF
         self.snes_header = {

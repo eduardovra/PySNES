@@ -432,7 +432,9 @@ class Ppu:
             return
 
         x_offset, y_offset = 0, 0
-        line_start = bg.screen_addr * 2  # Each addr corresponds to 2 bytes in VRAM
+        line_start = (
+            bg.screen_addr * 2
+        ) & 0xFFFF  # Each addr corresponds to 2 bytes in VRAM
         line_end = line_start + 0x800  # Total size of BG in memory
         line_step = 0x40
         # Each iteration will print a line of 32 tiles x 8x8 pixels

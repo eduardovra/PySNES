@@ -1598,7 +1598,7 @@ class InstructionSet:
     def __init__(self, cpu) -> None:
         self.cpu = cpu
         self.load_instructions()
-        self.print_instructions = False
+        self.print_instructions = True
         self.trace = deque(maxlen=100)
 
     def load_instructions(self) -> None:

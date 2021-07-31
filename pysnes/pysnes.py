@@ -83,10 +83,12 @@ def main():
     # rom = "roms/snes_oam_test/2-low.smc"
     # rom = "roms/snes_oam_test/3-high.smc"
     # rom = "roms/snes_adc_sbc/test_adc.smc"
+    # rom = "roms/SNES Test Program .smc" # Lots of ppu tests
     # rom = "/home/eduardovra/workspace/snes-test-roms/jonasquinn-test-roms/test_oam/test_oam.smc"
     # rom = "/home/eduardovra/workspace/snes-test-roms/jonasquinn-test-roms/snes_adc_sbc/test_adc.smc"
     # rom = "/home/eduardovra/workspace/snes-test-roms/jonasquinn-test-roms/test_hdma/test_hdmasync.smc"
-    rom = "roms/Super Mario World (U) [!].smc"
+    rom = "/home/eduardovra/workspace/snes-test-roms/PeterLemon/SNES-CPUTest-CPU/ADC/CPUADC.sfc"
+    # rom = "roms/Super Mario World (U) [!].smc"
     pysnes = PySNES(rom)
     while not pysnes.tick():
         pass

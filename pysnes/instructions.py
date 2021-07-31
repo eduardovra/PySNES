@@ -81,7 +81,7 @@ class AddressingMode:
         "Stack (RTI)": "implied",
         "Stack (RTL)": "implied",
         "Stack (RTS)": "implied",
-        "Block Move": "block_move",
+        "Block Move": "implied",
         "Accumulator": "accumulator",
     }
 
@@ -530,6 +530,51 @@ class Instruction:
     def NOP(self, cpu, addr):
         """No Operation"""
         return 2
+
+    def MVP(self, cpu, addr):
+        """Move Positive destination > source"""
+        dest_bank = cpu.bus[cpu.PC]
+        cpu.PC += 1
+        source_bank = cpu.bus[cpu.PC]
+        cpu.PC += 1
+        cycles = (cpu.A + 1) * 7
+
+        while cpu.A >= 0:
+            cpu.bus[cpu.Y | dest_bank << 16] = cpu.bus[cpu.X | source_bank << 16]
+            if cpu.emulation == 0 and cpu.P.X == 0:
+                cpu.X = (cpu.X - 1) & 0xFFFF
+                cpu.Y = (cpu.Y - 1) & 0xFFFF
+            else:
+                cpu.X = (cpu.X & 0xFF00) | ((cpu.X - 1) & 0xFF)
+                cpu.Y = (cpu.Y & 0xFF00) | ((cpu.Y - 1) & 0xFF)
+
+            cpu.A -= 1  # Let it wrap to negative
+
+        cpu.A = 0xFFFF
+
+        return cycles
+
+    def MVN(self, cpu, addr):
+        """Move Negative destination < source"""
+        dest_bank = cpu.bus[addr + 0]
+        source_bank = cpu.bus[addr + 1]
+        cpu.PC += 2
+        cycles = (cpu.A + 1) * 7
+
+        while cpu.A >= 0:
+            cpu.bus[cpu.Y | dest_bank << 16] = cpu.bus[cpu.X | source_bank << 16]
+            if cpu.emulation == 0 and cpu.P.X == 0:
+                cpu.X = (cpu.X + 1) & 0xFFFF
+                cpu.Y = (cpu.Y + 1) & 0xFFFF
+            else:
+                cpu.X = (cpu.X & 0xFF00) | ((cpu.X + 1) & 0xFF)
+                cpu.Y = (cpu.Y & 0xFF00) | ((cpu.Y + 1) & 0xFF)
+
+            cpu.A -= 1  # Let it wrap to negative
+
+        cpu.A = 0xFFFF
+
+        return cycles
 
     def BRK(self, cpu, addr):
         """Software Break"""

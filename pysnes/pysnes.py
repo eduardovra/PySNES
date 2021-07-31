@@ -100,6 +100,9 @@ def main():
     rom = "/home/eduardovra/workspace/snes-test-roms/PeterLemon/SNES-CPUTest-CPU/LDR/CPULDR.sfc"
     rom = "/home/eduardovra/workspace/snes-test-roms/PeterLemon/SNES-CPUTest-CPU/LSR/CPULSR.sfc"
     rom = "/home/eduardovra/workspace/snes-test-roms/PeterLemon/SNES-CPUTest-CPU/MOV/CPUMOV.sfc"
+    rom = "/home/eduardovra/workspace/snes-test-roms/PeterLemon/SNES-CPUTest-CPU/MSC/CPUMSC.sfc"  # NOK
+    rom = "/home/eduardovra/workspace/snes-test-roms/PeterLemon/SNES-CPUTest-CPU/ORA/CPUORA.sfc"
+    rom = "/home/eduardovra/workspace/snes-test-roms/PeterLemon/SNES-CPUTest-CPU/PHL/CPUPHL.sfc"
     # rom = "roms/Super Mario World (U) [!].smc"
     pysnes = PySNES(rom)
     while not pysnes.tick():

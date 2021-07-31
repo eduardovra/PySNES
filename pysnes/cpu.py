@@ -121,8 +121,8 @@ class Cpu:
             "Z" if self.P.Z else "z",
             "C" if self.P.C else "c",
         ]
-        return "PC:{:06X} A:{:04X} X:{:04X} Y:{:04X} P:{}".format(
-            self.PC, self.A, self.X, self.Y, "".join(flags)
+        return "A:{:04X} X:{:04X} Y:{:04X} S:{:04X} D:{:04X} DB:{:02X} P:{}".format(
+            self.A, self.X, self.Y, self.S, self.D, self.DB, "".join(flags)
         )
 
     def attach(self, bus: "Bus") -> None:

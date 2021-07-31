@@ -72,6 +72,8 @@ class Bus:
                 if addr == 0x4210:  # RDNMI - NMI Flag and 5A22 Version
                     data = (
                         self.cpu.status.nmi_line << 7
+                        | 1
+                        << 6  # This bit is open bus, I'm setting it to satisfy the PLP test program
                         | 0x02  # 5A22 chip version number [0-3]
                     )
                     # if not self.cpu.status.nmi_hold: # (bsnes)

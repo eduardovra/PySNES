@@ -274,6 +274,33 @@ class AddressingMode:
         cpu.PC += 2
         return addr
 
+    def stack_dp_indirect(self, cpu) -> int:
+        """
+        Stack (Direct Page Indirect) Addressing
+
+        Source of data to be pushed: The 16-bit indirect address (or double-byte data) located at the sum of the Operand
+        byte plus the Direct Page Register, in Bank Zero.
+        Destination effective address: Provided by Stack Pointer.
+        """
+        operand = cpu.bus[cpu.PC]
+        cpu.PC += 1
+        addr = (operand + cpu.D) & 0xFFFF
+        return addr
+
+    def stack_pc_relative_long(self, cpu) -> int:
+        """
+        Stack (Program Counter Relative) Addressing
+
+        Source of data to be pushed: The 16-bit sum of the 16-bit Operand plus the 16-bit Program Counter.
+        (Note that the 16-bit Operand which is added is the object code operand; the operand used in the
+        instruction's syntax required by most assemblers is a label which is converted to the object operand.)
+        Destination Effective Address: Provided by Stack Pointer.
+        """
+        offset = cpu.bus[cpu.PC] | cpu.bus[cpu.PC + 1] << 8
+        cpu.PC += 2
+        addr = cpu.PC + c_int16(offset).value
+        return addr & 0xFFFF
+
     def program_counter_relative(self, cpu) -> int:
         """
         Bank: Program Bank Register (PBR).
@@ -1394,11 +1421,39 @@ class Instruction:
 
     def PEA(self, cpu, addr) -> int:
         """Push Effective Absolute Address"""
-        cpu.bus[cpu.S] = cpu.bus[addr]
+        low = cpu.bus[addr + 0]
+        high = cpu.bus[addr + 1]
+        cpu.bus[cpu.S] = high
         cpu.S -= 1
-        cpu.bus[cpu.S] = cpu.bus[addr + 1]
+        cpu.bus[cpu.S] = low
         cpu.S -= 1
+        if cpu.emulation:
+            cpu.S = 0x0100 | cpu.S & 0xFF
         return 5
+
+    def PEI(self, cpu, addr) -> int:
+        """Push Effective Indirect Address"""
+        low = cpu.bus[addr + 0]
+        high = cpu.bus[addr + 1]
+        cpu.bus[cpu.S] = high
+        cpu.S -= 1
+        cpu.bus[cpu.S] = low
+        cpu.S -= 1
+        if cpu.emulation:
+            cpu.S = 0x0100 | cpu.S & 0xFF
+        return 0
+
+    def PER(self, cpu, addr) -> int:
+        """Push effective PC Relative Indirect Address"""
+        low = (addr >> 0) & 0xFF
+        high = (addr >> 8) & 0xFF
+        cpu.bus[cpu.S] = high
+        cpu.S -= 1
+        cpu.bus[cpu.S] = low
+        cpu.S -= 1
+        if cpu.emulation:
+            cpu.S = 0x0100 | cpu.S & 0xFF
+        return 6
 
     def PHB(self, cpu, addr) -> int:
         """Push Data Bank register"""
@@ -1786,6 +1841,7 @@ class InstructionSet:
         # if self.cpu.current_instruction_PC == 0x05D9A5:
         # if self.cpu.current_instruction_PC == 0x05D8B7:
         # if self.cpu.current_instruction_PC == 0x05D8C2:
+        # if self.cpu.current_instruction_PC == 0x9FA5:
         #    self.print_instructions = True
 
         if self.print_instructions:

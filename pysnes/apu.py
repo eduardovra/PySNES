@@ -231,10 +231,33 @@ class Apu:
         ))
         # fmt: on
 
-        self.print_instructions = True
+        self.print_instructions = False
 
     def __str__(self) -> str:
-        return "%s %s %s" % (hex(self.PC - 1), hex(self.opcode), self.instruction)
+        flags = [
+            "N" if self.N else "n",
+            "V" if self.V else "v",
+            "P" if self.P else "p",
+            "B" if self.B else "b",
+            "H" if self.H else "h",
+            "I" if self.I else "i",
+            "Z" if self.Z else "z",
+            "C" if self.C else "c",
+        ]
+        timers = ["1" if timer.enable else "0" for timer in self.timers]
+        counters = [
+            f"{timer.stage1}/{timer.stage2:02X}/{timer.stage3:02X}/{timer.target:02X}"
+            for timer in self.timers
+        ]
+        return "A:{:02X} X:{:02X} Y:{:02X} S:{:02X} F:{} T:{} C:{}".format(
+            self.A,
+            self.X,
+            self.Y,
+            self.SP,
+            "".join(flags),
+            ",".join(timers),
+            ",".join(counters),
+        )
 
     def __getitem__(self, addr: int) -> int:
         if 0x0000 <= addr <= 0x00EF:
@@ -451,13 +474,14 @@ class Apu:
         # if not (0xFFC0 <= self.PC <= 0xFFFF):  # Skip IPL
         # if not instruction.get("AddressingMode"):  # Unimplemented instructions only
         if self.print_instructions:
-            print(
-                "\033[93mAPU",
-                hex(self.PC - 1),
-                hex(self.opcode),
-                self.instruction,
-                "\033[0m",
+            debug_str = "\033[93mAPU 0x{:04X} 0x{:02X} {} {}\033[0m".format(
+                self.PC - 1,
+                self.opcode,
+                str(self.instruction["Example"]).ljust(15),
+                self,
             )
+            print(debug_str)
+
         addr_mode_cb, instruction_cb = self.lookup_table[self.opcode]
         addr = addr_mode_cb()
         # Execute instruction
@@ -1090,7 +1114,7 @@ class Apu:
 
     def DEC_1D(self, addr: int) -> None:
         """X--"""
-        self.X -= 1
+        self.X = (self.X - 1) & 0xFF
         self.N = 1 if self.X & 0x80 else 0
         self.Z = 1 if self.X == 0 else 0
 

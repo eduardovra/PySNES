@@ -706,7 +706,7 @@ class Instruction:
                 cpu.bus[addr + 0] = (value >> 0) & 0xFF
                 cpu.bus[addr + 1] = (value >> 8) & 0xFF
             else:
-                value = cpu.bus[addr] & 0xFF
+                cpu.bus[addr] = value & 0xFF
 
         return 0
 

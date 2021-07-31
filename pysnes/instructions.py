@@ -648,8 +648,7 @@ class Instruction:
 
     def ASL(self, cpu, addr) -> int:
         """Arithmetic Shift Left"""
-        opcode = cpu.bus[cpu.current_instruction_PC]
-        if opcode == 0x0A:  # Accumulator
+        if self.opcode == 0x0A:  # Accumulator
             value = cpu.A
         else:
             if cpu.emulation == 0 and cpu.P.M == 0:
@@ -668,14 +667,14 @@ class Instruction:
             cpu.P.Z = 1 if value == 0 else 0
             cpu.P.N = 1 if value & 0x80 else 0
 
-        if opcode == 0x0A:  # Accumulator
+        if self.opcode == 0x0A:  # Accumulator
             cpu.A = value
         else:
             if cpu.emulation == 0 and cpu.P.M == 0:
                 cpu.bus[addr + 0] = (value >> 0) & 0xFF
                 cpu.bus[addr + 1] = (value >> 8) & 0xFF
             else:
-                value = cpu.bus[addr] & 0xFF
+                cpu.bus[addr] = value & 0xFF
 
         return 0
 

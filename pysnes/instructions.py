@@ -581,6 +581,42 @@ class Instruction:
 
         return 0
 
+    def TRB(self, cpu, addr) -> int:
+        """Test and Reset Memory Bits"""
+        if cpu.emulation == 0 and cpu.P.M == 0:
+            data = cpu.bus[addr] | cpu.bus[addr + 1] << 8
+            A = cpu.A & 0xFFFF
+            cpu.P.Z = int(data & A == 0)
+            data &= ~A
+            cpu.bus[addr + 0] = (data >> 0) & 0xFF
+            cpu.bus[addr + 1] = (data >> 8) & 0xFF
+        else:
+            data = cpu.bus[addr]
+            A = cpu.A & 0xFF
+            cpu.P.Z = int(data & A == 0)
+            data &= ~A
+            cpu.bus[addr + 0] = (data >> 0) & 0xFF
+
+        return 0
+
+    def TSB(self, cpu, addr) -> int:
+        """Test and Set Memory Bits"""
+        if cpu.emulation == 0 and cpu.P.M == 0:
+            data = cpu.bus[addr] | cpu.bus[addr + 1] << 8
+            A = cpu.A & 0xFFFF
+            cpu.P.Z = int(data & A == 0)
+            data |= A
+            cpu.bus[addr + 0] = (data >> 0) & 0xFF
+            cpu.bus[addr + 1] = (data >> 8) & 0xFF
+        else:
+            data = cpu.bus[addr]
+            A = cpu.A & 0xFF
+            cpu.P.Z = int(data & A == 0)
+            data |= A
+            cpu.bus[addr + 0] = (data >> 0) & 0xFF
+
+        return 0
+
     def AND(self, cpu, addr) -> int:
         """And Accumulator with Memory"""
         if cpu.emulation == 0 and cpu.P.M == 0:
@@ -1639,7 +1675,10 @@ class InstructionSet:
                 self.instructions[instruction.opcode] = instruction
 
     def print_trace(self, entries: int = 20) -> None:
-        for i in range(entries):
+        if self.print_instructions:
+            return  # No need
+
+        for _ in range(entries):
             try:
                 print(self.trace.pop())
             except IndexError:

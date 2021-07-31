@@ -355,6 +355,22 @@ class AddressingMode:
             addr = cpu.D + operand + (cpu.X & 0xFF)
         return addr
 
+    def dp_indexed_y(self, cpu) -> int:
+        """
+        Direct Page Indexed, Y Addressing
+
+        Effective Address:
+        Bank: Zero
+        High/Low: Direct Page Register plus Operand byte plus Y (16 bits if 65802/65816 native mode, x = 0; else 8 bits).
+        """
+        operand = cpu.bus[cpu.PC]
+        cpu.PC += 1
+        if cpu.emulation == 0 and cpu.P.X == 0:
+            addr = cpu.D + operand + cpu.Y
+        else:
+            addr = cpu.D + operand + (cpu.Y & 0xFF)
+        return addr
+
     def dp_indexed_indirect_x(self, cpu) -> int:
         """
         Direct Page Indexed Indirect, X Addressing

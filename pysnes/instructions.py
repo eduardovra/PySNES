@@ -1123,6 +1123,11 @@ class Instruction:
         cpu.PC = addr
         return 0
 
+    def BRL(self, cpu, addr) -> int:
+        """Branch Always Long"""
+        cpu.PC = addr
+        return 0
+
     def BCC(self, cpu, addr) -> int:
         """Branch Carry Clear"""
         if cpu.P.C == 0:

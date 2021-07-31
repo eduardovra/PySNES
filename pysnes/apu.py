@@ -231,6 +231,8 @@ class Apu:
         ))
         # fmt: on
 
+        self.print_instructions = True
+
     def __str__(self) -> str:
         return "%s %s %s" % (hex(self.PC - 1), hex(self.opcode), self.instruction)
 
@@ -448,8 +450,14 @@ class Apu:
         self.instruction = self.instruction_set[self.opcode]
         # if not (0xFFC0 <= self.PC <= 0xFFFF):  # Skip IPL
         # if not instruction.get("AddressingMode"):  # Unimplemented instructions only
-        # if True:
-        #    print("\033[93mAPU", hex(self.PC - 1), hex(opcode), instruction, "\033[0m")
+        if self.print_instructions:
+            print(
+                "\033[93mAPU",
+                hex(self.PC - 1),
+                hex(self.opcode),
+                self.instruction,
+                "\033[0m",
+            )
         addr_mode_cb, instruction_cb = self.lookup_table[self.opcode]
         addr = addr_mode_cb()
         # Execute instruction

@@ -436,6 +436,24 @@ class AddressingMode:
         addr = (operand + cpu.S) & 0xFFFF
         return addr
 
+    def sr_indirect_indexed_y(self, cpu) -> int:
+        """
+        Stack Relative Indirected Indexed, Y Addressing
+
+        Effective Address: The Data Bank Register is concatenated to the Indirect Address: the 24-bit
+        result is added to Y (16 bits if 65802/65816 native mode, x = 0; else 8 bits).
+        Indirect Address: Located at the 16-bit sum of the 8-bit Operand and the 16-bit Stack Pointer.
+        """
+        operand = cpu.bus[cpu.PC]
+        cpu.PC += 1
+
+        offset = (operand + cpu.S) & 0xFFFF
+        indirect_addr = (
+            cpu.bus[offset] | cpu.bus[offset + 1] << 8  # | cpu.bus[offset + 2] << 16
+        )
+        addr = (indirect_addr | cpu.DB << 16) + cpu.Y
+        return addr
+
 
 class Instruction:
     def __init__(self, raw_instruction: dict) -> None:
@@ -1232,7 +1250,6 @@ class Instruction:
 
     def PHB(self, cpu, addr) -> int:
         """Push Data Bank register"""
-        print(f"Pushing DB to stack {cpu.DB}")
         cpu.bus[cpu.S] = cpu.DB
         cpu.S -= 1
         return 3
@@ -1241,7 +1258,6 @@ class Instruction:
         """Pulls a byte off the stack into the data bank register"""
         cpu.S += 1
         cpu.DB = cpu.bus[cpu.S]
-        print(f"Pulled DB from stack {cpu.DB}")
         cpu.P.N = 1 if cpu.DB & 0x80 else 0
         cpu.P.Z = 1 if (cpu.DB & 0xFF) == 0 else 0
         return 0

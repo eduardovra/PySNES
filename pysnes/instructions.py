@@ -168,6 +168,18 @@ class AddressingMode:
         cpu.PC += 3
         return addr
 
+    def absolute_indirect(self, cpu) -> int:
+        """
+        Effective Address:
+        Bank: Program Bank Register (PBR).
+        High/Low: The Indirect Address.
+        Indirect Address: Located in Bank Zero, at the Operand double byte.
+        """
+        i_addr = cpu.bus[cpu.PC] | cpu.bus[cpu.PC + 1] << 8
+        cpu.PC += 2
+        addr = cpu.bus[i_addr] | cpu.bus[i_addr + 1] << 8 | cpu.PC & 0xFF0000
+        return addr
+
     def absolute_indirect_long(self, cpu) -> int:
         """
         Effective Address:
@@ -1183,12 +1195,9 @@ class Instruction:
 
     def JSR(self, cpu, addr) -> int:
         """Jump to Subroutine"""
-        opcode = cpu.bus[cpu.current_instruction_PC]
-        assert opcode in (0x20, 0x22)
-
         pc = cpu.PC - 1
 
-        if opcode == 0x20:  # Absolute
+        if self.opcode == 0x20:  # Absolute
             # PC high byte
             cpu.bus[cpu.S] = (pc >> 8) & 0xFF
             cpu.S -= 1
@@ -1197,7 +1206,7 @@ class Instruction:
             cpu.S -= 1
             # Jump to addr
             cpu.PC = addr
-        elif opcode == 0x22:  # Absolute long
+        elif self.opcode == 0x22:  # Absolute long
             # Program bank
             cpu.bus[cpu.S] = (pc >> 16) & 0xFF  # cpu.PB
             cpu.S -= 1
@@ -1211,7 +1220,19 @@ class Instruction:
             cpu.PC = addr
             # Copied this from bsnes
             if cpu.emulation:
-                cpu.S = 0x01
+                cpu.S = 0x0100 | cpu.S & 0xFF
+        elif self.opcode == 0xFC:  # Absolute Indexed Indirect
+            # PC high byte
+            cpu.bus[cpu.S] = (pc >> 8) & 0xFF
+            cpu.S -= 1
+            # PC low byte
+            cpu.bus[cpu.S] = pc & 0xFF
+            cpu.S -= 1
+            # Jump to addr
+            cpu.PC = addr
+            # Copied this from bsnes
+            if cpu.emulation:
+                cpu.S = 0x0100 | cpu.S & 0xFF
 
         return 0
 

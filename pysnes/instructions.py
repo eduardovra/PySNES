@@ -1758,18 +1758,16 @@ class Instruction:
 
     def ROL(self, cpu, addr) -> int:
         """Rotate Memory or Accumulator Left"""
-        opcode = cpu.bus[cpu.current_instruction_PC]
-        if opcode == 0x2A:
-            # Addressing mode == Accumulator
+        if self.opcode == 0x2A:  # Addressing mode == Accumulator
             value = cpu.A if cpu.P.M == 0 else cpu.A & 0xFF
             temp = (value << 1) | (cpu.P.C & 0x1)
             if cpu.emulation == 0 and cpu.P.M == 0:
-                cpu.P.C = 1 if value > 0xFFFF else 0
+                cpu.P.C = 1 if value & 0x8000 else 0
                 cpu.P.Z = 1 if (temp & 0xFFFF) == 0 else 0
                 cpu.P.N = 1 if temp & 0x8000 else 0
                 cpu.A = temp & 0xFFFF
             else:
-                cpu.P.C = 1 if value > 0xFF else 0
+                cpu.P.C = 1 if value & 0x80 else 0
                 cpu.P.Z = 1 if (temp & 0xFF) == 0 else 0
                 cpu.P.N = 1 if temp & 0x80 else 0
                 cpu.A = (cpu.A & 0xFF00) | temp & 0xFF
@@ -1779,13 +1777,13 @@ class Instruction:
                 value |= cpu.bus[addr + 1] << 8
             temp = (value << 1) | (cpu.P.C & 0x1)
             if cpu.emulation == 0 and cpu.P.M == 0:
-                cpu.P.C = 1 if value > 0xFFFF else 0
+                cpu.P.C = 1 if value & 0x8000 else 0
                 cpu.P.Z = 1 if (temp & 0xFFFF) == 0 else 0
                 cpu.P.N = 1 if temp & 0x8000 else 0
                 cpu.bus[addr] = temp & 0xFF
                 cpu.bus[addr + 1] = (temp >> 8) & 0xFF
             else:
-                cpu.P.C = 1 if value > 0xFF else 0
+                cpu.P.C = 1 if value & 0x80 else 0
                 cpu.P.Z = 1 if (temp & 0xFF) == 0 else 0
                 cpu.P.N = 1 if temp & 0x80 else 0
                 cpu.bus[addr] = temp & 0xFF

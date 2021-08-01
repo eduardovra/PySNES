@@ -829,9 +829,12 @@ class Instruction:
         cpu.P.C = cpu.emulation
         cpu.emulation = carry
         # TODO need to replace the status register because flags are different in native mode
-        if cpu.emulation == 0:
-            cpu.P.M = 1
+        if cpu.emulation:
             cpu.P.X = 1
+            cpu.P.M = 1
+            cpu.X &= 0xFF
+            cpu.Y &= 0xFF
+            cpu.S = cpu.S & 0xFF | 0x0100
 
         return 2
 
@@ -919,8 +922,8 @@ class Instruction:
     def TCD(self, cpu, addr) -> int:
         """Transfer Accumulator to Direct Page Register"""
         cpu.D = cpu.A
-        cpu.P.N = 1 if cpu.A & 0x8000 else 0
-        cpu.P.Z = 1 if cpu.A == 0 else 1
+        cpu.P.N = 1 if cpu.D & 0x8000 else 0
+        cpu.P.Z = 1 if cpu.D & 0xFFFF == 0 else 0
 
         return 2
 
@@ -928,7 +931,7 @@ class Instruction:
         """Transfer Direct Page Register to Accumulator"""
         cpu.A = cpu.D
         cpu.P.N = 1 if cpu.A & 0x8000 else 0
-        cpu.P.Z = 1 if cpu.A == 0 else 1
+        cpu.P.Z = 1 if cpu.A & 0xFFFF == 0 else 0
 
         return 2
 
@@ -938,6 +941,18 @@ class Instruction:
             cpu.S = cpu.A
         else:
             cpu.S = (cpu.A & 0xFF) | (0x01 << 8)
+
+        return 2
+
+    def TSC(self, cpu, addr) -> int:
+        """Transfer Stack Pointer to Accumulator"""
+        if cpu.emulation == 0:
+            cpu.A = cpu.S
+        else:
+            cpu.A = (cpu.S & 0xFF) | (0x01 << 8)
+
+        cpu.P.N = 1 if cpu.A & 0x8000 else 0
+        cpu.P.Z = 1 if cpu.A & 0xFFFF == 0 else 0
 
         return 2
 
@@ -1082,14 +1097,10 @@ class Instruction:
 
     def TXS(self, cpu, addr) -> int:
         """Transfer X index register to the Stack pointer"""
-        if cpu.emulation == 0 and cpu.P.X == 0:
-            cpu.S = cpu.X
-            cpu.P.N = 1 if cpu.S & 0x8000 else 0
-            cpu.P.Z = 1 if cpu.S & 0xFFFF == 0 else 0
+        if cpu.emulation:
+            cpu.S = cpu.S & 0xFF00 | cpu.X & 0xFF
         else:
-            cpu.S = cpu.X & 0xFF
-            cpu.P.N = 1 if cpu.S & 0x80 else 0
-            cpu.P.Z = 1 if cpu.S & 0xFF == 0 else 0
+            cpu.S = cpu.X
 
         return 2
 
@@ -1490,7 +1501,6 @@ class Instruction:
 
     def PHK(self, cpu, addr) -> int:
         """Pushes the 8 bit contents of the program bank register on stack"""
-        # cpu.bus[cpu.S] = cpu.PB
         cpu.bus[cpu.S] = (cpu.PC >> 16) & 0xFF
         cpu.S -= 1
         return 3
@@ -1805,7 +1815,7 @@ class InstructionSet:
     def __init__(self, cpu) -> None:
         self.cpu = cpu
         self.load_instructions()
-        self.print_instructions = False
+        self.print_instructions = True
         self.trace = deque(maxlen=100)
 
     def load_instructions(self) -> None:

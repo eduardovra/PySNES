@@ -1174,34 +1174,68 @@ class Instruction:
             cpu.P.Z = 1 if (result & 0xFF) == 0 else 0
             cpu.P.N = 1 if result & 0x80 else 0
 
-            cpu.A = result & 0xFF
+            cpu.A = cpu.A & 0xFF00 | result & 0xFF
 
         return 0
 
     def SBC(self, cpu, addr) -> int:
         """Subtract from Accumulator"""
-        assert cpu.emulation == 0
-        # Value to be subtracted from the accumulator
+        if cpu.emulation == 0 and cpu.P.M == 0:  # 16 bit
+            A = cpu.A & 0xFFFF
+            data = ~(cpu.bus[addr] | cpu.bus[addr + 1] << 8) & 0xFFFF
 
-        if cpu.P.M == 0:
-            value = (cpu.bus[addr] | cpu.bus[addr + 1] << 8) ^ 0xFFFF
-        else:
-            value = cpu.bus[addr] ^ 0xFF
-        # Subtract
-        temp = cpu.A + value + (cpu.P.C & 0x1)
-        # Set flags and accumulator
-        if cpu.P.M == 0:
-            cpu.P.Z = 1 if (temp & 0xFFFF) == 0 else 0
-            cpu.P.C = 1 if temp > 0xFFFF else 0
-            cpu.P.N = 1 if temp & 0x8000 else 0
-            cpu.P.V = 1 if ((temp ^ cpu.A) & (temp ^ value)) & 0x8000 else 0
-            cpu.A = temp & 0xFFFF
-        else:
-            cpu.P.Z = 1 if (temp & 0xFF) == 0 else 0
-            cpu.P.C = 1 if temp > 0xFF else 0
-            cpu.P.N = 1 if temp & 0x80 else 0
-            cpu.P.V = 1 if ((temp ^ cpu.A) & (temp ^ value)) & 0x80 else 0
-            cpu.A = temp & 0xFF
+            if cpu.P.D == 0:
+                result = A + data + cpu.P.C
+            else:
+                result = (A & 0x000F) + (data & 0x000F) + (cpu.P.C << 0)
+                if result <= 0x000F:
+                    result -= 0x0006
+                cpu.P.C = 1 if result > 0x000F else 0
+                result = (
+                    (A & 0x00F0) + (data & 0x00F0) + (cpu.P.C << 4) + (result & 0x000F)
+                )
+                if result <= 0x00FF:
+                    result -= 0x0060
+                cpu.P.C = 1 if result > 0x00FF else 0
+                result = (
+                    (A & 0x0F00) + (data & 0x0F00) + (cpu.P.C << 8) + (result & 0x00FF)
+                )
+                if result <= 0x0FFF:
+                    result -= 0x0600
+                cpu.P.C = result > 0x0FFF
+                result = (
+                    (A & 0xF000) + (data & 0xF000) + (cpu.P.C << 12) + (result & 0x0FFF)
+                )
+
+            cpu.P.V = 1 if ~(A ^ data) & (A ^ result) & 0x8000 else 0
+            if cpu.P.D and result <= 0xFFFF:
+                result -= 0x6000
+            cpu.P.C = 1 if result > 0xFFFF else 0
+            cpu.P.Z = 1 if (result & 0xFFFF) == 0 else 0
+            cpu.P.N = 1 if result & 0x8000 else 0
+
+            cpu.A = result & 0xFFFF
+        else:  # 8 bit
+            A = cpu.A & 0xFF
+            data = ~(cpu.bus[addr]) & 0xFF
+
+            if cpu.P.D == 0:
+                result = A + data + cpu.P.C
+            else:
+                result = (A & 0x0F) + (data & 0x0F) + (cpu.P.C << 0)
+                if result <= 0x0F:
+                    result -= 0x06
+                cpu.P.C = 1 if result > 0x0F else 0
+                result = (A & 0xF0) + (data & 0xF0) + (cpu.P.C << 4) + (result & 0x0F)
+
+            cpu.P.V = 1 if ~(A ^ data) & (A ^ result) & 0x80 else 0
+            if cpu.P.D and result <= 0xFF:
+                result -= 0x60
+            cpu.P.C = 1 if result > 0xFF else 0
+            cpu.P.Z = 1 if (result & 0xFF) == 0 else 0
+            cpu.P.N = 1 if result & 0x80 else 0
+
+            cpu.A = cpu.A & 0xFF00 | result & 0xFF
 
         return 0
 

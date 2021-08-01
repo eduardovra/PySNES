@@ -605,15 +605,15 @@ class Instruction:
 
     def BRK(self, cpu, addr):
         """Software Break"""
-        assert cpu.emulation == 0
-        # the program counter bank register is pushed onto stack.
-        cpu.bus[cpu.S] = cpu.PB
+        if cpu.emulation == 0:
+            # the program counter bank register is pushed onto stack.
+            cpu.bus[cpu.S] = (cpu.PC >> 16) & 0xFF
+            cpu.S -= 1
+        # Push PC high byte
+        cpu.bus[cpu.S] = (cpu.PC >> 8) & 0xFF
         cpu.S -= 1
-        # the program counter is incremented by two and pushed on the stack.
-        cpu.PC += 2  # TODO verify - at this point was already incremented by 1
-        cpu.bus[cpu.S] = cpu.PC >> 8
-        cpu.S -= 1
-        cpu.bus[cpu.S] = cpu.PC & 0xFF
+        # Push PC low byte
+        cpu.bus[cpu.S] = (cpu.PC >> 0) & 0xFF
         cpu.S -= 1
         # the status register is pushed onto the stack
         cpu.bus[cpu.S] = cpu.P.get(cpu.emulation)
@@ -623,9 +623,10 @@ class Instruction:
         # the decimal mode flag is cleared.
         cpu.P.D = 0
         # the program bank register is cleared to zero.
-        cpu.PB = 0
-        # the program counter is loaded from the break vector at $FFE6-$FFE7.
-        cpu.PC = cpu.hardware_vectors["native"]["BRK"]
+        if cpu.emulation:
+            cpu.PC = cpu.bus[0xFFFE] | cpu.bus[0xFFFF] << 8
+        else:
+            cpu.PC = cpu.bus[0xFFE6] | cpu.bus[0xFFE7] << 8
 
         return 7
 

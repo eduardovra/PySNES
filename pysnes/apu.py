@@ -83,6 +83,7 @@ class Apu:
     OPCODES_ADDRESSING_MODE_TABLE = {
         "Implied": [
             0x00,
+            0x0D,
             0x1D,
             0x20,
             0x40,
@@ -109,7 +110,7 @@ class Apu:
             0x6E,  # Handled in mnemonic
             0xFE,  # Handled in mnemonic
         ],
-        "Immediate": [0x68, 0x8D, 0xAD, 0xCD, 0xC8, 0xE8],
+        "Immediate": [0x68, 0x88, 0x8D, 0xAD, 0xCD, 0xC8, 0xE8],
         "ImmediateDataToDirectPage": [0x8F, 0x78],
         "Absolute": [
             0x0C,
@@ -163,6 +164,7 @@ class Apu:
             0xF2,
         ],
         "XIndexedAbsolute": [0x75, 0xD5, 0xF5],
+        "YIndexedAbsolute": [0xD6],
         "XIndexedDirectPage": [0xF4, 0xD4, 0xDB],
         "YIndexedDirectPage": [0xD9],
     }
@@ -221,7 +223,7 @@ class Apu:
 
         self.memory = bytearray(0xFFBF - 0x0200 + 1)
 
-        # IPL ROOM (boot code) - 64 bytes
+        # IPL ROM (boot code) - 64 bytes
         # fmt: off
         self.ipl_rom = bytes((
             0xCD,0xEF,0xBD,0xE8,0x00,0xC6,0x1D,0xD0,0xFC,0x8F,0xAA,0xF4,0x8F,0xBB,0xF5,0x78,
@@ -231,7 +233,7 @@ class Apu:
         ))
         # fmt: on
 
-        self.print_instructions = False
+        self.print_instructions = True
 
     def __str__(self) -> str:
         flags = [
@@ -314,6 +316,8 @@ class Apu:
             # print(f"[{hex(addr)}] <== {hex(value)}")
             self.memory[addr - 0x0200] = value
         else:
+            print("Error writting unmamped memory region: 0x{:06X}".format(addr))
+            return
             raise RuntimeError(
                 "Error writting unmamped memory region: 0x{:06X}".format(addr)
             )
@@ -577,6 +581,15 @@ class Apu:
         addr_high = self[self.PC]
         self.PC += 1
         addr = ((addr_low | addr_high << 8) + self.X) & 0xFFFF
+        return addr
+
+    def YIndexedAbsolute(self) -> int:
+        """Y-Indexed Absolute = !a+Y"""
+        addr_low = self[self.PC]
+        self.PC += 1
+        addr_high = self[self.PC]
+        self.PC += 1
+        addr = ((addr_low | addr_high << 8) + self.Y) & 0xFFFF
         return addr
 
     def XIndexedDirectPage(self) -> int:
@@ -957,7 +970,11 @@ class Apu:
 
     def DBNZ_FE(self, addr: int) -> None:
         """Y-- then JNZ"""
-        raise
+        self.Y = (self.Y - 1) & 0xFF
+        displacement = c_int8(self[self.PC])
+        self.PC += 1
+        if self.Y != 0:
+            self.PC += int(displacement.value)
 
     def DBNZ_6E(self, addr: int) -> None:
         """(d)-- then JNZ"""
@@ -1111,6 +1128,14 @@ class Apu:
         self[absolute_addr] = (self[absolute_addr] + 1) & 0xFF
         self.N = 1 if self[absolute_addr] & 0x80 else 0
         self.Z = 1 if self[absolute_addr] == 0 else 0
+
+    def INC_AC(self, addr: int) -> None:
+        """(a)++"""
+        data = self[addr]
+        data += 1
+        self[addr] = data & 0xFF
+        self.N = 1 if data & 0x80 else 0
+        self.Z = 1 if data & 0xFF == 0 else 0
 
     def DEC_1D(self, addr: int) -> None:
         """X--"""

@@ -100,6 +100,7 @@ class Apu:
             0xE0,
             0xEE,
             0xDD,
+            0x4D,
             0x5D,
             0xBC,
             0x3D,
@@ -116,10 +117,23 @@ class Apu:
             0x6E,  # Handled in mnemonic
             0xFE,  # Handled in mnemonic
             # Direct Page to Direct Page = dd, ds
+            0x09,
+            0x29,
+            0x49,
+            0x69,
             0x89,
+            0xA9,
+            # Accumulator = A
+            0x1C,
+            0x3C,
+            0x5C,
+            0x7C,
+            0x9C,
+            0x9F,
+            0xBC,
         ],
-        "Immediate": [0x68, 0x88, 0x8D, 0xAD, 0xCD, 0xC8, 0xE8],
-        "ImmediateDataToDirectPage": [0x8F, 0x98, 0x78],
+        "Immediate": [0x08, 0x28, 0x48, 0x68, 0x88, 0x8D, 0xA8, 0xAD, 0xCD, 0xC8, 0xE8],
+        "ImmediateDataToDirectPage": [0x18, 0x38, 0x58, 0x78, 0x8F, 0x98, 0xB8],
         "Absolute": [
             0x05,
             0x0C,
@@ -143,13 +157,15 @@ class Apu:
             0xEC,
         ],
         "AbsoluteXIndexedIndirect": [0x1F],
-        "AbsoluteBooleanBit": [0xAA],
-        "Indirect": [0x86, 0xC6],
-        "IndirectYIndexed": [0x97, 0xD7],
+        "AbsoluteBooleanBit": [0x0A, 0x2A, 0x4A, 0x6A, 0x8A, 0xAA, 0xCA, 0xEA],
+        "Indirect": [0x06, 0x26, 0x46, 0x66, 0x86, 0xA6, 0xC6, 0xE6],
+        "IndirectYIndexed": [0x17, 0x37, 0x57, 0x77, 0x97, 0xB7, 0xD7, 0xF7],
         "IndirectAutoIncremet": [],
         "IndirectPageToIndirectPage": [0x19, 0x39, 0x59, 0x79, 0x99, 0xB9],
         "Relative": [0x90, 0xB0, 0xF0, 0x30, 0xD0, 0x10, 0x50, 0x70, 0x2F],
         "DirectPage": [
+            0x24,
+            0x3A,
             0x5A,
             0xBA,
             0xDA,
@@ -197,11 +213,11 @@ class Apu:
             0xD3,
             0xF3,
         ],
-        "XIndexedAbsolute": [0x75, 0x95, 0xD5, 0xF5],
-        "YIndexedAbsolute": [0x96, 0xD6],
-        "XIndexedDirectPage": [0x94, 0xF4, 0xD4, 0xDB],
+        "XIndexedAbsolute": [0x15, 0x35, 0x55, 0x75, 0x95, 0xB5, 0xD5, 0xF5],
+        "YIndexedAbsolute": [0x16, 0x36, 0x56, 0x76, 0x96, 0xB6, 0xD6, 0xF6],
+        "XIndexedDirectPage": [0x14, 0x34, 0x54, 0x74, 0x94, 0xB4, 0xD4, 0xDB, 0xF4],
         "YIndexedDirectPage": [0xD9],
-        "XIndexedIndirect": [0x87],
+        "XIndexedIndirect": [0x07, 0x27, 0x47, 0x67, 0x87, 0xA7, 0xC7, 0xE7],
     }
 
     def __init__(self) -> None:
@@ -674,6 +690,116 @@ class Apu:
     # Instructions                                        #
     #######################################################
 
+    def AND_39(self, addr: int) -> None:
+        """(X) = (X) & (Y)"""
+        data = self[self.X] & self[self.Y]
+        self[self.X] = data
+        self.N = bool(data & 0x80)
+        self.Z = data == 0
+
+    def AND_28(self, addr: int) -> None:
+        """A = A & i"""
+        data = self[addr]
+        self.A &= data
+        self.N = bool(self.A & 0x80)
+        self.Z = self.A == 0
+
+    def AND_26(self, addr: int) -> None:
+        """A = A & (X)"""
+        data = self[addr]
+        self.A &= data
+        self.N = bool(self.A & 0x80)
+        self.Z = self.A == 0
+
+    def AND_37(self, addr: int) -> None:
+        """A = A & ([d]+Y)"""
+        data = self[addr]
+        self.A &= data
+        self.N = bool(self.A & 0x80)
+        self.Z = self.A == 0
+
+    def AND_27(self, addr: int) -> None:
+        """A = A & ([d+X])"""
+        data = self[addr]
+        self.A &= data
+        self.N = bool(self.A & 0x80)
+        self.Z = self.A == 0
+
+    def AND_24(self, addr: int) -> None:
+        """A = A & (d)"""
+        page = 0x0100 if self.P else 0x0000
+        addr = self[addr | page]
+        data = self[addr]
+        self.A &= data
+        self.N = bool(self.A & 0x80)
+        self.Z = self.A == 0
+
+    def AND_34(self, addr: int) -> None:
+        """A = A & (d+X)"""
+        data = self[addr]
+        self.A &= data
+        self.N = bool(self.A & 0x80)
+        self.Z = self.A == 0
+
+    def AND_25(self, addr: int) -> None:
+        """A = A & (a)"""
+        data = self[addr]
+        self.A &= data
+        self.N = bool(self.A & 0x80)
+        self.Z = self.A == 0
+
+    def AND_35(self, addr: int) -> None:
+        """A = A & (a+X)"""
+        data = self[addr]
+        self.A &= data
+        self.N = bool(self.A & 0x80)
+        self.Z = self.A == 0
+
+    def AND_36(self, addr: int) -> None:
+        """A = A & (a+Y)"""
+        data = self[addr]
+        self.A &= data
+        self.N = bool(self.A & 0x80)
+        self.Z = self.A == 0
+
+    def AND_29(self, addr: int) -> None:
+        """(dd) = (dd) & (ds)"""
+        page = 0x0100 if self.P else 0x0000
+        source = page | self[self.PC]
+        self.PC += 1
+        rhs = self[source]
+        target = page | self[self.PC]
+        self.PC += 1
+        lhs = self[target]
+        lhs &= rhs
+        self[target] = lhs
+        self.N = bool(lhs & 0x80)
+        self.Z = lhs == 0
+
+    def AND_38(self, addr: int) -> None:
+        """(d) = (d) & i"""
+        immediate = self[addr]
+        address = self[addr + 1]
+        data = self[address]
+        data &= immediate
+        self[address] = data
+        self.N = bool(data & 0x80)
+        self.Z = data == 0
+
+    def AND1_6A(self, addr: int) -> None:
+        """C = C & ~(m.b)"""
+        bit = addr >> 13 & 7
+        addr &= 0x1FFF
+        data = self[addr]
+        self.C &= not (data & 1 << bit)
+
+    def AND1_4A(self, addr: int) -> None:
+        """C = C & (m.b)"""
+        bit = addr >> 13 & 7
+        addr &= 0x1FFF
+        data = self[addr]
+        self.C &= bool(data & 1 << bit)
+
     def NOP_00(self, addr: int) -> None:
         """do nothing"""
 
@@ -730,6 +856,20 @@ class Apu:
         """d.7 = 0"""
         self.CLR1(addr, 7)
 
+    def EOR_48(self, addr: int) -> None:
+        """A = A EOR i"""
+        data = self[addr]
+        self.A ^= data
+        self.N = bool(self.A & 0x80)
+        self.Z = self.A == 0
+
+    def OR_08(self, addr: int) -> None:
+        """A = A | i"""
+        data = self[addr]
+        self.A |= data
+        self.N = bool(self.A & 0x80)
+        self.Z = self.A == 0
+
     def SET1(self, addr: int, bit: int) -> None:
         # Adding page here because it's not done in the addressing mode implementation
         page = 0x0100 if self.P else 0x0000
@@ -777,6 +917,13 @@ class Apu:
     def SETP_40(self, addr: int) -> None:
         """P = 1"""
         self.P = 1
+
+    def LSR_5C(self, addr: int) -> None:
+        """Right shift A: 0->high, low->C"""
+        self.C = bool(self.A & 0x01)
+        self.A >>= 1
+        self.N = bool(self.A & 0x80)
+        self.Z = self.A == 0
 
     def MOV_D5(self, addr: int) -> None:
         """(a+X) = A"""
@@ -879,6 +1026,12 @@ class Apu:
         self.N = 1 if self.A & 0x80 else 0
         self.Z = 1 if self.A == 0 else 0
 
+    def MOV_F7(self, addr: int) -> None:
+        """A = ([d]+Y)"""
+        self.A = self[addr]
+        self.N = 1 if self.A & 0x80 else 0
+        self.Z = 1 if self.A == 0 else 0
+
     def MOV_E5(self, addr: int) -> None:
         """A = (a)"""
         self.A = self[addr]
@@ -887,6 +1040,12 @@ class Apu:
 
     def MOV_F5(self, addr: int) -> None:
         """A = (a+X)"""
+        self.A = self[addr]
+        self.N = 1 if self.A & 0x80 else 0
+        self.Z = 1 if self.A == 0 else 0
+
+    def MOV_E7(self, addr: int) -> None:
+        """A = ([d+X])"""
         self.A = self[addr]
         self.N = 1 if self.A & 0x80 else 0
         self.Z = 1 if self.A == 0 else 0
@@ -1185,6 +1344,13 @@ class Apu:
         self.Z = 1 if result == 0 else 0
         self.C = 1 if result > 0xFF else 0  # TODO not sure
 
+    def CMP_AD(self, addr: int) -> None:
+        """Y - i"""
+        result = self.Y - self[addr]
+        self.N = 1 if result < 0x00 else 0
+        self.Z = 1 if result == 0 else 0
+        self.C = 1 if result > 0xFF else 0  # TODO not sure
+
     def CMP_7E(self, addr: int) -> None:
         """Y - (d)"""
         page = 0x0100 if self.P else 0x0000
@@ -1245,6 +1411,23 @@ class Apu:
         self[addr] = data & 0xFF
         self.N = 1 if data & 0x80 else 0
         self.Z = 1 if data & 0xFF == 0 else 0
+
+    def INCW_3A(self, addr: int) -> None:
+        """Word (d)++"""
+        page = 0x0100 if self.P else 0x0000
+        absolute_addr = self[addr] | page
+        data = self[absolute_addr] + 1
+        data += self[absolute_addr + 1] << 8
+        self[absolute_addr] = data >> 0 & 0xFF
+        self[absolute_addr] = data >> 8 & 0xFF
+        self.Z = data & 0xFFFF == 0
+        self.N = bool(data & 0x8000)
+
+    def DEC_9C(self, addr: int) -> None:
+        """A--"""
+        self.A = (self.A - 1) & 0xFF
+        self.N = bool(self.A & 0x80)
+        self.Z = self.A == 0
 
     def DEC_1D(self, addr: int) -> None:
         """X--"""
@@ -1362,3 +1545,9 @@ class Apu:
         # result is set based on y (high-byte) only
         self.Z = 1 if self.Y == 0 else 0
         self.N = 1 if self.Y & 0x80 else 0
+
+    def XCN_9F(self, addr: int) -> None:
+        """A = (A>>4) | (A<<4)"""
+        self.A = self.A >> 4 & 0x0F | self.A << 4 & 0xF0
+        self.N = bool(self.A & 0x80)
+        self.Z = self.A == 0

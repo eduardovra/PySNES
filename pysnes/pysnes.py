@@ -1,6 +1,7 @@
 from ctypes import byref
 
 from sdl2 import *
+from line_profiler import LineProfiler
 
 from .rom import Rom
 from .bus import Bus
@@ -111,7 +112,7 @@ def main():
     # rom = "/home/eduardovra/workspace/snes-test-roms/PeterLemon/SNES-CPUTest-CPU/STR/CPUSTR.sfc"
     # rom = "/home/eduardovra/workspace/snes-test-roms/PeterLemon/SNES-CPUTest-CPU/TRN/CPUTRN.sfc"
 
-    rom = "/home/eduardovra/workspace/snes-test-roms/PeterLemon/SNES-CPUTest-SPC700/ADC/SPC700ADC.sfc"  # NOK
+    rom = "/home/eduardovra/workspace/snes-test-roms/PeterLemon/SNES-CPUTest-SPC700/ADC/SPC700ADC.sfc"
     # rom = "roms/Super Mario World (U) [!].smc"
     pysnes = PySNES(rom)
     while not pysnes.tick():
@@ -120,6 +121,11 @@ def main():
 
 if __name__ == "__main__":
     import cProfile
+
+    # lp = LineProfiler()
+    # lp_wrapper = lp(main)
+    # lp_wrapper()
+    # lp.print_stats()
 
     # cProfile.run("main()", sort="cumulative")
     main()

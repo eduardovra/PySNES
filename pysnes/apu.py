@@ -1493,6 +1493,94 @@ class Apu:
         high_addr = self[self.SP]
         self.PC = low_addr | high_addr << 8
 
+    def SBC(self, x: int, y: int) -> int:
+        return self.ADC(x & 0xFF, ~y & 0xFF)
+
+    def SBC_B9(self, addr: int) -> None:
+        """(X) = (X)-(Y)-!C"""
+        x = self[self.P << 8 | self.X]
+        y = self[self.P << 8 | self.Y]
+        result = self.SBC(x, y)
+        self[self.P << 8 | self.X] = result
+
+    def SBC_A8(self, addr: int) -> None:
+        """A = A-i-!C"""
+        value = self[addr]
+        self.A = self.SBC(self.A, value)
+
+    def SBC_A6(self, addr: int) -> None:
+        """A = A-(X)-!C"""
+        value = self[addr]
+        self.A = self.SBC(self.A, value)
+
+    def SBC_B7(self, addr: int) -> None:
+        """A = A-([d]+Y)-!C"""
+        value = self[addr]
+        self.A = self.SBC(self.A, value)
+
+    def SBC_A7(self, addr: int) -> None:
+        """A = A-([d+X])-!C"""
+        value = self[addr]
+        self.A = self.SBC(self.A, value)
+
+    def SBC_A4(self, addr: int) -> None:
+        """A = A-(d)-!C"""
+        page = 0x0100 if self.P else 0x0000
+        absolute_addr = self[addr] | page
+        value = self[absolute_addr]
+        self.A = self.SBC(self.A, value)
+
+    def SBC_B4(self, addr: int) -> None:
+        """A = A-(d+X)-!C"""
+        value = self[addr]
+        self.A = self.SBC(self.A, value)
+
+    def SBC_A5(self, addr: int) -> None:
+        """A = A-(a)-!C"""
+        value = self[addr]
+        self.A = self.SBC(self.A, value)
+
+    def SBC_B5(self, addr: int) -> None:
+        """A = A-(a+X)-!C"""
+        value = self[addr]
+        self.A = self.SBC(self.A, value)
+
+    def SBC_B6(self, addr: int) -> None:
+        """A = A-(a+Y)-!C"""
+        value = self[addr]
+        self.A = self.SBC(self.A, value)
+
+    def SBC_A9(self, addr: int) -> None:
+        """(dd) = (dd)-(ds)-!C"""
+        page = 0x0100 if self.P else 0x0000
+        source = self[self.PC]
+        self.PC += 1
+        rhs = self[page | source]
+        target = self[self.PC]
+        self.PC += 1
+        lhs = self[page | target]
+        self[page | target] = self.SBC(lhs, rhs)
+
+    def SBC_B8(self, addr: int) -> None:
+        """(d) = (d)-i-!C"""
+        page = 0x0100 if self.P else 0x0000
+        immediate = self[addr + 0]
+        address = self[addr + 1]
+        data = self[page | address]
+        self[page | address] = self.SBC(data, immediate)
+
+    def SUBW_9A(self, addr: int) -> None:
+        """YA  = YA - (d), H on high byte"""
+        page = 0x0100 if self.P else 0x0000
+        address = page | self[addr]
+        data = self[address]
+        data |= self[address + 1] << 8
+        self.C = 1
+        z = self.SBC(self.YA >> 0 & 0xFF, data >> 0 & 0xFF)
+        z |= self.SBC(self.YA >> 8 & 0xFF, data >> 8 & 0xFF) << 8
+        self.Z = z & 0xFFFF == 0
+        self.YA = z
+
     def PUSH_2D(self, addr: int) -> None:
         """(SP--) = A"""
         self[self.SP] = self.A

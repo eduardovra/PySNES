@@ -1536,6 +1536,14 @@ class Apu:
         self.N = 1 if self[absolute_addr] & 0x80 else 0
         self.Z = 1 if self[absolute_addr] == 0 else 0
 
+    def INC_BB(self, addr: int) -> None:
+        """(d+X)++"""
+        data = self[addr]
+        data += 1
+        self[addr] = data & 0xFF
+        self.N = 1 if data & 0x80 else 0
+        self.Z = 1 if data & 0xFF == 0 else 0
+
     def INC_AC(self, addr: int) -> None:
         """(a)++"""
         data = self[addr]
@@ -1546,14 +1554,15 @@ class Apu:
 
     def INCW_3A(self, addr: int) -> None:
         """Word (d)++"""
-        page = 0x0100 if self.P else 0x0000
-        absolute_addr = self[addr] | page
-        data = self[absolute_addr] + 1
-        data += self[absolute_addr + 1] << 8
-        self[absolute_addr] = data >> 0 & 0xFF
-        self[absolute_addr] = data >> 8 & 0xFF
-        self.Z = data & 0xFFFF == 0
-        self.N = bool(data & 0x8000)
+        page = self.P << 8
+        address = self[page | addr]
+        data = self[address + 0] << 0
+        data |= self[address + 1] << 8
+        data = (data + 1) & 0xFFFF
+        self[address + 0] = data >> 0 & 0xFF
+        self[address + 1] = data >> 8 & 0xFF
+        self.N = 1 if data & 0x8000 else 0
+        self.Z = 1 if data & 0xFFFF == 0 else 0
 
     def DEC_9C(self, addr: int) -> None:
         """A--"""

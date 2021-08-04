@@ -97,6 +97,7 @@ class Apu:
             0xC0,
             0xCE,
             0xCF,
+            0xDC,
             0xE0,
             0xEE,
             0xDD,
@@ -164,19 +165,26 @@ class Apu:
         "IndirectPageToIndirectPage": [0x19, 0x39, 0x59, 0x79, 0x99, 0xB9],
         "Relative": [0x90, 0xB0, 0xF0, 0x30, 0xD0, 0x10, 0x50, 0x70, 0x2F],
         "DirectPage": [
+            0x0B,
+            0x1A,
             0x24,
+            0x2B,
             0x3A,
+            0x4B,
             0x5A,
-            0xBA,
-            0xDA,
-            0xC4,
-            0xEB,
+            0x6B,
             0x7A,
             0x7E,
             0x84,
-            0xE4,
-            0xCB,
+            0x8B,
+            0x9A,
             0xAB,
+            0xBA,
+            0xC4,
+            0xCB,
+            0xDA,
+            0xE4,
+            0xEB,
             0xF8,
             # Direct Page Bit d.b
             0x02,
@@ -215,7 +223,24 @@ class Apu:
         ],
         "XIndexedAbsolute": [0x15, 0x35, 0x55, 0x75, 0x95, 0xB5, 0xD5, 0xF5],
         "YIndexedAbsolute": [0x16, 0x36, 0x56, 0x76, 0x96, 0xB6, 0xD6, 0xF6],
-        "XIndexedDirectPage": [0x14, 0x34, 0x54, 0x74, 0x94, 0xB4, 0xD4, 0xDB, 0xF4],
+        "XIndexedDirectPage": [
+            0x14,
+            0x1B,
+            0x34,
+            0x3B,
+            0x54,
+            0x5B,
+            0x74,
+            0x7B,
+            0x94,
+            0x9B,
+            0xB4,
+            0xBB,
+            0xD4,
+            0xDB,
+            0xF4,
+            0xFB,
+        ],
         "YIndexedDirectPage": [0xD9],
         "XIndexedIndirect": [0x07, 0x27, 0x47, 0x67, 0x87, 0xA7, 0xC7, 0xE7],
     }
@@ -1446,6 +1471,28 @@ class Apu:
         self.N = 1 if self.X & 0x80 else 0
         self.Z = 1 if self.X == 0 else 0
 
+    def DEC_DC(self, addr: int) -> None:
+        """Y--"""
+        self.Y = (self.Y - 1) & 0xFF
+        self.N = 1 if self.Y & 0x80 else 0
+        self.Z = 1 if self.Y == 0 else 0
+
+    def DEC_8B(self, addr: int) -> None:
+        """(d)--"""
+        page = 0x0100 if self.P else 0x0000
+        address = self[addr] | page
+        data = (self[address] - 1) & 0xFF
+        self[address] = data
+        self.N = 1 if data & 0x80 else 0
+        self.Z = 1 if data == 0 else 0
+
+    def DEC_9B(self, addr: int) -> None:
+        """(d+X)--"""
+        data = (self[addr] - 1) & 0xFF
+        self[addr] = data
+        self.N = 1 if data & 0x80 else 0
+        self.Z = 1 if data == 0 else 0
+
     def DEC_8C(self, addr: int) -> None:
         """(a)--"""
         data = self[addr]
@@ -1453,6 +1500,18 @@ class Apu:
         self[addr] = data & 0xFF
         self.N = 1 if data & 0x80 else 0
         self.Z = 1 if data & 0xFF == 0 else 0
+
+    def DECW_1A(self, addr: int) -> None:
+        """Word (d)--"""
+        page = self.P << 8
+        address = self[page | addr]
+        data = self[address + 0] << 0
+        data |= self[address + 1] << 8
+        data = (data - 1) & 0xFFFF
+        self[address + 0] = data >> 0 & 0xFF
+        self[address + 1] = data >> 8 & 0xFF
+        self.N = 1 if data & 0x8000 else 0
+        self.Z = 1 if data & 0xFFFF == 0 else 0
 
     def ADC(self, x: int, y: int) -> int:
         result = x + y + self.C

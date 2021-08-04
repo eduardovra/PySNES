@@ -268,6 +268,8 @@ class Apu:
         self.dsp_register_data = 0x00  # F3 (r/w)
         # self.timers = bytearray(3)  # FA/FB/FC (/w)
         # self.counters = bytearray(3)  # FD/FE/FF (r/)
+        self.f8 = 0
+        self.f9 = 0
 
         # Control register 0xF1
         self.ipl_rom_enable = True
@@ -330,6 +332,12 @@ class Apu:
         elif 0x00F4 <= addr <= 0x00F7:
             # print(f"  APU read [{hex(addr)}] ==> {hex(self.ports_r[addr - 0x00F4])}")
             return self.ports_r[addr - 0x00F4]
+        elif addr == 0x00F8:
+            return self.f8
+        elif addr == 0x00F9:
+            return self.f9
+        elif 0x00FA <= addr <= 0x00FC:
+            return 0  # TODO handle write only access
         elif 0x00FD <= addr <= 0x00FF:
             timer = self.timers[addr - 0x00FD]
             data = timer.stage3
@@ -541,24 +549,29 @@ class Apu:
             timer.step(clocks)
 
     def fetch_and_execute(self) -> None:
+        # Save PC
+        self.opcode_PC = self.PC
         # Fetch opcode
         self.opcode = self[self.PC]
         self.PC += 1
         # Get reference to instruction metadata
         self.instruction = self.instruction_set[self.opcode]
+
+        addr_mode_cb, instruction_cb = self.lookup_table[self.opcode]
+        addr = addr_mode_cb()
+
         # if not (0xFFC0 <= self.PC <= 0xFFFF):  # Skip IPL
         # if not instruction.get("AddressingMode"):  # Unimplemented instructions only
         if self.print_instructions:
-            debug_str = "\033[93mAPU 0x{:04X} 0x{:02X} {} {}\033[0m".format(
-                self.PC - 1,
+            debug_str = "\033[93mAPU 0x{:04X} 0x{:02X} {} [{:04X}] {}\033[0m".format(
+                self.opcode_PC,
                 self.opcode,
                 str(self.instruction["Example"]).ljust(15),
+                addr,
                 self,
             )
             print(debug_str)
 
-        addr_mode_cb, instruction_cb = self.lookup_table[self.opcode]
-        addr = addr_mode_cb()
         # Execute instruction
         instruction_cb(addr)
 
@@ -925,74 +938,18 @@ class Apu:
         self.N = bool(self.A & 0x80)
         self.Z = self.A == 0
 
-    def MOV_D5(self, addr: int) -> None:
-        """(a+X) = A"""
-        self[addr] = self.A
-
-    def MOV_D6(self, addr: int) -> None:
-        """(a+Y) = A"""
-        self[addr] = self.A
-
-    def MOV_CD(self, addr: int) -> None:
-        """X = i"""
-        self.X = self[addr]
-        self.N = 1 if self.X & 0x80 else 0
-        self.Z = 1 if self.X == 0 else 0
-
-    def MOV_5D(self, addr: int) -> None:
-        """X = A"""
-        self.X = self.A
-        self.N = 1 if self.X & 0x80 else 0
-        self.Z = 1 if self.X == 0 else 0
-
-    def MOV_F8(self, addr: int) -> None:
-        """X = (d)"""
-        page = 0x0100 if self.P else 0x0000
-        address = self[page | addr]
-        self.X = self[address]
-
-    def MOV_E9(self, addr: int) -> None:
-        """X = (a)"""
-        self.X = self[addr]
-        self.N = 1 if self.X & 0x80 else 0
-        self.Z = 1 if self.X == 0 else 0
-
-    def MOV_AF(self, addr: int) -> None:
+    def MOV_AF(self, addr: int) -> None:  # Ok
         """(X++) = A"""
-        self.X = (
-            self.X + 1
-        ) & 0xFF  # TODO confirm if the increment is before or after the memory access
-        self.A = self[self.X]
+        self[self.X] = self.A
+        self.X = (self.X + 1) & 0xFF
 
-    def MOV_8D(self, addr: int) -> None:
-        """Y = i"""
-        self.Y = self[addr]
-        self.N = 1 if self.Y & 0x80 else 0
-        self.Z = 1 if self.Y == 0 else 0
+    def MOV_C6(self, addr: int) -> None:
+        """(X) = A"""
+        self[self.X] = self.A
 
-    def MOV_FD(self, addr: int) -> None:
-        """Y = A"""
-        self.Y = self.A
-        self.N = 1 if self.Y & 0x80 else 0
-        self.Z = 1 if self.Y == 0 else 0
-
-    def MOV_EB(self, addr: int) -> None:
-        """Y = (d)"""
-        page = 0x0100 if self.P else 0x0000
-        absolute_addr = self[addr] | page
-        self.Y = self[absolute_addr]
-        self.N = 1 if self.Y & 0x80 else 0
-        self.Z = 1 if self.Y == 0 else 0
-
-    def MOV_EC(self, addr: int) -> None:
-        """Y = (a)"""
-        self.Y = self[addr]
-        self.N = 1 if self.Y & 0x80 else 0
-        self.Z = 1 if self.Y == 0 else 0
-
-    def MOV_BD(self, addr: int) -> None:
-        """SP = X"""
-        self.SP = self.X
+    def MOV_D7(self, addr: int) -> None:  # Ok
+        """([d]+Y) = A"""
+        self[addr] = self.A
 
     def MOV_E8(self, addr: int) -> None:
         """A = i"""
@@ -1020,7 +977,7 @@ class Apu:
         self.N = 1 if self.A & 0x80 else 0
         self.Z = 1 if self.A == 0 else 0
 
-    def MOV_F4(self, addr: int) -> None:
+    def MOV_F4(self, addr: int) -> None:  # Ok
         """A = (d+X)"""
         self.A = self[addr]
         self.N = 1 if self.A & 0x80 else 0
@@ -1050,8 +1007,76 @@ class Apu:
         self.N = 1 if self.A & 0x80 else 0
         self.Z = 1 if self.A == 0 else 0
 
+    def MOV_BD(self, addr: int) -> None:
+        """SP = X"""
+        self.SP = self.X
+
+    def MOV_CD(self, addr: int) -> None:
+        """X = i"""
+        self.X = self[addr]
+        self.N = 1 if self.X & 0x80 else 0
+        self.Z = 1 if self.X == 0 else 0
+
+    def MOV_5D(self, addr: int) -> None:
+        """X = A"""
+        self.X = self.A
+        self.N = 1 if self.X & 0x80 else 0
+        self.Z = 1 if self.X == 0 else 0
+
+    def MOV_F8(self, addr: int) -> None:
+        """X = (d)"""
+        page = 0x0100 if self.P else 0x0000
+        address = self[page | addr]
+        self.X = self[address]
+        self.N = 1 if self.X & 0x80 else 0
+        self.Z = 1 if self.X == 0 else 0
+
+    def MOV_E9(self, addr: int) -> None:
+        """X = (a)"""
+        self.X = self[addr]
+        self.N = 1 if self.X & 0x80 else 0
+        self.Z = 1 if self.X == 0 else 0
+
+    def MOV_8D(self, addr: int) -> None:
+        """Y = i"""
+        self.Y = self[addr]
+        self.N = 1 if self.Y & 0x80 else 0
+        self.Z = 1 if self.Y == 0 else 0
+
+    def MOV_FD(self, addr: int) -> None:
+        """Y = A"""
+        self.Y = self.A
+        self.N = 1 if self.Y & 0x80 else 0
+        self.Z = 1 if self.Y == 0 else 0
+
+    def MOV_EB(self, addr: int) -> None:
+        """Y = (d)"""
+        page = 0x0100 if self.P else 0x0000
+        absolute_addr = self[addr] | page
+        self.Y = self[absolute_addr]
+        self.N = 1 if self.Y & 0x80 else 0
+        self.Z = 1 if self.Y == 0 else 0
+
+    def MOV_EC(self, addr: int) -> None:
+        """Y = (a)"""
+        self.Y = self[addr]
+        self.N = 1 if self.Y & 0x80 else 0
+        self.Z = 1 if self.Y == 0 else 0
+
+    def MOV_D4(self, addr: int) -> None:
+        """(d+X) = A"""
+        self[addr] = self.A
+
+    def MOV_DB(self, addr: int) -> None:  # Ok
+        """(d+X) = Y"""
+        self[addr] = self.Y
+
+    def MOV_D9(self, addr: int) -> None:
+        """(d+Y) = X"""
+        self[addr] = self.X
+
     def MOV_C4(self, addr: int) -> None:
-        """(d) = A        (read)"""
+        """(d) = A"""
         page = 0x0100 if self.P else 0x0000
         absolute_addr = self[addr] | page
         self[absolute_addr] = self.A
@@ -1063,17 +1088,25 @@ class Apu:
         self[absolute_addr] = self.X
 
     def MOV_CB(self, addr: int) -> None:
-        """(d) = Y        (read)"""
+        """(d) = Y"""
         page = 0x0100 if self.P else 0x0000
         absolute_addr = self[addr] | page
         self[absolute_addr] = self.Y
 
-    def MOV_8F(self, addr: int) -> None:
+    def MOV_8F(self, addr: int) -> None:  # Ok
         """(d) = i"""
         value = self[addr]
         page = 0x0100 if self.P else 0x0000
         absolute_addr = self[addr + 1] | page
         self[absolute_addr] = value
+
+    def MOV_D5(self, addr: int) -> None:  # Ok
+        """(a+X) = A"""
+        self[addr] = self.A
+
+    def MOV_D6(self, addr: int) -> None:
+        """(a+Y) = A"""
+        self[addr] = self.A
 
     def MOV_C5(self, addr: int) -> None:
         """(a) = A"""
@@ -1087,42 +1120,20 @@ class Apu:
         """(a) = Y"""
         self[addr] = self.Y
 
-    def MOV_C6(self, addr: int) -> None:
-        """(X) = A"""
-        page = 0x0100 if self.P else 0x0000
-        absolute_addr = self.X | page
-        self[absolute_addr] = self.A
-
-    def MOV_D7(self, addr: int) -> None:
-        """([d]+Y) = A    (read)"""
-        self[addr] = self.A
-
-    def MOV_D4(self, addr: int) -> None:
-        """(d+X) = A"""
-        self[addr] = self.A
-
-    def MOV_DB(self, addr: int) -> None:
-        """(d+X) = Y"""
-        self[addr] = self.Y
-
-    def MOV_D9(self, addr: int) -> None:
-        """(d+Y) = X"""
-        self[addr] = self.X
-
     def MOVW_BA(self, addr: int) -> None:
         """YA = word (d)"""
         page = 0x0100 if self.P else 0x0000
         absolute_addr = self[addr] | page
-        self.A = self[absolute_addr]
+        self.A = self[absolute_addr + 0]
         self.Y = self[absolute_addr + 1]
         self.N = 1 if self.Y & 0xFF else 0
         self.Z = 1 if self.Y == 0 and self.A == 0 else 0
 
     def MOVW_DA(self, addr: int) -> None:
-        """word (d) = YA  (read low only)"""
+        """word (d) = YA"""
         page = 0x0100 if self.P else 0x0000
         absolute_addr = self[addr] | page
-        self[absolute_addr] = self.A  # TODO not sure about order
+        self[absolute_addr + 0] = self.A  # TODO not sure about order
         self[absolute_addr + 1] = self.Y
 
     def MOV1_AA(self, addr: int) -> None:

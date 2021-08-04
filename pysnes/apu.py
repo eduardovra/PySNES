@@ -165,19 +165,23 @@ class Apu:
         "IndirectPageToIndirectPage": [0x19, 0x39, 0x59, 0x79, 0x99, 0xB9],
         "Relative": [0x90, 0xB0, 0xF0, 0x30, 0xD0, 0x10, 0x50, 0x70, 0x2F],
         "DirectPage": [
+            0x04,
             0x0B,
             0x1A,
             0x24,
             0x2B,
             0x3A,
+            0x44,
             0x4B,
             0x5A,
+            0x64,
             0x6B,
             0x7A,
             0x7E,
             0x84,
             0x8B,
             0x9A,
+            0xA4,
             0xAB,
             0xBA,
             0xC4,
@@ -894,12 +898,104 @@ class Apu:
         """d.7 = 0"""
         self.CLR1(addr, 7)
 
+    def EOR_59(self, addr: int) -> None:
+        """(X) = (X) EOR (Y)"""
+        page = self.P << 8
+        data = self[page | self.X] ^ self[page | self.Y]
+        self[page | self.X] = data
+        self.N = bool(data & 0x80)
+        self.Z = data == 0
+
     def EOR_48(self, addr: int) -> None:
         """A = A EOR i"""
         data = self[addr]
         self.A ^= data
         self.N = bool(self.A & 0x80)
         self.Z = self.A == 0
+
+    def EOR_46(self, addr: int) -> None:
+        """A = A EOR (X)"""
+        page = self.P << 8
+        self.A ^= self[page | self.X]
+        self.N = bool(self.A & 0x80)
+        self.Z = self.A == 0
+
+    def EOR_57(self, addr: int) -> None:
+        """A = A EOR ([d]+Y)"""
+        self.A ^= self[addr]
+        self.N = bool(self.A & 0x80)
+        self.Z = self.A == 0
+
+    def EOR_47(self, addr: int) -> None:
+        """A = A EOR ([d+X])"""
+        self.A ^= self[addr]
+        self.N = bool(self.A & 0x80)
+        self.Z = self.A == 0
+
+    def EOR_44(self, addr: int) -> None:
+        """A = A EOR (d)"""
+        page = self.P << 8
+        address = page | self[addr]
+        self.A ^= self[address]
+        self.N = bool(self.A & 0x80)
+        self.Z = self.A == 0
+
+    def EOR_54(self, addr: int) -> None:
+        """A = A EOR (d+X)"""
+        self.A ^= self[addr]
+        self.N = bool(self.A & 0x80)
+        self.Z = self.A == 0
+
+    def EOR_45(self, addr: int) -> None:
+        """A = A EOR (a)"""
+        self.A ^= self[addr]
+        self.N = bool(self.A & 0x80)
+        self.Z = self.A == 0
+
+    def EOR_55(self, addr: int) -> None:
+        """A = A EOR (a+X)"""
+        self.A ^= self[addr]
+        self.N = bool(self.A & 0x80)
+        self.Z = self.A == 0
+
+    def EOR_56(self, addr: int) -> None:
+        """A = A EOR (a+Y)"""
+        self.A ^= self[addr]
+        self.N = bool(self.A & 0x80)
+        self.Z = self.A == 0
+
+    def EOR_49(self, addr: int) -> None:
+        """(dd) = (dd) EOR (ds)"""
+        page = self.P << 8
+        source = page | self[self.PC]
+        self.PC += 1
+        rhs = self[source]
+        target = page | self[self.PC]
+        self.PC += 1
+        lhs = self[target]
+        lhs ^= rhs
+        self[target] = lhs
+        self.N = bool(lhs & 0x80)
+        self.Z = lhs == 0
+
+    def EOR_58(self, addr: int) -> None:
+        """(d) = (d) EOR i"""
+        immediate = self[addr + 0]
+        address = self[addr + 1]
+        page = self.P << 8
+        data = self[page | address]
+        data ^= immediate
+        self[page | address] = data
+        self.N = bool(data & 0x80)
+        self.Z = data == 0
+
+    def EOR1_8A(self, addr: int) -> None:
+        """C = C EOR (m.b)"""
+        bit = addr >> 13
+        addr &= 0x1FFF
+        page = self.P << 8
+        data = self[page | addr]
+        self.C ^= bool(data & 1 << bit)
 
     def OR_08(self, addr: int) -> None:
         """A = A | i"""

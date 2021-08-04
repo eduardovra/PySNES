@@ -997,12 +997,111 @@ class Apu:
         data = self[page | addr]
         self.C ^= bool(data & 1 << bit)
 
+    def OR_19(self, addr: int) -> None:
+        """(X) = (X) | (Y)"""
+        data = self[self.X] | self[self.Y]
+        self[self.X] = data
+        self.N = bool(data & 0x80)
+        self.Z = data == 0
+
     def OR_08(self, addr: int) -> None:
         """A = A | i"""
         data = self[addr]
         self.A |= data
         self.N = bool(self.A & 0x80)
         self.Z = self.A == 0
+
+    def OR_06(self, addr: int) -> None:
+        """A = A | (X)"""
+        data = self[addr]
+        self.A |= data
+        self.N = bool(self.A & 0x80)
+        self.Z = self.A == 0
+
+    def OR_17(self, addr: int) -> None:
+        """A = A | ([d]+Y)"""
+        self.A |= self[addr]
+        self.N = bool(self.A & 0x80)
+        self.Z = self.A == 0
+
+    def OR_07(self, addr: int) -> None:
+        """A = A | ([d+X])"""
+        self.A |= self[addr]
+        self.N = bool(self.A & 0x80)
+        self.Z = self.A == 0
+
+    def OR_04(self, addr: int) -> None:
+        """A = A | (d)"""
+        page = self.P << 8
+        address = page | self[addr]
+        self.A |= self[address]
+        self.N = bool(self.A & 0x80)
+        self.Z = self.A == 0
+
+    def OR_14(self, addr: int) -> None:
+        """A = A | (d+X)"""
+        self.A |= self[addr]
+        self.N = bool(self.A & 0x80)
+        self.Z = self.A == 0
+
+    def OR_05(self, addr: int) -> None:
+        """A = A | (a)"""
+        self.A |= self[addr]
+        self.N = bool(self.A & 0x80)
+        self.Z = self.A == 0
+
+    def OR_15(self, addr: int) -> None:
+        """A = A | (a+X)"""
+        self.A |= self[addr]
+        self.N = bool(self.A & 0x80)
+        self.Z = self.A == 0
+
+    def OR_16(self, addr: int) -> None:
+        """A = A | (a+Y)"""
+        self.A |= self[addr]
+        self.N = bool(self.A & 0x80)
+        self.Z = self.A == 0
+
+    def OR_09(self, addr: int) -> None:
+        """(dd) = (dd) | (ds)"""
+        page = self.P << 8
+        source = page | self[self.PC]
+        self.PC += 1
+        rhs = self[source]
+        target = page | self[self.PC]
+        self.PC += 1
+        lhs = self[target]
+        lhs |= rhs
+        self[target] = lhs
+        self.N = bool(lhs & 0x80)
+        self.Z = lhs == 0
+
+    def OR_18(self, addr: int) -> None:
+        """(d) = (d) | i"""
+        immediate = self[addr + 0]
+        address = self[addr + 1]
+        page = self.P << 8
+        data = self[page | address]
+        data |= immediate
+        self[page | address] = data
+        self.N = bool(data & 0x80)
+        self.Z = data == 0
+
+    def OR1_2A(self, addr: int) -> None:
+        """C = C | ~(m.b)"""
+        bit = addr >> 13
+        addr &= 0x1FFF
+        page = self.P << 8
+        data = self[page | addr]
+        self.C |= not bool(data & 1 << bit)
+
+    def OR1_0A(self, addr: int) -> None:
+        """C = C | (m.b)"""
+        bit = addr >> 13
+        addr &= 0x1FFF
+        page = self.P << 8
+        data = self[page | addr]
+        self.C |= bool(data & 1 << bit)
 
     def SET1(self, addr: int, bit: int) -> None:
         # Adding page here because it's not done in the addressing mode implementation

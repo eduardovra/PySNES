@@ -580,7 +580,15 @@ class Ppu:
         # TODO Try to enable again when all background are being rendered
         alpha = SDL_ALPHA_OPAQUE
         # Multiply the colors to make them more vibrant
-        SDL_SetRenderDrawColor(renderer, r << 3, g << 3, b << 3, alpha)
+        brightness = self.display_brightness // 15
+        color_multiplier = 8 * brightness
+        SDL_SetRenderDrawColor(
+            renderer,
+            r * color_multiplier,
+            g * color_multiplier,
+            b * color_multiplier,
+            alpha,
+        )
 
     def draw_objects(self, renderer) -> None:
         for obj in self.oam.objects:

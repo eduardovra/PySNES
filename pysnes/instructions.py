@@ -2,6 +2,8 @@ from collections import deque
 import csv
 from ctypes import c_int16, c_int8
 
+DEBUG_ENABLED = False
+
 """
 Branch Instructions
 
@@ -1848,7 +1850,7 @@ class InstructionSet:
     def __init__(self, cpu) -> None:
         self.cpu = cpu
         self.load_instructions()
-        self.print_instructions = False
+        self.print_instructions = DEBUG_ENABLED
         self.trace = deque(maxlen=100)
 
     def load_instructions(self) -> None:

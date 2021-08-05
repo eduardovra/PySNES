@@ -107,6 +107,12 @@ class Bus:
         if 0x7E8000 <= abs_addr <= 0x7FFFFF:
             return self.extended_ram[abs_addr - 0x7E8000]
 
+        # TODO Just for testing the ROM
+        print(
+            "\033[93mReading unmamped memory region: 0x{:06X}\033[0m".format(abs_addr)
+        )
+        return 0
+
         raise RuntimeError(
             "Error reading unmamped memory region: 0x{:06X}".format(abs_addr)
         )

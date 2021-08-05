@@ -39,7 +39,11 @@ class Rom:
             rom_type = "HiROM"
             page_offset = 0xFF00
 
+        # rom_type = "HiROM"
+        # page_offset = 0xFF00
+
         # assert rom_type == "LoROM"
+        assert rom_type is not None
 
         # SNES header is located in the last 64 bytes of the first bank: 0x7FC0 - 0xFFFF
         self.snes_header = {
@@ -90,18 +94,22 @@ class Rom:
         # Interrupt vectors
         self.hardware_vectors = {
             "native": {
-                "IRQ": self.rom[0x7FEE] | self.rom[0x7FEF] << 8,
-                "NMI": self.rom[0x7FEA] | self.rom[0x7FEB] << 8,
-                "ABORT": self.rom[0x7FE8] | self.rom[0x7FE9] << 8,
-                "BRK": self.rom[0x7FE6] | self.rom[0x7FE7] << 8,
-                "COP": self.rom[0x7FE5] | self.rom[0x7FE6] << 8,
+                "IRQ": self.rom[page_offset | 0xEE] | self.rom[page_offset | 0xEF] << 8,
+                "NMI": self.rom[page_offset | 0xEA] | self.rom[page_offset | 0xEB] << 8,
+                "ABORT": self.rom[page_offset | 0xE8]
+                | self.rom[page_offset | 0xE9] << 8,
+                "BRK": self.rom[page_offset | 0xE6] | self.rom[page_offset | 0xE7] << 8,
+                "COP": self.rom[page_offset | 0xE5] | self.rom[page_offset | 0xE6] << 8,
             },
             "emulation": {
-                "IRQ/BRK": self.rom[0x7FEE] | self.rom[0x7FEF] << 8,
-                "RESET": self.rom[0x7FFC] | self.rom[0x7FFD] << 8,
-                "NMI": self.rom[0x7FFA] | self.rom[0x7FFB] << 8,
-                "ABORT": self.rom[0x7FF8] | self.rom[0x7FF9] << 8,
-                "COP": self.rom[0x7FF4] | self.rom[0x7FF5] << 8,
+                "IRQ/BRK": self.rom[page_offset | 0xEE]
+                | self.rom[page_offset | 0xEF] << 8,
+                "RESET": self.rom[page_offset | 0xFC]
+                | self.rom[page_offset | 0xFD] << 8,
+                "NMI": self.rom[page_offset | 0xFA] | self.rom[page_offset | 0xFB] << 8,
+                "ABORT": self.rom[page_offset | 0xF8]
+                | self.rom[page_offset | 0xF9] << 8,
+                "COP": self.rom[page_offset | 0xF4] | self.rom[page_offset | 0xF5] << 8,
             },
         }
 

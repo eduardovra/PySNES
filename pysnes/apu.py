@@ -89,9 +89,11 @@ class Apu:
             0x0D,
             0x1D,
             0x20,
+            0x2D,
             0x40,
             0x60,
             0x80,
+            0x9E,
             0xA0,
             0xBD,
             0xC0,
@@ -255,7 +257,7 @@ class Apu:
         self.A = 0x00  # Accumulator (8 bit)
         self.X = 0x00  # X Index Register (8 bit)
         self.Y = 0x00  # Y Index Register (8 bit)
-        self.SP = 0xEF  # Stack Pointer (8 bit)
+        self.SP = 0x1EF  # Stack Pointer (8 bit) - always on page 1 # TODO hack
         # self.PSW = 0  # Program Status Word (8 bit)
         # YA  YA paired 16-bit register TODO
 
@@ -317,6 +319,8 @@ class Apu:
 
         self.print_instructions = DEBUG_ENABLED
 
+        self.bsnes_trace_f = open("roms/Super Mario World (U) [!]-trace.log", "r")
+
     def __str__(self) -> str:
         flags = [
             "N" if self.N else "n",
@@ -345,8 +349,8 @@ class Apu:
 
     def __getitem__(self, addr: int) -> int:
 
-        if 0xF0 <= addr <= 0xF3:
-            print(f"!!! Reading register {hex(addr)}")
+        # if 0xF0 <= addr <= 0xF3:
+        #    print(f"!!! Reading register {hex(addr)}")
 
         if 0x0000 <= addr <= 0x00EF:
             return self.page_0[addr]
@@ -386,8 +390,8 @@ class Apu:
     def __setitem__(self, addr: int, value: int) -> None:
         assert 0x00 <= value <= 0xFF, "Attemped to write value bigger than 1 byte"
 
-        if 0xF0 <= addr <= 0xF3:
-            print(f"!!! Writing register {hex(addr)} <== {hex(value)}")
+        # if 0xF0 <= addr <= 0xF3:
+        #    print(f"!!! Writing register {hex(addr)} <== {hex(value)}")
 
         if 0x0000 <= addr <= 0x00EF:
             self.page_0[addr] = value
@@ -504,13 +508,17 @@ class Apu:
             timer2.stage2 = 0
             timer2.stage3 = 0
 
-        if data & 0x10:
+        if data & 0x10:  # TODO not sure if r or w ports should be reset
             self.ports_r[0] = 0x00
             self.ports_r[1] = 0x00
+            self.ports_w[0] = 0x00
+            self.ports_w[1] = 0x00
 
-        if data & 0x20:
+        if data & 0x20:  # TODO not sure if r or w ports should be reset
             self.ports_r[2] = 0x00
             self.ports_r[3] = 0x00
+            self.ports_w[2] = 0x00
+            self.ports_w[3] = 0x00
 
         self.ipl_rom_enable = bool(data & 0x80)
 
@@ -577,7 +585,45 @@ class Apu:
         for timer in self.timers:
             timer.step(clocks)
 
+    def fetch(self) -> int:
+        data = self[self.PC]
+        self.PC += 1
+        return data
+
+    def load(self, addr: int) -> int:
+        return self[self.P << 8 | addr]
+
+    def store(self, addr: int, data: int) -> None:
+        self[self.P << 8 | addr] = data
+
     def fetch_and_execute(self) -> None:
+        # line = self.bsnes_trace_f.readline()
+        # bsnes_pc = int(line[2:6], 16)
+        # if self.PC != bsnes_pc:
+        #    print(line)
+        # if self.PC == 0xFFFB:
+        #    with open("roms/Super Mario World (U) [!]-apuram.bin", "rb") as f:
+        #        aram = f.read()
+        #        for i, b in enumerate(aram):
+        #            if self[i] != b:
+        #                print(f"[{hex(i)}] {hex(self[i])} != {hex(b)}")
+        # if self.PC == 0x05A5:  # CopyToSNES
+        #    self.print_instructions = True
+
+        if self.PC == 0x12F2:
+            print("APU StandardTransfer")
+        if self.PC == 0x1325:
+            addr = self[0xF6] | self[0xF7] << 8
+            f4 = self[0xF4]
+            f5 = self[0xF5]
+            print(f"APU APU_1325 Start Addr {hex(addr)} {hex(f4)} {hex(f5)}")
+        # if self.PC == 0x130A:
+        #    print("APU APU_130A .data")
+        if self.PC == 0x1305:
+            print("APU APU_1305 Block")
+        # if self.PC == 0x131E:
+        #    print("APU APU_131E .retry")
+
         # Save PC
         self.opcode_PC = self.PC
         # Fetch opcode
@@ -841,6 +887,13 @@ class Apu:
         addr &= 0x1FFF
         data = self[addr]
         self.C &= bool(data & 1 << bit)
+
+    def ASL_1C(self, addr: int) -> None:
+        """Left shift A: high->C, 0->low"""
+        self.C = bool(self.A & 0x80)
+        self.A = (self.A << 1) & 0xFF
+        self.N = bool(self.A & 0x80)
+        self.Z = self.A == 0
 
     def NOP_00(self, addr: int) -> None:
         """do nothing"""
@@ -1158,6 +1211,16 @@ class Apu:
         self.N = bool(self.A & 0x80)
         self.Z = self.A == 0
 
+    def LSR_4B(self, addr: int) -> None:
+        """Right shift (d) as above"""
+        addr = self.load(addr)
+        data = self.load(addr)
+        self.C = bool(data & 0x01)
+        data >>= 1
+        self.store(addr, data)
+        self.N = bool(data & 0x80)
+        self.Z = data == 0
+
     def MOV_AF(self, addr: int) -> None:  # Ok
         """(X++) = A"""
         self[self.X] = self.A
@@ -1209,6 +1272,12 @@ class Apu:
         self.N = 1 if self.A & 0x80 else 0
         self.Z = 1 if self.A == 0 else 0
 
+    def MOV_E7(self, addr: int) -> None:
+        """A = ([d+X])"""
+        self.A = self[addr]
+        self.N = 1 if self.A & 0x80 else 0
+        self.Z = 1 if self.A == 0 else 0
+
     def MOV_E5(self, addr: int) -> None:
         """A = (a)"""
         self.A = self[addr]
@@ -1221,15 +1290,15 @@ class Apu:
         self.N = 1 if self.A & 0x80 else 0
         self.Z = 1 if self.A == 0 else 0
 
-    def MOV_E7(self, addr: int) -> None:
-        """A = ([d+X])"""
+    def MOV_F6(self, addr: int) -> None:
+        """A = (a+Y)"""
         self.A = self[addr]
         self.N = 1 if self.A & 0x80 else 0
         self.Z = 1 if self.A == 0 else 0
 
     def MOV_BD(self, addr: int) -> None:
         """SP = X"""
-        self.SP = self.X
+        self.SP = 0x100 | self.X  # SP is always on page 1
 
     def MOV_CD(self, addr: int) -> None:
         """X = i"""
@@ -1428,54 +1497,38 @@ class Apu:
         """CMP A, (d+X) then BNE"""
         # Exception --> Set addr mode as implied and handle
         # everything in here
-        addr = self[self.PC]
-        self.PC += 1
-        page = self.P << 8
-        data = self[page | (addr + self.X)]
-        displacement = self[self.PC]
-        self.PC += 1
+        addr = self.fetch()
+        data = self.load(addr + self.X)
+        displacement = self.fetch()
         if self.A != data:
-            # Convert two's complement representation to signed int
-            if displacement & 0x80:
-                displacement = (-1) * ((~displacement & 0xFF) + 1)
-            self.PC += displacement
+            self.PC += c_int8(displacement).value
 
     def CBNE_2E(self, addr: int) -> None:
         """CMP A, (d) then BNE"""
         # Exception --> Set addr mode as implied and handle
         # everything in here
-        addr = self[self.PC]
-        self.PC += 1
-        page = self.P << 8
-        data = self[page | addr]
-        displacement = self[self.PC]
-        self.PC += 1
+        addr = self.fetch()
+        data = self.load(addr)
+        displacement = self.fetch()
         if self.A != data:
-            # Convert two's complement representation to signed int
-            if displacement & 0x80:
-                displacement = (-1) * ((~displacement & 0xFF) + 1)
-            self.PC += displacement
+            self.PC += c_int8(displacement).value
 
     def DBNZ_FE(self, addr: int) -> None:
         """Y-- then JNZ"""
         self.Y = (self.Y - 1) & 0xFF
-        displacement = c_int8(self[self.PC])
-        self.PC += 1
+        displacement = self.fetch()
         if self.Y != 0:
-            self.PC += int(displacement.value)
+            self.PC += c_int8(displacement).value
 
     def DBNZ_6E(self, addr: int) -> None:
         """(d)-- then JNZ"""
-        page = self.P << 8
-        addr = self[self.PC] | page
-        self.PC += 1
-        data = c_uint8(self[addr])
-        data.value -= 1
-        self[addr] = data.value
-        displacement = c_int8(self[self.PC])
-        self.PC += 1
+        addr = self.fetch()
+        data = self.load(addr)
+        data = (data - 1) & 0xFF
+        self.store(addr, data)
+        displacement = self.fetch()
         if data != 0:
-            self.PC += int(displacement.value)
+            self.PC += c_int8(displacement).value
 
     def CALL_3F(self, addr: int) -> None:
         """(SP--)=PCh, (SP--)=PCl, PC=a"""
@@ -1492,6 +1545,14 @@ class Apu:
         self.SP += 1
         high_addr = self[self.SP]
         self.PC = low_addr | high_addr << 8
+
+    def ROR_7C(self, addr: int) -> None:
+        """Right shift A: high=C, C=low"""
+        carry = self.C
+        self.C = bool(self.A & 0x01)
+        self.A = carry << 7 | self.A >> 1
+        self.Z = self.A == 0
+        self.N = bool(self.A & 0x80)
 
     def SBC(self, x: int, y: int) -> int:
         return self.ADC(x & 0xFF, ~y & 0xFF)
@@ -1804,6 +1865,20 @@ class Apu:
         self[address + 1] = data >> 8 & 0xFF
         self.N = 1 if data & 0x8000 else 0
         self.Z = 1 if data & 0xFFFF == 0 else 0
+
+    def DIV_9E(self, addr: int) -> None:
+        """A=YA/X, Y=mod(YA,X)"""
+        ya = self.YA
+        self.H = (self.Y & 15) >= (self.X & 15)
+        self.V = self.Y >= self.X
+        if self.Y < (self.X << 1):
+            self.A = (ya // self.X) & 0xFF
+            self.Y = (ya % self.X) & 0xFF
+        else:
+            self.A = (255 - (ya - (self.X << 9)) // (256 - self.X)) & 0xFF
+            self.Y = (self.X + (ya - (self.X << 9)) % (256 - self.X)) & 0xFF
+        self.Z = self.A == 0
+        self.N = bool(self.A & 0x80)
 
     def ADC(self, x: int, y: int) -> int:
         result = x + y + self.C

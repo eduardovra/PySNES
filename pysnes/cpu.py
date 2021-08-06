@@ -108,6 +108,7 @@ class Cpu:
 
         # Debugging properties
         self.ticks = 0
+        self.jumps = 0
 
     def __str__(self) -> str:
         flags = [

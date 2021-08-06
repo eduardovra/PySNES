@@ -412,16 +412,16 @@ class Ppu:
             Sprites with priority 0
             BG3 tiles with priority 0
             """
-            # self.draw_background(renderer, self.bg3, 2, False)
-            # if self._bgpriority == 0:
-            #    self.draw_background(renderer, self.bg3, 2, True)
-            # self.draw_background(renderer, self.bg2, 4, False)
-            # self.draw_background(renderer, self.bg1, 4, False)
-            # self.draw_background(renderer, self.bg2, 4, True)
-            # self.draw_background(renderer, self.bg1, 4, True)
+            self.draw_background(renderer, self.bg3, 2, False)
+            if self._bgpriority == 0:
+                self.draw_background(renderer, self.bg3, 2, True)
+            self.draw_background(renderer, self.bg2, 4, False)
+            self.draw_background(renderer, self.bg1, 4, False)
+            self.draw_background(renderer, self.bg2, 4, True)
+            self.draw_background(renderer, self.bg1, 4, True)
             self.draw_objects(renderer)
-            # if self._bgpriority == 1:
-            #    self.draw_background(renderer, self.bg3, 2, True)
+            if self._bgpriority == 1:
+                self.draw_background(renderer, self.bg3, 2, True)
 
         SDL_RenderPresent(renderer)
 

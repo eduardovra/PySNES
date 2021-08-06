@@ -1896,62 +1896,62 @@ class InstructionSet:
         # if self.cpu.current_instruction_PC == 0x05D9A5:
         # if self.cpu.current_instruction_PC == 0x05D8B7:
         # if self.cpu.current_instruction_PC == 0x05D8C2:
-        if self.cpu.current_instruction_PC == 0x8079:  # SPC700UploadLoop
-            print("CPU SPC700UploadLoop")
-
-        if self.cpu.current_instruction_PC == 0x9322:  # GetGameMode
-            print("CPU GetGameMode")
-
-        if self.cpu.current_instruction_PC == 0x9391:  # GameMode00
-            print("CPU GameMode00")
-
-        if self.cpu.current_instruction_PC == 0x940F:  # GameMode01
-            print("CPU GameMode01")
-
-        if self.cpu.current_instruction_PC == 0x96AE:  # GameMode03
-            print("CPU GameMode03")
-
-        if self.cpu.current_instruction_PC == 0x9F6F:  # GMTransition
-            print("CPU GMTransition")
-
-        if self.cpu.current_instruction_PC == 0x80B3:
-            addr = (
-                self.cpu.bus[0x7E0000]
-                | self.cpu.bus[0x7E0001] << 8
-                | self.cpu.bus[0x7E0002] << 16
-            )
-            addr += self.cpu.Y
-            block_size = self.cpu.bus[addr + 0]
-            block_size |= self.cpu.bus[addr + 1] << 8
-
-            addr = (
-                self.cpu.bus[0x7E0000]
-                | self.cpu.bus[0x7E0001] << 8
-                | self.cpu.bus[0x7E0002] << 16
-            )
-            addr += self.cpu.Y + 2
-            block_addr = self.cpu.bus[addr + 0]
-            block_addr |= self.cpu.bus[addr + 1] << 8
-
-            print(
-                f"CPU CODE_0080B3 Block Size {hex(block_size)} Block Addr {hex(block_addr)}"
-            )
-            data = 0
-
-        if self.cpu.current_instruction_PC == 0x808D:
-            print("CPU CODE_00808D")
-
+        # if self.cpu.current_instruction_PC == 0x8079:  # SPC700UploadLoop
+        #    print("CPU SPC700UploadLoop")
+        #
+        # if self.cpu.current_instruction_PC == 0x9322:  # GetGameMode
+        #    print("CPU GetGameMode")
+        #
+        # if self.cpu.current_instruction_PC == 0x9391:  # GameMode00
+        #    print("CPU GameMode00")
+        #
+        # if self.cpu.current_instruction_PC == 0x940F:  # GameMode01
+        #    print("CPU GameMode01")
+        #
+        # if self.cpu.current_instruction_PC == 0x96AE:  # GameMode03
+        #    print("CPU GameMode03")
+        #
+        # if self.cpu.current_instruction_PC == 0x9F6F:  # GMTransition
+        #    print("CPU GMTransition")
+        #
+        # if self.cpu.current_instruction_PC == 0x80B3:
+        #    addr = (
+        #        self.cpu.bus[0x7E0000]
+        #        | self.cpu.bus[0x7E0001] << 8
+        #        | self.cpu.bus[0x7E0002] << 16
+        #    )
+        #    addr += self.cpu.Y
+        #    block_size = self.cpu.bus[addr + 0]
+        #    block_size |= self.cpu.bus[addr + 1] << 8
+        #
+        #    addr = (
+        #        self.cpu.bus[0x7E0000]
+        #        | self.cpu.bus[0x7E0001] << 8
+        #        | self.cpu.bus[0x7E0002] << 16
+        #    )
+        #    addr += self.cpu.Y + 2
+        #    block_addr = self.cpu.bus[addr + 0]
+        #    block_addr |= self.cpu.bus[addr + 1] << 8
+        #
+        #    print(
+        #        f"CPU CODE_0080B3 Block Size {hex(block_size)} Block Addr {hex(block_addr)}"
+        #    )
+        #    data = 0
+        #
+        # if self.cpu.current_instruction_PC == 0x808D:
+        #    print("CPU CODE_00808D")
+        #
         # if self.cpu.current_instruction_PC == 0x8095:
         #    print("CPU CODE_008095")
-
-        if self.cpu.current_instruction_PC == 0x9F29:
-            print(f"CPU KeepModeActive SP={hex(self.cpu.S)}")
-
-        if self.cpu.current_instruction_PC == 0x8133:
-            print("CPU Return008133")
-
-        if self.cpu.current_instruction_PC == 0x96C6:
-            print("CPU Finished UploadMusicBank1")
+        #
+        # if self.cpu.current_instruction_PC == 0x9F29:
+        #    print(f"CPU KeepModeActive SP={hex(self.cpu.S)}")
+        #
+        # if self.cpu.current_instruction_PC == 0x8133:
+        #    print("CPU Return008133")
+        #
+        # if self.cpu.current_instruction_PC == 0x96C6:
+        #    print("CPU Finished UploadMusicBank1")
 
         if self.print_instructions:
             print(debug_str)

@@ -610,17 +610,17 @@ class Apu:
         # if self.PC == 0x05A5:  # CopyToSNES
         #    self.print_instructions = True
 
-        if self.PC == 0x12F2:
-            print("APU StandardTransfer")
-        if self.PC == 0x1325:
-            addr = self[0xF6] | self[0xF7] << 8
-            f4 = self[0xF4]
-            f5 = self[0xF5]
-            print(f"APU APU_1325 Start Addr {hex(addr)} {hex(f4)} {hex(f5)}")
+        # if self.PC == 0x12F2:
+        #    print("APU StandardTransfer")
+        # if self.PC == 0x1325:
+        #    addr = self[0xF6] | self[0xF7] << 8
+        #    f4 = self[0xF4]
+        #    f5 = self[0xF5]
+        #    print(f"APU APU_1325 Start Addr {hex(addr)} {hex(f4)} {hex(f5)}")
         # if self.PC == 0x130A:
         #    print("APU APU_130A .data")
-        if self.PC == 0x1305:
-            print("APU APU_1305 Block")
+        # if self.PC == 0x1305:
+        #    print("APU APU_1305 Block")
         # if self.PC == 0x131E:
         #    print("APU APU_131E .retry")
 

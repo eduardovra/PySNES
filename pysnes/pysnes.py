@@ -111,7 +111,7 @@ def main():
     # rom = "/home/eduardovra/workspace/snes-test-roms/PeterLemon/SNES-CPUTest-CPU/ROR/CPUROR.sfc"
     # rom = "/home/eduardovra/workspace/snes-test-roms/PeterLemon/SNES-CPUTest-CPU/SBC/CPUSBC.sfc"
     # rom = "/home/eduardovra/workspace/snes-test-roms/PeterLemon/SNES-CPUTest-CPU/STR/CPUSTR.sfc"
-    # rom = "/home/eduardovra/workspace/snes-test-roms/PeterLemon/SNES-CPUTest-CPU/TRN/CPUTRN.sfc"
+    rom = "/home/eduardovra/workspace/snes-test-roms/PeterLemon/SNES-CPUTest-CPU/TRN/CPUTRN.sfc"
 
     # rom = "/home/eduardovra/workspace/snes-test-roms/PeterLemon/SNES-CPUTest-SPC700/ADC/SPC700ADC.sfc"
     # rom = "/home/eduardovra/workspace/snes-test-roms/PeterLemon/SNES-CPUTest-SPC700/AND/SPC700AND.sfc"
@@ -131,6 +131,23 @@ def main():
     pysnes = PySNES(rom)
     while not pysnes.tick():
         pass
+    return
+
+    trace = "roms/Super Mario World (U) [!]-trace.log"
+    with open(trace, "r") as f:
+        line_number = 0
+        error_count_apu = 0
+        error_count_cpu = 0
+
+        while True:
+            line_number += 1
+            line = f.readline()
+            print(line.rstrip())
+
+            if line[0] == ".":
+                pysnes.apu.fetch_and_execute(trace_line=line)
+            else:
+                pysnes.cpu.fetch_and_execute(trace_line=line)
 
 
 if __name__ == "__main__":

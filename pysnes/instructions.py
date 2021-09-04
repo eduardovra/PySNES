@@ -832,9 +832,11 @@ class Instruction:
         cpu.P.C = cpu.emulation
         cpu.emulation = carry
         # TODO need to replace the status register because flags are different in native mode
+        cpu.P.X = 1
+        cpu.P.M = 1
         if cpu.emulation:
-            cpu.P.X = 1
-            cpu.P.M = 1
+            # cpu.P.X = 1
+            # cpu.P.M = 1
             cpu.X &= 0xFF
             cpu.Y &= 0xFF
             cpu.S = cpu.S & 0xFF | 0x0100
@@ -1331,11 +1333,11 @@ class Instruction:
 
     def JSR(self, cpu, addr) -> int:
         """Jump to Subroutine"""
-        cpu.jumps += 1
+        # cpu.jumps += 1
         pc = cpu.PC - 1
 
         if self.opcode == 0x20:  # Absolute
-            print(f">>> Jump to Subroutine {cpu.jumps} SP={hex(cpu.S)}")
+            # print(f">>> Jump to Subroutine {cpu.jumps} SP={hex(cpu.S)}")
             # PC high byte
             cpu.bus[cpu.S] = (pc >> 8) & 0xFF
             cpu.S -= 1
@@ -1345,7 +1347,7 @@ class Instruction:
             # Jump to addr
             cpu.PC = addr
         elif self.opcode == 0x22:  # Absolute long
-            print(f">>> Jump to Subroutine Long {cpu.jumps} SP={hex(cpu.S)}")
+            # print(f">>> Jump to Subroutine Long {cpu.jumps} SP={hex(cpu.S)}")
             # Program bank
             cpu.bus[cpu.S] = (pc >> 16) & 0xFF  # cpu.PB
             cpu.S -= 1
@@ -1361,7 +1363,7 @@ class Instruction:
             if cpu.emulation:
                 cpu.S = 0x0100 | cpu.S & 0xFF
         elif self.opcode == 0xFC:  # Absolute Indexed Indirect
-            print(f">>> Jump to Subroutine {cpu.jumps} SP={hex(cpu.S)}")
+            # print(f">>> Jump to Subroutine {cpu.jumps} SP={hex(cpu.S)}")
             # PC high byte
             cpu.bus[cpu.S] = (pc >> 8) & 0xFF
             cpu.S -= 1
@@ -1380,8 +1382,8 @@ class Instruction:
 
     def RTS(self, cpu, addr) -> int:
         """Return from Subroutine"""
-        print(f"<<< Return from Subroutine {cpu.jumps} SP={hex(cpu.S)}")
-        cpu.jumps -= 1
+        # print(f"<<< Return from Subroutine {cpu.jumps} SP={hex(cpu.S)}")
+        # cpu.jumps -= 1
         cpu.S += 1
         low = cpu.bus[cpu.S]
         cpu.S += 1
@@ -1391,8 +1393,8 @@ class Instruction:
 
     def RTL(self, cpu, addr) -> int:
         """Return from Subroutine Long"""
-        print(f"<<< Return from Subroutine Long {cpu.jumps} SP={hex(cpu.S)}")
-        cpu.jumps -= 1
+        # print(f"<<< Return from Subroutine Long {cpu.jumps} SP={hex(cpu.S)}")
+        # cpu.jumps -= 1
         cpu.S += 1
         low = cpu.bus[cpu.S]
         cpu.S += 1
@@ -1619,17 +1621,17 @@ class Instruction:
     def CMP(self, cpu, addr) -> int:
         """Compare Accumulator with Memory"""
         if cpu.emulation == 0 and cpu.P.M == 0:
-            value = cpu.bus[addr] | cpu.bus[addr + 1] << 8
-            temp = cpu.A - value
-            cpu.P.Z = 1 if (temp & 0xFFFF) == 0 else 0
-            cpu.P.N = 1 if temp & 0x8000 else 0
+            data = cpu.bus[addr] | cpu.bus[addr + 1] << 8
+            result = cpu.A - data
+            cpu.P.Z = 1 if (result & 0xFFFF) == 0 else 0
+            cpu.P.N = 1 if result & 0x8000 else 0
         else:
-            value = cpu.bus[addr]
-            temp = (cpu.A & 0xFF) - value
-            cpu.P.Z = 1 if (temp & 0xFF) == 0 else 0
-            cpu.P.N = 1 if temp & 0x80 else 0
+            data = cpu.bus[addr]
+            result = (cpu.A & 0xFF) - data
+            cpu.P.Z = 1 if (result & 0xFF) == 0 else 0
+            cpu.P.N = 1 if result & 0x80 else 0
 
-        cpu.P.C = 1 if cpu.A >= value else 0
+        cpu.P.C = 1 if result >= 0 else 0
 
         return 0
 
@@ -1863,6 +1865,8 @@ class InstructionSet:
         self.print_instructions = DEBUG_ENABLED
         self.trace = deque(maxlen=100)
 
+        self.bsnes_trace_f = open("roms/Super Mario World (U) [!]-trace.log", "r")
+
     def load_instructions(self) -> None:
         self.instructions = {}
         with open("instructions.csv", "r") as f:
@@ -1891,7 +1895,7 @@ class InstructionSet:
             str(instruction).ljust(40),
             self.cpu,
         )
-        self.trace.append(debug_str)
+        # self.trace.append(debug_str)
 
         # if self.cpu.current_instruction_PC == 0x05D9A5:
         # if self.cpu.current_instruction_PC == 0x05D8B7:

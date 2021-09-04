@@ -45,11 +45,11 @@ class Cpu:
             self.N = 0  # Negative flag
             self.V = 0  # Overflow flag
             self.D = 0  # Decimal flag
-            self.I = 0  # Interrupt mask
+            self.I = 1  # Interrupt mask
             self.Z = 0  # Zero flag
             self.C = 0  # Carry flag
             # Emulation mode only
-            self.B = 0  # B BRK flag bit
+            self.B = 1  # B BRK flag bit
             # Native mode only
             self.M = 0  # Accumulator/Memory Select
             self.X = 0  # Index Register Select
@@ -97,7 +97,7 @@ class Cpu:
         self.X: int = 0x0000  # X Index Register
         self.Y: int = 0x0000  # Y Index Register
         self.D: int = 0x0000  # Direct Page Register
-        self.S: int = 0x0100  # Stack Pointer
+        self.S: int = 0x01FF  # Stack Pointer
         # self.PB: int = 0x00  # Program Bank Register
         self.DB: int = 0x00  # Data Bank Register
         self.PC: int = self.hardware_vectors["emulation"]["RESET"]
@@ -173,7 +173,47 @@ class Cpu:
 
         return 1
 
-    def fetch_and_execute(self) -> int:
+    def validate_trace(self, line: str) -> None:
+        """Compare current state with the bsnes trace log"""
+        PC = int(line[:6], 16)
+        assert PC == self.PC, "{:06X} != {:06X}".format(PC, self.PC)
+        A = int(line[33:37], 16)
+        assert A == self.A, "{:04X} != {:04X}".format(A, self.A)
+        X = int(line[40:44], 16)
+        assert X == self.X, "{:04X} != {:04X}".format(X, self.X)
+        Y = int(line[47:51], 16)
+        assert Y == self.Y, "{:04X} != {:04X}".format(Y, self.Y)
+        S = int(line[54:59], 16)
+        assert S == self.S, "{:04X} != {:04X}".format(S, self.S)
+
+        NF = line[72] == "N"
+        assert NF == bool(self.P.N), f"{NF} != {self.P.N}"
+        VF = line[76] == "V"
+        assert VF == bool(self.P.V), f"{VF} != {self.P.V}"
+        IF = line[77] == "I"
+        assert IF == bool(self.P.I), f"{IF} != {self.P.I}"
+        ZF = line[78] == "Z"
+        assert ZF == bool(self.P.Z), f"{ZF} != {self.P.Z}"
+        CF = line[79] == "C"
+        assert CF == bool(self.P.C), f"{CF} != {self.P.C}"
+
+        EF = line[74] == "1"
+        assert EF == bool(self.emulation), f"{EF} != {self.emulation}"
+
+        if self.emulation:
+            BF = line[75] == "B"
+            assert BF == bool(self.P.B), f"{BF} != {self.P.B}"
+        else:
+            MF = line[74] == "M"
+            assert MF == bool(self.P.M), f"{MF} != {self.P.M}"
+            XF = line[75] == "X"
+            assert XF == bool(self.P.X), f"{XF} != {self.P.X}"
+
+    def fetch_and_execute(self, *, trace_line=None) -> int:
+        if trace_line:
+            self.validate_trace(trace_line)
+
+        # self.opcode_PC = self.PC
         self.opcode = self.bus[self.PC]
         self.PC += 1
         cycles = self.instruction_set.execute(self.opcode)

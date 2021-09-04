@@ -596,7 +596,41 @@ class Apu:
     def store(self, addr: int, data: int) -> None:
         self[self.P << 8 | addr] = data
 
-    def fetch_and_execute(self) -> None:
+    def validate_trace(self, line: str) -> None:
+        """Compare current state with the bsnes trace log"""
+        PC = int(line[2:6], 16)
+        assert PC == self.PC, "{:04X} != {:04X}".format(PC, self.PC)
+        A = int(line[33:35], 16)
+        assert A == self.A, "{:02X} != {:02X}".format(A, self.A)
+        X = int(line[38:40], 16)
+        assert X == self.X, "{:02X} != {:02X}".format(X, self.X)
+        Y = int(line[43:45], 16)
+        assert Y == self.Y, "{:02X} != {:02X}".format(Y, self.Y)
+        S = int(line[49:53], 16)
+        assert S == self.SP, "{:04X} != {:04X}".format(S, self.SP)
+        YA = int(line[57:61], 16)
+        assert YA == self.YA, "{:04X} != {:04X}".format(YA, self.YA)
+
+        NF = line[62] == "N"
+        assert NF == bool(self.N), f"{NF} != {self.N}"
+        VF = line[63] == "V"
+        assert VF == bool(self.V), f"{VF} != {self.V}"
+        PF = line[64] == "P"
+        assert PF == bool(self.P), f"{PF} != {self.P}"
+        BF = line[65] == "B"
+        assert BF == bool(self.B), f"{BF} != {self.B}"
+        HF = line[66] == "H"
+        assert HF == bool(self.H), f"{HF} != {self.H}"
+        IF = line[67] == "I"
+        assert IF == bool(self.I), f"{IF} != {self.I}"
+        ZF = line[68] == "Z"
+        assert ZF == bool(self.Z), f"{ZF} != {self.Z}"
+        CF = line[69] == "C"
+        assert CF == bool(self.C), f"{CF} != {self.C}"
+
+    def fetch_and_execute(self, *, trace_line=None) -> None:
+        if trace_line:
+            self.validate_trace(trace_line)
         # line = self.bsnes_trace_f.readline()
         # bsnes_pc = int(line[2:6], 16)
         # if self.PC != bsnes_pc:

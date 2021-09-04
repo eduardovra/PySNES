@@ -150,7 +150,7 @@ class Ppu:
     def vmdatal(self, data: int) -> None:
         self._vmdatal = c_uint8(data)
         if not self.vmain_addr_increment_mode:
-            self.write_vram(data)
+            self.write_vram()
 
     @property
     def vmdatah(self) -> int:
@@ -160,9 +160,9 @@ class Ppu:
     def vmdatah(self, data: int) -> None:
         self._vmdatah = c_uint8(data)
         if self.vmain_addr_increment_mode:
-            self.write_vram(data)
+            self.write_vram()
 
-    def write_vram(self, data: int) -> None:
+    def write_vram(self) -> None:
         base_addr = (self.vmaddl.value | self.vmaddh.value << 8) * 2
         self.vram[base_addr + 0] = self._vmdatal.value
         self.vram[base_addr + 1] = self._vmdatah.value

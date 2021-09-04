@@ -243,7 +243,8 @@ class Bus:
                     return  # TODO
 
                 if addr == 0x2133:  # SETINI
-                    assert data == 0
+                    # TODO 4 is overscan mode bit - display 239 lines instead of normal 224
+                    assert data in (0, 4)
                     return
 
                 if addr == 0x2134:  # MPYL

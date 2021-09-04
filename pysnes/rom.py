@@ -20,8 +20,8 @@ class Rom:
         # Strip out potential header
         self.smc_header_length = len(self.rom) % 0x400
         self.rom = self.rom[self.smc_header_length :]
-        rom_type = None
-        page_offset = 0
+        rom_type = "LoROM"
+        page_offset = 0x7F00
 
         # Look for the presence of ascii characters in the memory regions
         # to determine the right header offset
@@ -43,7 +43,7 @@ class Rom:
         # page_offset = 0xFF00
 
         # assert rom_type == "LoROM"
-        assert rom_type is not None
+        #assert rom_type is not None
 
         # SNES header is located in the last 64 bytes of the first bank: 0x7FC0 - 0xFFFF
         self.snes_header = {
@@ -73,6 +73,7 @@ class Rom:
         # - D == 0 means LoROM (+ $0), D == 1 means HiROM (+ $1)
         # For super mario world A == 0 and D == 0, so it's SlowROM + LoROM
         assert self.snes_header["mapping_mode"] in (
+            0x00,  # LoROM + SlowROM - SNES Test Program
             0x20,  # LoROM+SNES - For SMW
             0x30,  # LoROM + FastROM+SNES - For the test ROM
             0x31,  # HiROM + FastROM

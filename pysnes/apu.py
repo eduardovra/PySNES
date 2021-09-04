@@ -101,6 +101,7 @@ class Apu:
             0xCF,
             0xDC,
             0xE0,
+            0xED,
             0xEE,
             0xDD,
             0x4D,
@@ -225,6 +226,7 @@ class Apu:
             0xB3,
             0xC3,
             0xD3,
+            0xE3,
             0xF3,
         ],
         "XIndexedAbsolute": [0x15, 0x35, 0x55, 0x75, 0x95, 0xB5, 0xD5, 0xF5],
@@ -1084,6 +1086,10 @@ class Apu:
         data = self[page | addr]
         self.C ^= bool(data & 1 << bit)
 
+    def NOTC_ED(self, addr: int) -> None:
+        """C = !C"""
+        self.C = not self.C
+
     def OR_19(self, addr: int) -> None:
         """(X) = (X) | (Y)"""
         data = self[self.X] | self[self.Y]
@@ -1271,6 +1277,12 @@ class Apu:
     def MOV_E8(self, addr: int) -> None:
         """A = i"""
         self.A = self[addr]
+        self.N = 1 if self.A & 0x80 else 0
+        self.Z = 1 if self.A == 0 else 0
+
+    def MOV_E6(self, addr: int) -> None:
+        """A = (X)"""
+        self.A = self[self.X]
         self.N = 1 if self.A & 0x80 else 0
         self.Z = 1 if self.A == 0 else 0
 
@@ -1475,6 +1487,26 @@ class Apu:
         if data & 1 << 0 == 0:
             self.PC += displacement.value
 
+    def BBC_F3(self, addr: int) -> None:
+        """PC+=r  if d.7 == 0"""
+        page = 0x0100 if self.P else 0x0000
+        absolute_addr = self[addr] | page
+        data = self[absolute_addr]
+        displacement = c_int8(self[self.PC])
+        self.PC += 1
+        if data & 1 << 7 == 0:
+            self.PC += displacement.value
+
+    def BBS_E3(self, addr: int) -> None:
+        """PC+=r  if d.7 == 1"""
+        page = 0x0100 if self.P else 0x0000
+        absolute_addr = self[addr] | page
+        data = self[absolute_addr]
+        displacement = c_int8(self[self.PC])
+        self.PC += 1
+        if data & 1 << 7:
+            self.PC += displacement.value
+
     def BCC_90(self, addr: int) -> None:
         """PC+=r  if C == 0"""
         if self.C == 0:
@@ -1587,6 +1619,16 @@ class Apu:
         self.A = carry << 7 | self.A >> 1
         self.Z = self.A == 0
         self.N = bool(self.A & 0x80)
+
+    def ROR_6B(self, addr: int) -> None:
+        """Right shift (d) as above"""
+        carry = self.C
+        data = self.load(addr)
+        self.C = bool(data & 0x01)
+        data = carry << 7 | data >> 1
+        self.store(addr, data)
+        self.Z = data == 0
+        self.N = bool(data & 0x80)
 
     def SBC(self, x: int, y: int) -> int:
         return self.ADC(x & 0xFF, ~y & 0xFF)
@@ -1724,6 +1766,13 @@ class Apu:
         self.Z = 1 if result == 0 else 0
         self.C = 1 if result > 0xFF else 0  # TODO not sure
 
+    def CMP_64(self, addr: int) -> None:
+        """A - (d)"""
+        result = self.A - self.load(addr)
+        self.N = 1 if result < 0x00 else 0
+        self.Z = 1 if result == 0 else 0
+        self.C = 1 if result > 0xFF else 0
+
     def CMP_65(self, addr: int) -> None:
         """A - (a)"""
         i = self[addr]
@@ -1777,6 +1826,20 @@ class Apu:
     def CMP_5E(self, addr: int) -> None:
         """Y - (a)"""
         result = self.Y - self[addr]
+        self.N = 1 if result < 0x00 else 0
+        self.Z = 1 if result == 0 else 0
+        self.C = 1 if result > 0xFF else 0  # TODO not sure
+
+    def CMP_69(self, addr: int) -> None:
+        """(dd) - (ds)"""
+        page = 0x0100 if self.P else 0x0000
+        source = page | self[self.PC]
+        self.PC += 1
+        rhs = self[source]
+        target = page | self[self.PC]
+        self.PC += 1
+        lhs = self[target]
+        result = rhs - lhs # TODO not sure about order
         self.N = 1 if result < 0x00 else 0
         self.Z = 1 if result == 0 else 0
         self.C = 1 if result > 0xFF else 0  # TODO not sure

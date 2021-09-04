@@ -585,9 +585,10 @@ class Instruction:
 
     def MVN(self, cpu, addr):
         """Move Negative destination < source"""
-        dest_bank = cpu.bus[addr + 0]
-        source_bank = cpu.bus[addr + 1]
-        cpu.PC += 2
+        dest_bank = cpu.bus[cpu.PC]
+        cpu.PC += 1
+        source_bank = cpu.bus[cpu.PC]
+        cpu.PC += 1
         cycles = (cpu.A + 1) * 7
 
         while cpu.A >= 0:

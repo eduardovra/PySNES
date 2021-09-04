@@ -6,6 +6,8 @@ class Controller:
         self.pressed_keys = set()
         self.shift_register = list()
         self.latched = 0
+        self.joy_h = 0
+        self.joy_l = 0
 
     def latch(self, state: int) -> None:
         if state and self.latched == 0:
@@ -31,7 +33,7 @@ class Controller:
             SDLK_a in self.pressed_keys,  # Y
             SDLK_z in self.pressed_keys,  # B
         ]
-        print(self.shift_register)
+        #print(self.shift_register)
 
     def data(self) -> int:
         self.shift_register.insert(0, 1)  # Pad left with 1's

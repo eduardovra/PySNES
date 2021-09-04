@@ -26,6 +26,8 @@ class CpuStatus:
     h_blank_on: bool = False
     v_blank_on: bool = False
 
+    auto_joypad_read_enable: bool = False
+
     @property
     def interrupt_pending(self) -> bool:
         return self.nmi_pending
@@ -130,6 +132,19 @@ class Cpu:
         self.bus = bus
         self.dma = DMA(bus)  # TODO Ugly
 
+    def update_controller_autojoypad_read(self) -> None:
+        self.bus.controller_port1.latch(0)
+        self.bus.controller_port1.latch(1)
+
+        self.bus.controller_port1.joy_h = 0  # JOY1H
+        for bit in reversed(range(8)):
+            if self.bus.controller_port1.data() & 1:
+                self.bus.controller_port1.joy_h |= 1 << bit
+        self.bus.controller_port1.joy_l = 0  # JOY1L
+        for bit in reversed(range(8)):
+            if self.bus.controller_port1.data() & 1:
+                self.bus.controller_port1.joy_l |= 1 << bit
+
     def tick(self) -> int:
         self.ticks += 1
 
@@ -144,6 +159,10 @@ class Cpu:
         if self.status.nmi_transition:
             self.status.nmi_transition = False
             self.status.nmi_pending = True
+
+            # Read controllers status during V-Blank if autojoypad is ON
+            if self.status.auto_joypad_read_enable:
+                self.update_controller_autojoypad_read()
 
         """
         # NMI Poll every 4 clock cycles

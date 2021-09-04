@@ -90,6 +90,16 @@ class Bus:
                         | self.cpu.status.h_blank_on << 6
                         | self.cpu.status.v_blank_on << 7
                     )
+                if addr == 0x4218:  # JOY1L
+                    return self.controller_port1.joy_l
+                if addr == 0x4219:  # JOY1H
+                    return self.controller_port1.joy_h
+
+                if 0x421A <= addr <= 0x421F:  # Auto Joypad Read registers
+                    print(
+                        "\033[93mReading unmamped memory region: 0x{:06X}\033[0m".format(abs_addr)
+                    )
+
                 if 0x4300 <= addr <= 0x43FF:
                     print("READ DMA REGISTER: {}" % hex(addr))
                 return self.dma_ppu2_hw_registers[addr - 0x4200]
@@ -281,6 +291,7 @@ class Bus:
 
             elif 0x4200 <= addr <= 0x44FF:
                 if addr == 0x4200:  # NMITIMEN
+                    self.cpu.status.auto_joypad_read_enable = bool(data & 0x01)
                     self.cpu.status.hirq_enable = bool(data & 0x10)
                     self.cpu.status.virq_enable = bool(data & 0x20)
                     self.cpu.status.irq_enable = (

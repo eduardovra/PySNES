@@ -107,8 +107,12 @@ class Bus:
                     return self.controller_port1.joy_l
                 if addr == 0x4219:  # JOY1H
                     return self.controller_port1.joy_h
+                if addr == 0x421A:  # JOY2L
+                    return self.controller_port2.joy_l
+                if addr == 0x421B:  # JOY2H
+                    return self.controller_port2.joy_h
 
-                if 0x421A <= addr <= 0x421F:  # Auto Joypad Read registers
+                if 0x421C <= addr <= 0x421F:  # Auto Joypad Read registers
                     print(
                         "\033[93mReading unmamped memory region: 0x{:06X}\033[0m".format(abs_addr)
                     )

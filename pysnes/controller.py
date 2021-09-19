@@ -2,12 +2,15 @@ from sdl2 import *
 
 
 class Controller:
-    def __init__(self) -> None:
+    def __init__(self, *, disabled: bool = False) -> None:
         self.pressed_keys = set()
         self.shift_register = list()
         self.latched = 0
         self.joy_h = 0
         self.joy_l = 0
+        # Only controller port 1 has mapped buttons,
+        # so I created this to disable the other ports
+        self.disabled = disabled
 
     def latch(self, state: int) -> None:
         if state and self.latched == 0:
@@ -15,6 +18,10 @@ class Controller:
         self.latched = state
 
     def load_shift_register(self) -> None:
+        if self.disabled:
+            self.shift_register = [0] * 16
+            return
+
         self.shift_register = [
             0,
             0,
@@ -33,7 +40,6 @@ class Controller:
             SDLK_a in self.pressed_keys,  # Y
             SDLK_z in self.pressed_keys,  # B
         ]
-        #print(self.shift_register)
 
     def data(self) -> int:
         self.shift_register.insert(0, 1)  # Pad left with 1's

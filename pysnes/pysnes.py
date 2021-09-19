@@ -16,7 +16,7 @@ class PySNES:
         self.apu = Apu()
         self.cpu = Cpu(rom.hardware_vectors)
         self.ppu = Ppu(self.cpu)  # Pass CPU reference so PPU can control the NMI line
-        self.controllers = [Controller(), Controller()]
+        self.controllers = [Controller(), Controller(disabled=True)]
         bus = Bus(rom, self.cpu, self.apu, self.ppu, self.controllers)
         self.cpu.attach(bus)
         self.ticks = 0

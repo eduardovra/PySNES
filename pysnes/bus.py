@@ -27,6 +27,19 @@ class Bus:
         bank = abs_addr >> 16
         addr = abs_addr & 0xFFFF
 
+        if (0x00 <= bank <= 0x6F) or (0x80 <= bank <= 0xFF):
+            if 0x8000 <= addr <= 0xFFFF:
+                if bank >= 0x80:
+                    bank -= 0x80  # Mirror of 0x00-0x6F
+                rom_addr = (bank * 0x8000) + (addr - 0x8000)
+                return self.rom[rom_addr]
+
+        if 0x7E2000 <= abs_addr <= 0x7E7FFF:
+            return self.high_ram[abs_addr - 0x7E2000]
+
+        if 0x7E8000 <= abs_addr <= 0x7FFFFF:
+            return self.extended_ram[abs_addr - 0x7E8000]
+
         if (0x00 <= bank <= 0x3F) or bank == 0x7E:
             if 0x0000 <= addr <= 0x1FFF:
                 return self.low_ram[addr & 0xFFFF]  # LowRAM, shadowed from bank $7E
@@ -103,19 +116,6 @@ class Bus:
                 if 0x4300 <= addr <= 0x43FF:
                     print("READ DMA REGISTER: {}" % hex(addr))
                 return self.dma_ppu2_hw_registers[addr - 0x4200]
-
-        if (0x00 <= bank <= 0x6F) or (0x80 <= bank <= 0xFF):
-            if 0x8000 <= addr <= 0xFFFF:
-                if bank >= 0x80:
-                    bank -= 0x80  # Mirror of 0x00-0x6F
-                rom_addr = (bank * 0x8000) + (addr - 0x8000)
-                return self.rom[rom_addr]
-
-        if 0x7E2000 <= abs_addr <= 0x7E7FFF:
-            return self.high_ram[abs_addr - 0x7E2000]
-
-        if 0x7E8000 <= abs_addr <= 0x7FFFFF:
-            return self.extended_ram[abs_addr - 0x7E8000]
 
         # TODO Just for testing the ROM
         print(
@@ -200,7 +200,9 @@ class Bus:
                 if addr == 0x210F:  # BG2HOFS
                     return  # TODO
                 if addr == 0x2110:  # BG2VOFS
-                    return  # TODO
+                    self.ppu.bg2.voffset = data << 8 | self.ppu.latch_bgofs_ppu1
+                    self.ppu.latch_bgofs_ppu1 = data
+                    return
                 if addr == 0x2111:  # BG3HOFS
                     return  # TODO
                 if addr == 0x2112:  # BG3VOFS

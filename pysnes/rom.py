@@ -64,8 +64,6 @@ class Rom:
             "checksum": self.rom[page_offset + 0xDE],
         }
 
-        print(f"{self.snes_header=}")
-
         # The bitmask to use is 001A0BCD, the basic value is $20:
         # - A == 0 means SlowROM (+ $0), A == 1 means FastROM (+ $10).
         # - B == 1 means ExHiROM (+ $4)
@@ -113,5 +111,3 @@ class Rom:
                 "COP": self.rom[page_offset | 0xF4] | self.rom[page_offset | 0xF5] << 8,
             },
         }
-
-        print(f"{self.hardware_vectors=}")

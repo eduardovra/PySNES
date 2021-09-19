@@ -1,7 +1,6 @@
 from ctypes import byref
 
 from sdl2 import *
-from line_profiler import LineProfiler
 
 from .rom import Rom
 from .bus import Bus
@@ -153,11 +152,12 @@ def main():
 
 if __name__ == "__main__":
     import cProfile
+    # from line_profiler import LineProfiler
 
     # lp = LineProfiler()
     # lp_wrapper = lp(main)
     # lp_wrapper()
     # lp.print_stats()
 
-    # cProfile.run("main()", sort="cumulative")
+    #cProfile.run("main()", sort="cumulative")
     main()

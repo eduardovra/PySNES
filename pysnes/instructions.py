@@ -1891,11 +1891,7 @@ class InstructionSet:
         self.cpu.current_instruction_PC = self.cpu.PC - 1
         # p_debug = instruction.mnemonic in ("JSR", "RTS")
         # p_debug = False
-        debug_str = "\033[92mCPU 0x{:06X} {} {}\033[0m".format(
-            self.cpu.current_instruction_PC,
-            str(instruction).ljust(40),
-            self.cpu,
-        )
+
         # self.trace.append(debug_str)
 
         # if self.cpu.current_instruction_PC == 0x05D9A5:
@@ -1959,6 +1955,11 @@ class InstructionSet:
         #    print("CPU Finished UploadMusicBank1")
 
         if self.print_instructions:
+            debug_str = "\033[92mCPU 0x{:06X} {} {}\033[0m".format(
+                self.cpu.current_instruction_PC,
+                str(instruction).ljust(40),
+                self.cpu,
+            )
             print(debug_str)
 
         cycles = instruction(self.cpu)

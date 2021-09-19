@@ -3,7 +3,7 @@ from ctypes import (
     c_uint8,
     LittleEndianStructure,
 )
-from typing import Optional, Union
+from typing import Optional, Union, Tuple
 from dataclasses import dataclass
 
 from sdl2 import *
@@ -17,6 +17,7 @@ class Background:
     tile_size = 0
     main_screen_enable = True
     sub_screen_enable = True
+    voffset = 0
 
 
 @dataclass
@@ -102,6 +103,8 @@ class Ppu:
         self.bg2 = Background()
         self.bg3 = Background()
         self.bg4 = Background()
+
+        self.latch_bgofs_ppu1 = 0
 
         # Clock
         self.ticks = 0
@@ -428,10 +431,25 @@ class Ppu:
     def draw_background(
         self, renderer, bg: Background, bpp: int, priority_selector: bool
     ) -> None:
+        """Draw all tiles from a background"""
         if not bg.main_screen_enable:
             return
 
-        x_offset, y_offset = 0, 0
+        # I came to the conclusion that voffset was a 9 bit
+        # number stored in two's complement format (can be negative)
+        # Posivite values mean scrolling upwards, so the sign
+        # needs to be inverted to work with SDL screen coordinates
+        # This was tested in BG mode 0, not sure if it will work with other modes
+        screen_height = 448  # TODO 224 when non interlaced
+        bg_voffset = bg.voffset
+        if (bg_voffset & (1 << (9 - 1))) != 0:  # if sign bit is set e.g., 8bit: 128-255
+            bg_voffset = bg_voffset - (1 << 9)  # compute negative value
+            bg_voffset *= -1
+        else:
+            bg_voffset = screen_height - bg_voffset
+
+        x_offset, y_offset = 0, bg_voffset
+
         line_start = (
             bg.screen_addr * 2
         ) & 0xFFFF  # Each addr corresponds to 2 bytes in VRAM
@@ -439,9 +457,7 @@ class Ppu:
         line_step = 0x40
         # Each iteration will print a line of 32 tiles x 8x8 pixels
         for line in range(line_start, line_end, line_step):
-            col_start = 0x00
-            col_end = 0x40
-            col_step = 0x02
+            col_start, col_end, col_step = 0x00, 0x40, 0x02
             # Each iteration will print 1 tile of 8x8 pixels
             for col in range(col_start, col_end, col_step):
                 # Parse Tilemap entry - 2 bytes
@@ -536,6 +552,11 @@ class Ppu:
         pixel_sequence = list(reversed(range(8)))
         # Each iteration will print a line of a tile
         for i, y in zip(line_sequence, y_sequence):
+            # Wrap y around
+            screen_height = 448 # 224 when non interlaced
+            if y >= screen_height:
+                y = y % screen_height
+
             # Each iteration will print a pixel from the line
             for pixel, x in zip(pixel_sequence, x_sequence):
                 self.draw_point(renderer, i, tile_data, bpp, tile.palette, pixel, x, y)
@@ -612,7 +633,7 @@ class Ppu:
                     tile_character=obj.character,
                 )
 
-    def get_obj_dimensions(self, obj_size: int) -> tuple[int, int]:
+    def get_obj_dimensions(self, obj_size: int) -> Tuple[int, int]:
         """
         000 =  8x8  and 16x16 sprites
         001 =  8x8  and 32x32 sprites

@@ -17,6 +17,7 @@ class Background:
     tile_size = 0
     main_screen_enable = True
     sub_screen_enable = True
+    hoffset = 0
     voffset = 0
 
 
@@ -105,6 +106,7 @@ class Ppu:
         self.bg4 = Background()
 
         self.latch_bgofs_ppu1 = 0
+        self.latch_bgofs_ppu2 = 0
 
         # Clock
         self.ticks = 0
@@ -448,7 +450,7 @@ class Ppu:
         else:
             bg_voffset = screen_height - bg_voffset
 
-        x_offset, y_offset = 0, bg_voffset
+        x_offset, y_offset = bg.hoffset, bg_voffset
 
         line_start = (
             bg.screen_addr * 2

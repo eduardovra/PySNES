@@ -62,6 +62,10 @@ class Bus:
                 if addr == 0x213D:  # OPVCT
                     return self.ppu.v_counter
 
+                if addr == 0x213E:  # STAT77
+                    # TODO PPU Status Flag and Version
+                    return 1
+
                 if addr == 0x213F:  # STAT78
                     return self.ppu.stat78
 
@@ -202,7 +206,11 @@ class Bus:
                 if addr == 0x210E:  # BG1VOFS
                     return  # TODO
                 if addr == 0x210F:  # BG2HOFS
-                    return  # TODO
+                    self.ppu.bg2.hoffset = data << 8 | (self.ppu.latch_bgofs_ppu1 & ~7) | (self.ppu.latch_bgofs_ppu2 & 7)
+                    self.ppu.latch_bgofs_ppu1 = data
+                    self.ppu.latch_bgofs_ppu2 = data
+                    print(f"self.ppu.bg2.hoffset {self.ppu.bg2.hoffset}")
+                    return
                 if addr == 0x2110:  # BG2VOFS
                     self.ppu.bg2.voffset = data << 8 | self.ppu.latch_bgofs_ppu1
                     self.ppu.latch_bgofs_ppu1 = data

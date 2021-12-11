@@ -1477,35 +1477,65 @@ class Apu:
         data = self[addr & 0x1FFF]
         self.C = 1 if (data & (1 << bit)) else 0
 
-    def BBC_13(self, addr: int) -> None:
-        """PC+=r  if d.0 == 0"""
+    def BBC(self, bit: int, addr: int) -> None:
+        """Branch relative if bit clear"""
         page = 0x0100 if self.P else 0x0000
         absolute_addr = self[addr] | page
         data = self[absolute_addr]
         displacement = c_int8(self[self.PC])
         self.PC += 1
-        if data & 1 << 0 == 0:
+        if data & 1 << bit == 0:
             self.PC += displacement.value
+
+    def BBC_13(self, addr: int) -> None:
+        """PC+=r  if d.0 == 0"""
+        self.BBC(0, addr)
+
+    def BBC_33(self, addr: int) -> None:
+        """PC+=r  if d.1 == 0"""
+        self.BBC(1, addr)
+
+    def BBC_53(self, addr: int) -> None:
+        """PC+=r  if d.2 == 0"""
+        self.BBC(2, addr)
+
+    def BBC_73(self, addr: int) -> None:
+        """PC+=r  if d.3 == 0"""
+        self.BBC(3, addr)
+
+    def BBC_93(self, addr: int) -> None:
+        """PC+=r  if d.4 == 0"""
+        self.BBC(4, addr)
+
+    def BBC_B3(self, addr: int) -> None:
+        """PC+=r  if d.5 == 0"""
+        self.BBC(5, addr)
+
+    def BBC_D3(self, addr: int) -> None:
+        """PC+=r  if d.6 == 0"""
+        self.BBC(6, addr)
 
     def BBC_F3(self, addr: int) -> None:
         """PC+=r  if d.7 == 0"""
+        self.BBC(7, addr)
+
+    def BBS(self, bit: int, addr: int) -> None:
+        """Branch relative if bit set"""
         page = 0x0100 if self.P else 0x0000
         absolute_addr = self[addr] | page
         data = self[absolute_addr]
         displacement = c_int8(self[self.PC])
         self.PC += 1
-        if data & 1 << 7 == 0:
+        if data & 1 << bit:
             self.PC += displacement.value
+
+    def BBS_A3(self, addr: int) -> None:
+        """PC+=r  if d.5 == 1"""
+        self.BBS(5, addr)
 
     def BBS_E3(self, addr: int) -> None:
         """PC+=r  if d.7 == 1"""
-        page = 0x0100 if self.P else 0x0000
-        absolute_addr = self[addr] | page
-        data = self[absolute_addr]
-        displacement = c_int8(self[self.PC])
-        self.PC += 1
-        if data & 1 << 7:
-            self.PC += displacement.value
+        self.BBS(7, addr)
 
     def BCC_90(self, addr: int) -> None:
         """PC+=r  if C == 0"""
@@ -1963,6 +1993,10 @@ class Apu:
         self.N = 1 if data & 0x8000 else 0
         self.Z = 1 if data & 0xFFFF == 0 else 0
 
+    def DI_C0(self, addr: int) -> None:
+        """Disable Interrupts (but interrupts are not supported)"""
+        self.I = 0
+
     def DIV_9E(self, addr: int) -> None:
         """A=YA/X, Y=mod(YA,X)"""
         ya = self.YA
@@ -1976,6 +2010,10 @@ class Apu:
             self.Y = (self.X + (ya - (self.X << 9)) % (256 - self.X)) & 0xFF
         self.Z = self.A == 0
         self.N = bool(self.A & 0x80)
+
+    def EI_A0(self, addr: int) -> None:
+        """Enable Interrupts (but interrupts are not supported)"""
+        self.I = 1
 
     def ADC(self, x: int, y: int) -> int:
         result = x + y + self.C

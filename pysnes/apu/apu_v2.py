@@ -1,6 +1,5 @@
 from functools import partial
 from typing import Any
-from dataclasses import dataclass
 
 from ..types import Reg8, Reg16
 
@@ -8,25 +7,46 @@ from .spc700.instructions import INSTRUCTIONS
 from .apu import Timer  # TODO Move to new module
 
 
-@dataclass
 class Apu:
-
-    
-    PC = Reg16(0xFFC0)  # Program Counter (16 bit)
-
 
     def __init__(self) -> None:
         self.reset_registers()
         self.allocate_memory()
         self.load_instructions()
 
+    def __str__(self) -> str:
+        flags = [
+            "N" if self.NF else "n",
+            "V" if self.VF else "v",
+            "P" if self.PF else "p",
+            "B" if self.BF else "b",
+            "H" if self.HF else "h",
+            "I" if self.IF else "i",
+            "Z" if self.ZF else "z",
+            "C" if self.CF else "c",
+        ]
+        timers = ["1" if timer.enable else "0" for timer in self.timers]
+        counters = [
+            f"{timer.stage1}/{timer.stage2:02X}/{timer.stage3:02X}/{timer.target:02X}"
+            for timer in self.timers
+        ]
+        return "A:{:02X} X:{:02X} Y:{:02X} S:{:02X} F:{} T:{} C:{}".format(
+            self.A,
+            self.X,
+            self.Y,
+            self.S,
+            "".join(flags),
+            ",".join(timers),
+            ",".join(counters),
+        )
+
     def reset_registers(self):
         # Registers
-        self.PC = 0xFFC0  
+        self.PC = 0xFFC0  # Program Counter (16 bit)
         self.A =  0x00    # Accumulator (8 bit)
         self.X =  0x00    # X Index Register (8 bit)
         self.Y =  0x00    # Y Index Register (8 bit)
-        self.S =  0x1EF   # Stack Pointer (8 bit) - always on page 1 # TODO hack
+        self.S =  0xEF    # Stack Pointer (8 bit) - always on page 1 --> TODO first version used 0x1EF
 
         # Flags stored in PSW Register
         self.NF = False  # Negative
@@ -52,6 +72,10 @@ class Apu:
         # Control register 0xF1
         self.ipl_rom_enable = True
 
+        # Debug stuff
+        self.address = 0  # Last accessed address
+        self.data = 0  # Last accessed data
+
     def allocate_memory(self):
         # Init memory regions
         self.memory = bytearray(0xFFBF - 0x0200 + 1)
@@ -75,8 +99,20 @@ class Apu:
 
     def load_instructions(self):
         self.instructions: Any = [None] * 256
+        self.debug_symbols: Any = [""] * 256
         for opcode, addr_mode, *args in INSTRUCTIONS:
             self.instructions[opcode] = partial(addr_mode, self, *args)
+            self.debug_symbols[opcode] = f"{addr_mode.__name__}"
+            if args:
+                if hasattr(args[0], "__name__"):
+                    self.debug_symbols[opcode] += f" {args[0].__name__} {args[1:]}"
+                else:
+                    self.debug_symbols[opcode] += f" {args}"
+            self.debug_symbols[opcode] = self.debug_symbols[opcode].ljust(30)
+
+    def load_program(self, data):
+        """Used for testing only"""
+        self.ipl_rom = data
 
     def store(self, addr, data):
         self[self.PF << 8 | addr] = data
@@ -86,14 +122,31 @@ class Apu:
 
     def fetch(self):
         data = self.load(self.PC)
-        self.PC += 1
+        self.PC = (self.PC + 1) & 0xFFFF
         return data
 
     def fetch_and_execute(self):
         opcode = self.fetch()
-        print(hex(opcode))
+
+        debug_str = "APU 0x{:04X} 0x{:02X} {}".format(
+            self.PC - 1,
+            opcode,
+            self.debug_symbols[opcode],
+        )
+        apu_str = str(self)
+
         instruction = self.instructions[opcode]
-        instruction()
+
+        try:
+            instruction()
+        finally:
+            if False: # disabled
+                print("\033[93m{} [{:04X}] [{:02X}] {}\033[0m".format(
+                    debug_str,
+                    self.address,
+                    self.data,
+                    apu_str,
+                ))
 
     def tick(self) -> None:
         self.step_timers(128)  # TODO count real clock cycles
@@ -102,7 +155,6 @@ class Apu:
     def step_timers(self, clocks: int) -> None:
         for timer in self.timers:
             timer.step(clocks)
-
 
     def __getitem__(self, addr: int) -> int:
 
@@ -180,8 +232,8 @@ class Apu:
 
     @property
     def PSW(self) -> int:
-        return (
-            self.NF << 7
+        return (0
+            | self.NF << 7
             | self.VF << 6
             | self.PF << 5
             | self.BF << 4
@@ -193,14 +245,14 @@ class Apu:
 
     @PSW.setter
     def PSW(self, value: int) -> None:
-        self.NF = (value & 0x80) >> 7
-        self.VF = (value & 0x40) >> 6
-        self.PF = (value & 0x20) >> 5
-        self.BF = (value & 0x10) >> 4
-        self.HF = (value & 0x08) >> 3
-        self.IF = (value & 0x04) >> 2
-        self.ZF = (value & 0x02) >> 1
-        self.CF = (value & 0x01) >> 0
+        self.NF = bool(value & 0x80)
+        self.VF = bool(value & 0x40)
+        self.PF = bool(value & 0x20)
+        self.BF = bool(value & 0x10)
+        self.HF = bool(value & 0x08)
+        self.IF = bool(value & 0x04)
+        self.ZF = bool(value & 0x02)
+        self.CF = bool(value & 0x01)
 
     @property
     def YA(self) -> int:

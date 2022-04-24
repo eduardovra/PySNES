@@ -2,48 +2,74 @@ from ctypes import c_int8
 
 class SPC700AddressingModes:
     """Addressing modes implementation"""
+
     def ImmediateRead(self, func, reg):
         """Immediate = #i"""
-        b = self.fetch()
+        self.address = self.PC
+        self.data = self.fetch()
         a = getattr(self, reg)
-        result = func(self, a, b)
+        result = func(self, a, self.data)
         setattr(self, reg, result)
 
     def ImpliedModify(self, func, reg):
         data = getattr(self, reg)
-        data = func(self, data)
-        setattr(self, reg, data)
+        self.data = func(self, data)
+        setattr(self, reg, self.data)
 
     def DirectImmediateCompare(self, func):
         immediate = self.fetch()
-        address = self.fetch()
-        data = self.load(address)
-        func(self, data, immediate)
+        self.address = self.fetch()
+        self.data = self.load(self.address)
+        func(self, self.data, immediate)
 
     def DirectImmediateWrite(self):
-        immediate = self.fetch()
-        address = self.fetch()
-        self.store(address, immediate)
+        self.data = self.fetch()
+        self.address = self.fetch()
+        self.store(self.address, self.data)
+
+    def DirectRead(self, func, reg):
+        self.address = self.fetch()
+        self.data = self.load(self.address)
+        self.data = func(self, getattr(self, reg), self.data)
+        setattr(self, reg, self.data)
 
     def DirectModify(self, func):
-        addr = self.fetch()
-        data = self.load(addr)
-        result = func(self, data)
-        self.store(addr, result)
+        self.address = self.fetch()
+        data = self.load(self.address)
+        self.data = func(self, data)
+        self.store(self.address, self.data)
+
+    def DirectWrite(self, reg):
+        self.data = getattr(self, reg)
+        self.address = self.fetch()
+        self.store(self.address, self.data)
+
+    def DirectReadWord(self, func):
+        self.address = self.fetch()
+        self.data = self.load(self.address + 0) | self.load(self.address + 1) << 8
+        self.YA = func(self, self.YA, self.data)
+
+    def DirectWriteWord(self):
+        self.address = self.fetch()
+        self.data = self.YA
+        self.store(self.address + 0, self.A)
+        self.store(self.address + 1, self.Y)
 
     def Branch(self, cond):
-        data = self.fetch()
+        self.data = self.fetch()
         take = cond(self)
         if take:
-            displacement = c_int8(data)
-            self.PC += displacement.value
+            displacement = c_int8(self.data)
+            self.PC = (self.PC + displacement.value) & 0xFFFF
 
     def Transfer(self, src, dst):
-        data = getattr(self, src)
-        setattr(self, dst, data)
-        self.ZF = data == 0
-        self.NF = bool(data & 0x80)
+        self.data = getattr(self, src)
+        assert self.data <= 0xFF
+        setattr(self, dst, self.data)
+        self.ZF = self.data == 0
+        self.NF = bool(self.data & 0x80)
 
     def IndirectXWrite(self, reg):
-        data = getattr(self, reg)
-        self.store(self.X, data)
+        self.data = getattr(self, reg)
+        self.address = self.X
+        self.store(self.address, self.data)

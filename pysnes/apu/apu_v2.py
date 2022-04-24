@@ -90,7 +90,7 @@ class Apu:
         ))
         # fmt: on
 
-        self.page_0 = bytearray(0x00F0)
+        self.page_0 = bytearray(0x00F0) # dont think this makes sense... needs checking
         self.page_1 = bytearray(0x0100)
 
         # The IO Port0-4 registers have separete memory for R/W
@@ -120,6 +120,18 @@ class Apu:
     def load(self, addr):
         return self[self.PF << 8 | addr]
 
+    def pull(self):
+        assert self.S + 1 >= 0
+        self.S = (self.S + 1) & 0xFF
+        self.address = 1 << 8 | self.S
+        return self.load(self.address)
+
+    def push(self, data):
+        self.address = 1 << 8 | self.S
+        assert self.S - 1 >= 0
+        self.S = (self.S - 1) & 0xFF
+        self.store(self.address, data)
+
     def fetch(self):
         data = self.load(self.PC)
         self.PC = (self.PC + 1) & 0xFFFF
@@ -140,7 +152,7 @@ class Apu:
         try:
             instruction()
         finally:
-            if False: # disabled
+            if True: # disabled
                 print("\033[93m{} [{:04X}] [{:02X}] {}\033[0m".format(
                     debug_str,
                     self.address,
@@ -197,7 +209,7 @@ class Apu:
         )
 
     def __setitem__(self, addr: int, value: int) -> None:
-        assert 0x00 <= value <= 0xFF, "Attemped to write value bigger than 1 byte"
+        assert 0x00 <= value <= 0xFF, f"Attemped to write value bigger than 1 byte: {hex(value)}"
 
         # if 0xF0 <= addr <= 0xF3:
         #    print(f"!!! Writing register {hex(addr)} <== {hex(value)}")

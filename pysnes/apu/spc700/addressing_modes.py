@@ -1,7 +1,37 @@
 from ctypes import c_int8
 
 class SPC700AddressingModes:
-    """Addressing modes implementation"""
+    """Addressing modes implementation (alphabetical order)"""
+
+    def AbsoluteIndexedWrite(self, index):
+        index = getattr(self, index)
+        assert index >= 0
+        self.address = self.fetch()
+        self.address |= self.fetch() << 8
+        self.address = self.address + index
+        self.store(self.address, self.A)
+
+    def AbsoluteModify(self, func):
+        self.address = self.fetch()
+        self.address |= self.fetch() << 8
+        self.data = self.load(self.address)
+        result = func(self, self.data)
+        self.store(self.address, result)
+
+    def BranchBit(self, bit: int, match: bool):
+        self.address = self.fetch()
+        self.data = self.load(self.address)
+        assert self.data >= 0
+        displacement = self.fetch()
+        if bool(self.data & 1 << bit) == match:
+            self.PC = (c_int8(displacement).value + self.PC) & 0xFFFF
+
+    def BranchNotYDecrement(self):
+        displacement = self.fetch()
+        #assert (self.Y - 1) >= 0
+        self.Y = (self.Y - 1) & 0xFF
+        if self.Y != 0:
+            self.PC = (c_int8(displacement).value + self.PC) & 0xFFFF
 
     def ImmediateRead(self, func, reg):
         """Immediate = #i"""
@@ -60,16 +90,69 @@ class SPC700AddressingModes:
         take = cond(self)
         if take:
             displacement = c_int8(self.data)
+            #assert displacement.value >= 0
             self.PC = (self.PC + displacement.value) & 0xFFFF
+
+    def FlagSet(self, flag: str, value: bool):
+        setattr(self, flag, value)
+
+    def Pull(self, reg):
+        data = self.pull()
+        setattr(self, reg, data)
+
+    def PullP(self):
+        self.PSW = self.pull()
+
+    def Push(self, reg: str):
+        data = getattr(self, reg)
+        self.push(data)
 
     def Transfer(self, src, dst):
         self.data = getattr(self, src)
-        assert self.data <= 0xFF
+        assert self.data <= 0xFF # may be a problem when copying stack pointer 0x1EF
         setattr(self, dst, self.data)
+        # hack to match apu v1
+        #if dst == "S":
+        #    self.S |= 0x100
         self.ZF = self.data == 0
         self.NF = bool(self.data & 0x80)
+
+    def IndirectIndexedWrite(self, data, index):
+        data = getattr(self, data)
+        index = getattr(self, index)
+        assert index >= 0
+        indirect = self.fetch()
+        self.address = self.load(indirect + 0)
+        self.address |= self.load(indirect + 1) << 8
+        self.address = self.address + index
+        self.data = data
+        self.store(self.address, self.data);
+
+#auto SPC700::instructionIndirectXRead(fpb op) -> void {
+#  read(PC);
+#  uint8 data = load(X);
+#  A = alu(A, data);
+#}
+#
+#auto SPC700::instructionIndirectXWrite(uint8& data) -> void {
+#  read(PC);
+#  load(X);
+#  store(X, data);
+#}
 
     def IndirectXWrite(self, reg):
         self.data = getattr(self, reg)
         self.address = self.X
         self.store(self.address, self.data)
+
+    def OverflowClear(self):
+        self.HF = False
+        self.VF = False
+
+    def JumpIndirectX(self):
+        self.address = self.fetch()
+        self.address |= self.fetch() << 8
+        self.address = self.address + self.X
+        pc = self.load(self.address + 0)
+        pc |= self.load(self.address + 1) << 8
+        self.PC = pc & 0xFFFF

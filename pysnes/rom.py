@@ -10,7 +10,7 @@ class Rom:
 
     def load_rom_file(self):
         """
-        SFC and SMC files are usually identical. It’s just a different choice in file extension.
+        SFC and SMC files are usually identical. It's just a different choice in file extension.
         “SMC” comes from Super MagiCom, a floppy-based cart copying device for backup/piracy.
         The original .smc files produced by the device contained a 512 byte header.
         """

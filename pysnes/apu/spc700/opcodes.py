@@ -13,7 +13,7 @@ class SPC700Opcodes:
     """
 
     def ADC(self, x, y):
-        assert False
+        #assert False
         result = x + y + int(self.CF)
         self.CF = bool(result > 0xFF)
         self.ZF = bool(result & 0xFF == 0)
@@ -121,18 +121,18 @@ class SPC700Opcodes:
         return x
 
     def SBC(self, x: int, y: int) -> int:
-        assert False
+        #assert False
         assert x >= 0
         assert y >= 0
-        return self.ADC(x & 0xFF, ~y & 0xFF)
+        return SPC700Opcodes.ADC(self, x & 0xFF, ~y & 0xFF)
 
     def ADW(self, x, y):
-        assert False
+        #assert False
         assert x >= 0
         assert y >= 0
         self.CF = False
-        z = self.ADC(x, y)
-        z |= self.ADC(x >> 8, y >> 8) << 8
+        z = SPC700Opcodes.ADC(self, x, y)
+        z |= SPC700Opcodes.ADC(self, x >> 8, y >> 8) << 8
         z &= 0xFFFF
         self.ZF = z == 0
         return z
@@ -154,11 +154,11 @@ class SPC700Opcodes:
         return y
 
     def SBW(self, x, y):
-        assert False
+        #assert False
         assert x >= 0
         assert y >= 0
         self.CF = True
-        z = self.SBC(x, y)
-        z |= self.SBC(x >> 8, y >> 8) << 8
+        z = SPC700Opcodes.SBC(self, x, y)
+        z |= SPC700Opcodes.SBC(self, x >> 8, y >> 8) << 8
         self.ZF = z & 0xFFFF == 0
         return z

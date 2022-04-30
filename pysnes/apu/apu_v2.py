@@ -136,10 +136,11 @@ class Apu:
         self.address = 1 << 8 | self.S
         assert self.S - 1 >= 0
         self.S = (self.S - 1) & 0xFF
-        self.store(self.address, data)
+        self.store(self.address, data & 0xFF)  # mask last 8 bits as some instructions will just push bigger variables
 
     def fetch(self):
         data = self.load(self.PC)
+        assert isinstance(data, int) and 0 <= data <= 0xFF
         self.PC = (self.PC + 1) & 0xFFFF
         return data
 
@@ -224,6 +225,8 @@ class Apu:
         )
 
     def __setitem__(self, addr: int, value: int) -> None:
+        assert isinstance(addr, int)
+        assert isinstance(value, int)
         assert 0x00 <= value <= 0xFF, f"Attemped to write value bigger than 1 byte: {hex(value)}"
 
         # if 0xF0 <= addr <= 0xF3:
@@ -353,3 +356,12 @@ class Apu:
             self.ports_w[3] = 0x00
 
         self.ipl_rom_enable = bool(data & 0x80)
+
+    @property
+    def data(self):
+        return self._data
+
+    @data.setter
+    def data(self, value):
+        assert isinstance(value, int)
+        self._data = value

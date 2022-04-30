@@ -46,6 +46,13 @@ class SPC700AddressingModes:
         self.data = func(self, data)
         setattr(self, reg, self.data)
 
+    def DirectCompareWord(self, func):
+        self.address = self.fetch()
+        self.data = self.load(self.address + 0)
+        self.data |= self.load(self.address + 1) << 8
+        self.data &= 0xFFFF
+        self.YA = func(self, self.YA, self.data)
+
     def DirectImmediateCompare(self, func):
         immediate = self.fetch()
         self.address = self.fetch()
@@ -55,6 +62,13 @@ class SPC700AddressingModes:
     def DirectImmediateWrite(self):
         self.data = self.fetch()
         self.address = self.fetch()
+        self.store(self.address, self.data)
+
+    def DirectIndexedModify(self, func, reg):
+        index = getattr(self, reg)
+        self.address = (self.fetch() + index) & 0xFF
+        self.data = self.load(self.address)
+        self.data = func(self, self.data)
         self.store(self.address, self.data)
 
     def DirectRead(self, func, reg):
@@ -68,6 +82,20 @@ class SPC700AddressingModes:
         data = self.load(self.address)
         self.data = func(self, data)
         self.store(self.address, self.data)
+
+    def DirectModifyWord(self, adjust):
+        self.address = self.fetch()
+        #self.data = self.load(self.address + 0) + adjust
+        #self.store(self.address + 0, (self.data & 0xFF) >> 0)
+        #self.data = (self.data + self.load(self.address + 1) << 8) & 0xFFFF
+        #self.store(self.address + 1, (self.data >> 8) & 0xFF)
+        self.data = self.load(self.address + 0) | self.load(self.address + 1) << 8
+        self.data = (self.data + adjust) & 0xFFFF
+        self.store(self.address + 0, (self.data >> 0) & 0xFF)
+        self.store(self.address + 1, (self.data >> 8) & 0xFF)
+        self.ZF = self.data == 0
+        #self.NF = self.data < 0 or bool(self.data & 0x8000) # maybe this is the right way
+        self.NF = bool(self.data & 0x8000)
 
     def DirectWrite(self, reg):
         self.data = getattr(self, reg)
@@ -148,6 +176,11 @@ class SPC700AddressingModes:
     def OverflowClear(self):
         self.HF = False
         self.VF = False
+
+    def JumpAbsolute(self):
+        self.address = self.fetch()
+        self.address |= self.fetch() << 8
+        self.PC = self.address
 
     def JumpIndirectX(self):
         self.address = self.fetch()

@@ -151,8 +151,17 @@ class Apu:
 
         try:
             instruction()
+        except:
+            if True:
+                print("\033[93m{} [{:04X}] [{:02X}] {}\033[0m".format(
+                        debug_str,
+                        self.address,
+                        self.data,
+                        apu_str,
+                    ))
+            raise
         finally:
-            if True: # disabled
+            if False: # disabled
                 print("\033[93m{} [{:04X}] [{:02X}] {}\033[0m".format(
                     debug_str,
                     self.address,

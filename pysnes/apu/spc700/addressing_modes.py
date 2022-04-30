@@ -168,6 +168,14 @@ class SPC700AddressingModes:
         self.ZF = self.data == 0
         self.NF = bool(self.data & 0x80)
 
+    def IndexedIndirectRead(self, func, reg):
+        index = getattr(self, reg)
+        indirect = self.fetch()
+        self.address = self.load(indirect + index + 0);
+        self.address |= self.load(indirect + index + 1) << 8
+        self.data = self.read(self.address)
+        self.A = func(self, self.A, self.data)
+
     def IndirectIndexedWrite(self, data, index):
         data = getattr(self, data)
         index = getattr(self, index)

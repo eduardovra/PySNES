@@ -148,8 +148,8 @@ class Apu:
 
     def fetch_and_execute(self):
         # SMW
-        if self.PC == 0x0500:
-            print(f"SMW APU jumped to program start {hex(self.PC)}")
+        if self.PC == 0x0500: # SMW
+            print(f"APU jumped to program start {hex(self.PC)}")
             self.program_started = True
 
         if getattr(self, "program_started", False):
@@ -159,6 +159,12 @@ class Apu:
         _breakpoint = getattr(self, "breakpoint", None)
         if self.PC == _breakpoint:
             print(f"Reached breakpoint {hex(self.PC)}")
+
+        if self.PC == 0x12F2: # SMW
+            print(f"APU reached StandardTransfer subroutine {hex(self.PC)}")
+
+        if self.PC == 0x133D: # SMW
+            print(f"APU finished StandardTransfer subroutine {hex(self.PC)}")
 
         opcode = self.fetch()
 

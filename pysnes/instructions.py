@@ -1389,7 +1389,7 @@ class Instruction:
         low = cpu.bus[cpu.S]
         cpu.S += 1
         high = cpu.bus[cpu.S]
-        cpu.PC = (low | high << 8) + 1
+        cpu.PC = (low | high << 8 | cpu.PC & 0xFF0000) + 1  # keep highest byte so SMW works
         return 6
 
     def RTL(self, cpu, addr) -> int:

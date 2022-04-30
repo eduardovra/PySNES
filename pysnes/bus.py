@@ -209,7 +209,7 @@ class Bus:
                     self.ppu.bg2.hoffset = data << 8 | (self.ppu.latch_bgofs_ppu1 & ~7) | (self.ppu.latch_bgofs_ppu2 & 7)
                     self.ppu.latch_bgofs_ppu1 = data
                     self.ppu.latch_bgofs_ppu2 = data
-                    print(f"self.ppu.bg2.hoffset {self.ppu.bg2.hoffset}")
+                    #print(f"self.ppu.bg2.hoffset {self.ppu.bg2.hoffset}")
                     return
                 if addr == 0x2110:  # BG2VOFS
                     self.ppu.bg2.voffset = data << 8 | self.ppu.latch_bgofs_ppu1

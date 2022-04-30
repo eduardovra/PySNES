@@ -114,6 +114,12 @@ class Apu:
         """Used for testing only"""
         self.ipl_rom = data
 
+    def write(self, addr, data):
+        self[addr] = data
+
+    def read(self, addr):
+        return self[addr]
+
     def store(self, addr, data):
         self[self.PF << 8 | addr] = data
 

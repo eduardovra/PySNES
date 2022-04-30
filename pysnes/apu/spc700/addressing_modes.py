@@ -3,6 +3,13 @@ from ctypes import c_int8
 class SPC700AddressingModes:
     """Addressing modes implementation (alphabetical order)"""
 
+    def AbsoluteIndexedRead(self, func, reg):
+        self.address = self.fetch()
+        self.address |= self.fetch() << 8
+        index = getattr(self, reg)
+        self.data = self.read(self.address + index)
+        self.A = func(self, self.A, self.data)
+
     def AbsoluteIndexedWrite(self, index):
         index = getattr(self, index)
         assert index >= 0
@@ -17,6 +24,14 @@ class SPC700AddressingModes:
         self.data = self.load(self.address)
         result = func(self, self.data)
         self.store(self.address, result)
+
+    def AbsoluteRead(self, func, reg):
+        self.address = self.fetch()
+        self.address |= self.fetch() << 8
+        self.data = self.read(self.address)
+        value = getattr(self, reg)
+        result = func(self, value, self.data)
+        setattr(self, reg, result)
 
     def BranchBit(self, bit: int, match: bool):
         self.address = self.fetch()
@@ -70,6 +85,14 @@ class SPC700AddressingModes:
         self.data = self.load(self.address)
         self.data = func(self, self.data)
         self.store(self.address, self.data)
+
+    def DirectIndexedRead(self, func, reg_target, reg_index):
+        self.address = self.fetch()
+        index = getattr(self, reg_index)
+        self.data = self.load(self.address + index)
+        target = getattr(self, reg_target)
+        result = func(self, target, self.data)
+        setattr(self, reg_target, result)
 
     def DirectRead(self, func, reg):
         self.address = self.fetch()

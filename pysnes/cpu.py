@@ -232,6 +232,9 @@ class Cpu:
         if trace_line:
             self.validate_trace(trace_line)
 
+        if self.PC == 0x8079: # SMW
+            print(f"CPU reached SPC700UploadLoop")
+
         # self.opcode_PC = self.PC
         self.opcode = self.bus[self.PC]
         self.PC += 1

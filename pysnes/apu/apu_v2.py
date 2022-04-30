@@ -75,6 +75,8 @@ class Apu:
         # Debug stuff
         self.address = 0  # Last accessed address
         self.data = 0  # Last accessed data
+        self.breakpoint = None
+        self.print_debug = False
 
     def allocate_memory(self):
         # Init memory regions
@@ -129,22 +131,35 @@ class Apu:
     def pull(self):
         assert self.S + 1 >= 0
         self.S = (self.S + 1) & 0xFF
-        self.address = 1 << 8 | self.S
-        return self.load(self.address)
+        address = 1 << 8 | self.S
+        return self.load(address)
 
     def push(self, data):
-        self.address = 1 << 8 | self.S
+        address = 1 << 8 | self.S
         assert self.S - 1 >= 0
         self.S = (self.S - 1) & 0xFF
-        self.store(self.address, data & 0xFF)  # mask last 8 bits as some instructions will just push bigger variables
+        self.store(address, data & 0xFF)  # mask last 8 bits as some instructions will just push bigger variables
 
     def fetch(self):
-        data = self.load(self.PC)
+        data = self.read(self.PC)
         assert isinstance(data, int) and 0 <= data <= 0xFF
         self.PC = (self.PC + 1) & 0xFFFF
         return data
 
     def fetch_and_execute(self):
+        # SMW
+        if self.PC == 0x0500:
+            print(f"SMW APU jumped to program start {hex(self.PC)}")
+            self.program_started = True
+
+        if getattr(self, "program_started", False):
+            if self.PC > 0x0516:
+                pass
+
+        _breakpoint = getattr(self, "breakpoint", None)
+        if self.PC == _breakpoint:
+            print(f"Reached breakpoint {hex(self.PC)}")
+
         opcode = self.fetch()
 
         debug_str = "APU 0x{:04X} 0x{:02X} {}".format(
@@ -159,7 +174,7 @@ class Apu:
         try:
             instruction()
         except:
-            if True:
+            if not self.print_debug:
                 print("\033[93m{} [{:04X}] [{:02X}] {}\033[0m".format(
                         debug_str,
                         self.address,
@@ -168,7 +183,7 @@ class Apu:
                     ))
             raise
         finally:
-            if False: # disabled
+            if self.print_debug:
                 print("\033[93m{} [{:04X}] [{:02X}] {}\033[0m".format(
                     debug_str,
                     self.address,
@@ -365,3 +380,53 @@ class Apu:
     def data(self, value):
         assert isinstance(value, int)
         self._data = value
+
+    @property
+    def A(self):
+        return self._A
+
+    @A.setter
+    def A(self, value):
+        assert isinstance(value, int)
+        assert 0 <= value <= 0xFF
+        self._A = value
+
+    @property
+    def X(self):
+        return self._X
+
+    @X.setter
+    def X(self, value):
+        assert isinstance(value, int)
+        assert 0 <= value <= 0xFF
+        self._X = value
+
+    @property
+    def Y(self):
+        return self._Y
+
+    @Y.setter
+    def Y(self, value):
+        assert isinstance(value, int)
+        assert 0 <= value <= 0xFF
+        self._Y = value
+
+    @property
+    def S(self):
+        return self._S
+
+    @S.setter
+    def S(self, value):
+        assert isinstance(value, int)
+        assert 0 <= value <= 0xFF
+        self._S = value
+
+    @property
+    def PC(self):
+        return self._PC
+
+    @PC.setter
+    def PC(self, value):
+        assert isinstance(value, int)
+        assert 0 <= value <= 0xFFFF
+        self._PC = value

@@ -48,7 +48,7 @@ class SPC700AddressingModes:
     def AbsoluteModify(self, func):
         self.address = self.fetch()
         self.address |= self.fetch() << 8
-        self.data = self.load(self.address)
+        self.data = self.read(self.address)
         result = func(self, self.data)
         self.store(self.address, result)
 
@@ -295,13 +295,17 @@ class SPC700AddressingModes:
         self.VF = self.Y >= self.X
         if self.Y < (self.X << 1):
             # if quotient is <= 511 (will fit into 9-bit result)
-            self.A = ya / self.X
-            self.Y = ya % self.X
+            #self.A = ya / self.X
+            #self.Y = ya % self.X
+            self.A = (ya // self.X) & 0xFF
+            self.Y = (ya % self.X) & 0xFF
         else:
             # otherwise, the quotient won't fit into VF + A
             # this emulates the odd behavior of the S-SMP in this case
-            self.A = 255 - (ya - (self.X << 9)) / (256 - self.X)
-            self.Y = self.X   + (ya - (self.X << 9)) % (256 - self.X)
+            #self.A = 255 - (ya - (self.X << 9)) / (256 - self.X)
+            #self.Y = self.X   + (ya - (self.X << 9)) % (256 - self.X)
+            self.A = (255 - (ya - (self.X << 9)) // (256 - self.X)) & 0xFF
+            self.Y = (self.X + (ya - (self.X << 9)) % (256 - self.X)) & 0xFF
         # result is set based on a (quotient) only
         self.ZF = self.A == 0
         self.NF = bool(self.A & 0x80)
@@ -316,7 +320,7 @@ class SPC700AddressingModes:
 
     def ImmediateRead(self, func, reg):
         """Immediate = #i"""
-        self.address = self.PC
+        self.address = self.PC  # for debugging
         self.data = self.fetch()
         a = getattr(self, reg)
         result = func(self, a, self.data)
@@ -405,14 +409,14 @@ class SPC700AddressingModes:
         self.address = self.fetch()
         self.address |= self.fetch() << 8
         self.address = self.address + self.X
-        pc = self.load(self.address + 0)
-        pc |= self.load(self.address + 1) << 8
+        pc = self.read(self.address + 0)
+        pc |= self.read(self.address + 1) << 8
         self.PC = pc & 0xFFFF
 
     def Multiply(self):
         ya = (self.Y * self.A) & 0xFFFF
-        self.A = ya >> 0
-        self.Y = ya >> 8
+        self.A = ya >> 0 & 0xFF
+        self.Y = ya >> 8 & 0xFF
         # result is set based on y (high-byte) only
         self.ZF = self.Y == 0
         self.NF = bool(self.Y & 0x80)

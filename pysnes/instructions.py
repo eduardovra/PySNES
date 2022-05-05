@@ -246,6 +246,8 @@ class AddressingMode:
         Effective Address: The Data Bank Register is concatenated to the 16-bit Operand:
         the 24-bit result is added to Y (16 bits if 65802/65816 native mode, x = 0; else 8).
         """
+        #if cpu.opcode == 0xb9:
+        #    print(f"absolute_indexed_y cpu.bus[cpu.PC]={hex(cpu.bus[cpu.PC])} cpu.bus[cpu.PC + 1]={hex(cpu.bus[cpu.PC + 1])} cpu.Y={hex(cpu.Y)} cpu.DB={hex(cpu.DB)}")
         indirect_addr = (cpu.bus[cpu.PC] | cpu.bus[cpu.PC + 1] << 8) + cpu.Y
         cpu.PC += 2
         addr = (indirect_addr & 0xFFFF) | cpu.DB << 16
@@ -771,7 +773,7 @@ class Instruction:
             cpu.P.N = 1 if value & 0x8000 else 0
         else:
             cpu.P.C = 1 if value & 0x01 else 0
-            value = (value & 0xFF00) | (value >> 1) & 0xFF
+            value = (value & 0xFF00) | (value & 0xFF) >> 1
             cpu.P.Z = 1 if value == 0 else 0
             cpu.P.N = 1 if value & 0x80 else 0
 
@@ -904,6 +906,9 @@ class Instruction:
     def LDA(self, cpu, addr) -> int:
         """Load the Accumulator with Memory"""
         cycles = 2  # TODO it depends on addressing mode and processor flags
+
+        #if cpu.opcode == 0xb9:
+        #    print(f"LDA cpu.emulation={cpu.emulation} cpu.P.M={cpu.P.M} addr={hex(addr)} cpu.bus[addr]={hex(cpu.bus[addr])} cpu.bus[addr + 1]={hex(cpu.bus[addr + 1])}")
 
         if cpu.emulation == 0 and cpu.P.M == 0:
             cycles += 1
@@ -1962,5 +1967,16 @@ class InstructionSet:
             )
             print(debug_str)
 
-        cycles = instruction(self.cpu)
+        try:
+            cycles = instruction(self.cpu)
+        except:
+            if not self.print_instructions:
+                debug_str = "\033[92mCPU 0x{:06X} {} {}\033[0m".format(
+                    self.cpu.current_instruction_PC,
+                    str(instruction).ljust(40),
+                    self.cpu,
+                )
+                print(debug_str)
+            raise
+
         return cycles

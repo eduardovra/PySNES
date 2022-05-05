@@ -25,6 +25,8 @@ class Channel:
     hdma_enable: int = 0
 
     def do_transfer(self) -> None:
+        if self.direction == 1:
+            print(self)
         # source_address == 0x8000
         # source_bank == 0x03
         # target_address == 0x18 --> $2118 --> VRAM Write
@@ -35,11 +37,20 @@ class Channel:
         # reverse_transfer == 0 --> Increment
         assert self.transfer_mode in (0, 1)
         assert self.reverse_transfer == 0
-        assert self.direction == 0
+        # TODO only direction 0 was tested. for dir == 1, I completely guessed the implementation
+        assert self.direction in (0,)
 
-        target_addr = 0x2100 | self.target_address  # B bus
+        if self.direction == 0:
+            target_addr = 0x2100 | self.target_address  # B bus
+        else:
+            target_addr = self.source_bank << 16 | self.source_address
+
         for index in range(self.transfer_size):
-            data = self.bus[self.source_bank << 16 | self.source_address]
+            if self.direction == 0:
+                data = self.bus[self.source_bank << 16 | self.source_address] # A bus
+            else:
+                data = self.bus[0x2100 | self.target_address]
+
             if self.transfer_mode == 0:  # Write 1 byte, B0->$21xx
                 self.bus[target_addr] = data
             elif self.transfer_mode == 1:  # Write 2 bytes, B0->$21xx B1->$21XX+1

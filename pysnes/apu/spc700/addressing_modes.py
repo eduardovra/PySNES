@@ -311,7 +311,7 @@ class SPC700AddressingModes:
         self.NF = bool(self.A & 0x80)
 
     def ExchangeNibble(self):
-        self.A = self.A >> 4 | self.A << 4
+        self.A = (self.A >> 4 & 0x0F) | (self.A << 4 & 0xF0)
         self.ZF = self.A == 0
         self.NF = bool(self.A & 0x80)
 

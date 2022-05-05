@@ -129,6 +129,7 @@ class Bus:
         print(
             "\033[93mReading unmamped memory region: 0x{:06X}\033[0m".format(abs_addr)
         )
+        assert 0
         return 0
 
         raise RuntimeError(
@@ -268,7 +269,7 @@ class Bus:
 
                 if addr == 0x2133:  # SETINI
                     # TODO 4 is overscan mode bit - display 239 lines instead of normal 224
-                    assert data in (0, 4)
+                    assert data in (0, 4), f"Value not suported: data={data}"
                     return
 
                 if addr == 0x2134:  # MPYL

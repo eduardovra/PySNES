@@ -145,7 +145,14 @@ class Ppu:
         self.vmain_addr_increment_mode = data >> 7
         self.vmain_addr_increment_amount = amounts[data & 0x03]
         self.vmain_addr_remapping = (data >> 2) & 0x03
-        assert self.vmain_addr_remapping == 0
+        assert self.vmain_addr_remapping == 0, hex(self.vmain_addr_remapping)
+        """
+        mm     = Address remapping
+                    00 = No remapping
+                    01 = Remap addressing aaaaaaaaBBBccccc => aaaaaaaacccccBBB
+                    10 = Remap addressing aaaaaaaBBBcccccc => aaaaaaaccccccBBB
+                    11 = Remap addressing aaaaaaBBBccccccc => aaaaaacccccccBBB
+        """
 
     @property
     def vmdatal(self) -> int:
@@ -369,7 +376,7 @@ class Ppu:
             return
 
         # Draw picture
-        assert self._bgmode in (0, 1)
+        assert self._bgmode in (0, 1), hex(self._bgmode)
         """
         https://bin.smwcentral.net/u/4842/regs.txt
         Mode 0
@@ -748,11 +755,24 @@ def main():
     # Map Addr 0x0000 (comes from BG1SC)
     # Tile Size 8x8
     # Tile Addr 0x2000
+    #ppu.bgmode = 1
+    #ppu.bg1sc_set(0)
+    #ppu.bg2sc_set(0)
+    #ppu.bg12nba_set(0x01)
+    #ppu.bg34nba_set(0x00)
+
+    # Draw BG1, Mode 1 - Super Mario World
+    # Bit Depth 2bpp
+    # Map Size 32x32
+    # Map Addr 0x0000 (comes from BG1SC)
+    # Tile Size 8x8
+    # Tile Addr 0x2000
     ppu.bgmode = 1
-    ppu.bg1sc_set(0)
-    ppu.bg2sc_set(0)
-    ppu.bg12nba_set(0x01)
-    ppu.bg34nba_set(0x00)
+    ppu.bg1sc_set(0x23)
+    ppu.bg2sc_set(0x33)
+    ppu.bg3sc_set(0x53)
+    ppu.bg12nba_set(0x00)
+    ppu.bg34nba_set(0x04)
 
     # OAM base address 0xC000
     ppu.obsel_set(0x03)  # base size 0
@@ -765,6 +785,8 @@ def main():
     ppu.ts_set(0x11)
 
     ppu.render(renderer)
+
+    SDL_Delay(5000)
 
     return
 

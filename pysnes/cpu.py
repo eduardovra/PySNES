@@ -238,10 +238,6 @@ class Cpu:
             print(f"CPU reached SPC700UploadLoop {hex(self.PC)}")
         elif self.PC == 0x80E7: # SMW
             print(f"CPU finished SPC700UploadLoop {hex(self.PC)}")
-        elif self.PC == 0x0581BA: # SMW
-            print(f"CPU reached RTS 0x0581BA")
-        elif self.PC == 0x0db2d7:
-            print(f"CPU reached instruction reading invalid memory addr=0x200F")
 
         # self.opcode_PC = self.PC
         self.opcode = self.bus[self.PC]

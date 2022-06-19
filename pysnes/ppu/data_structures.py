@@ -1,0 +1,48 @@
+from ctypes import (
+    c_uint16,
+    LittleEndianStructure,
+)
+from dataclasses import dataclass
+
+
+@dataclass
+class Background:
+    screen_size = 0  # All tilemaps are 32x32 tiles. This controls the number of tilemaps in memory
+    screen_addr = 0
+    tiledata_addr = 0
+    tile_size = 0  # If the BG character size for BG1/BG2/BG3/BG4 bit is set, then the BG is made of 16x16 tiles. Otherwise, 8x8 tiles are used.
+    main_screen_enable = True
+    sub_screen_enable = True
+    hoffset = 0
+    voffset = 0
+
+
+@dataclass
+class Object:
+    x = 0
+    y = 0
+    character = 0
+    h_flip = False
+    v_flip = False
+    name_select = False
+    priority = 0
+    palette = 0
+    size = False
+
+
+class Tilemap(LittleEndianStructure):
+    """
+    palette = (high >> 2) & 7
+    priotity = (high >> 5) & 1
+    h_flip = (high >> 6) & 1
+    v_flip = (high >> 7) & 1
+    addr = high & 3 | low
+    """
+
+    _fields_ = [
+        ("addr", c_uint16, 10),
+        ("palette", c_uint16, 3),
+        ("priority", c_uint16, 1),
+        ("h_flip", c_uint16, 1),
+        ("v_flip", c_uint16, 1),
+    ]

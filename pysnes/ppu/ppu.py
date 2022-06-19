@@ -1,55 +1,9 @@
-from ctypes import (
-    c_uint16,
-    c_uint8,
-    LittleEndianStructure,
-)
+from ctypes import c_uint8
 from typing import Optional, Union, Tuple
-from dataclasses import dataclass
 
 from sdl2 import *
 
-
-@dataclass
-class Background:
-    screen_size = 0
-    screen_addr = 0
-    tiledata_addr = 0
-    tile_size = 0
-    main_screen_enable = True
-    sub_screen_enable = True
-    hoffset = 0
-    voffset = 0
-
-
-@dataclass
-class Object:
-    x = 0
-    y = 0
-    character = 0
-    h_flip = False
-    v_flip = False
-    name_select = False
-    priority = 0
-    palette = 0
-    size = False
-
-
-class Tilemap(LittleEndianStructure):
-    """
-    palette = (high >> 2) & 7
-    priotity = (high >> 5) & 1
-    h_flip = (high >> 6) & 1
-    v_flip = (high >> 7) & 1
-    addr = high & 3 | low
-    """
-
-    _fields_ = [
-        ("addr", c_uint16, 10),
-        ("palette", c_uint16, 3),
-        ("priority", c_uint16, 1),
-        ("h_flip", c_uint16, 1),
-        ("v_flip", c_uint16, 1),
-    ]
+from .data_structures import *
 
 
 class Ppu:
@@ -424,9 +378,9 @@ class Ppu:
             Sprites with priority 0
             BG3 tiles with priority 0
             """
-            #self.draw_background(renderer, self.bg3, 2, False)
-            #if self._bgpriority == 0:
-            #    self.draw_background(renderer, self.bg3, 2, True)
+            self.draw_background(renderer, self.bg3, 2, False)
+            if self._bgpriority == 0:
+                self.draw_background(renderer, self.bg3, 2, True)
             # it seems only bg3 and the sprints are being drawn correctely
             # I suppose its related to bg1 and bg2 being 4bpp (bg3 is 2bpp in this mode)
 
@@ -441,9 +395,9 @@ class Ppu:
             self.draw_background(renderer, self.bg1, 4, False)
             self.draw_background(renderer, self.bg2, 4, True)
             self.draw_background(renderer, self.bg1, 4, True)
-            #self.draw_objects(renderer)
-            #if self._bgpriority == 1:
-            #    self.draw_background(renderer, self.bg3, 2, True)
+            self.draw_objects(renderer)
+            if self._bgpriority == 1:
+                self.draw_background(renderer, self.bg3, 2, True)
 
         SDL_RenderPresent(renderer)
 
@@ -458,6 +412,7 @@ class Ppu:
 
         # the tile map is a 16 bit chunk of memory configuring which characters
         # are part of the bg and also how they should be displayed. it's stored in vram
+        # All tilemaps are 32x32 tiles
 
         if not bg.main_screen_enable:
             return
@@ -477,15 +432,33 @@ class Ppu:
 
         x_offset, y_offset = bg.hoffset, bg_voffset
 
+        # TODO this is a new idea...
+        # ref for bitplanes https://sneslab.net/wiki/Graphics_Format
+        #tiles = self.parse_background_tiles(bg, priority_selector)
+        #for tile in tiles:
+        #    self.draw_tile(
+        #        renderer=renderer,
+        #        tile=tile.tilemap,
+        #        tile_data=tile.data,
+        #        bpp=bpp,
+        #        x_offset=tile.x_offset,
+        #        y_offset=tile.y_offset,
+        #    )
+
+        # ok so it seems the section bellow iterates over the tilemaps
+        # which have fixed data lengths, hence the hardcoded sizes make sense
         line_start = (
             bg.screen_addr * 2
         ) & 0xFFFF  # Each addr corresponds to 2 bytes in VRAM
-        line_end = line_start + 0x800  # Total size of BG in memory
+        line_end = line_start + 0x800  # Total size of BG in memory (32x32 tiles x 2 bytes)
         line_step = 0x40
+
+        tile_width, tile_height = 8 << bg.tile_size, 8 << bg.tile_size  # 8 or 16 when tile_size bit set
+
         # Each iteration will print a line of 32 tiles x 8x8 pixels
         for line in range(line_start, line_end, line_step):
-            col_start, col_end, col_step = 0x00, 0x40, 0x02
-            # Each iteration will print 1 tile of 8x8 pixels
+            col_start, col_end, col_step = 0, 0x40, 2  # 2 bytes step because each tilemap has 16bits
+            # Each iteration will print 1 tile of NxN pixels
             for col in range(col_start, col_end, col_step):
                 # Parse Tilemap entry - 2 bytes
                 entry_addr = line + col
@@ -498,16 +471,16 @@ class Ppu:
                         y_offset=y_offset,
                         tile=tile,
                         tile_base_addr=bg.tiledata_addr * 2,
-                        tile_width=8,
-                        tile_height=8,
+                        tile_width=tile_width,
+                        tile_height=tile_height,
                         tile_addr=tile.addr,
                     )
 
-                x_offset += 8
-                if x_offset == 8 * 32:  # 32 tiles with 8 pixels width
+                x_offset += tile_width
+                if x_offset == tile_width * 32:  # all tilemaps have 32 tiles
                     x_offset = 0
 
-            y_offset += 8
+            y_offset += tile_height
 
     def draw_tiles(
         self,

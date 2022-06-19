@@ -450,12 +450,21 @@ class Ppu:
         line_start = (
             bg.screen_addr * 2
         ) & 0xFFFF  # Each addr corresponds to 2 bytes in VRAM
-        line_end = line_start + 0x800  # Total size of BG in memory (32x32 tiles x 2 bytes)
+
+        if bg.screen_size == 0:
+            line_end = line_start + 0x800  # Total size of BG in memory (32x32 tiles x 2 bytes)
+        elif bg.screen_size == 1:
+            line_end = line_start + 0x1000  # Total size of BG in memory (64x32 tiles x 2 bytes)
+        elif bg.screen_size == 2:
+            line_end = line_start + 0x1000  # Total size of BG in memory (32x64 tiles x 2 bytes)
+        else:
+            line_end = line_start + 0x2000  # Total size of BG in memory (64x64 tiles x 2 bytes)
+
         line_step = 0x40
 
         tile_width, tile_height = 8 << bg.tile_size, 8 << bg.tile_size  # 8 or 16 when tile_size bit set
 
-        # Each iteration will print a line of 32 tiles x 8x8 pixels
+        # Each iteration will print a line of 32 tiles x tile_width x tile_height pixels
         for line in range(line_start, line_end, line_step):
             col_start, col_end, col_step = 0, 0x40, 2  # 2 bytes step because each tilemap has 16bits
             # Each iteration will print 1 tile of NxN pixels

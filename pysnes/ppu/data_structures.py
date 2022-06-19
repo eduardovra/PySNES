@@ -7,10 +7,28 @@ from dataclasses import dataclass
 
 @dataclass
 class Background:
-    screen_size = 0  # All tilemaps are 32x32 tiles. This controls the number of tilemaps in memory
+    screen_size = 0
+    """
+    All tilemaps are 32x32 tiles. This controls the number of tilemaps in memory
+    * 00=32x32
+    * 01=64x32
+    * 10=32x64
+    * 11=64x64
+
+    If the map has a dimension greater than 32 (e.g. 64x32), array doesn't have 64 tile indexes per row,
+    instead it will store two 32x32 maps right after each other in VRAM.
+    The first map (32x32 tiles = 2*32*32 bytes) will represent the
+    left part of the map and the second one (same size as the first one) will represent the right side of the map.
+    """
+
     screen_addr = 0
     tiledata_addr = 0
-    tile_size = 0  # If the BG character size for BG1/BG2/BG3/BG4 bit is set, then the BG is made of 16x16 tiles. Otherwise, 8x8 tiles are used.
+    tile_size = 0
+    """
+    If the BG character size for BG1/BG2/BG3/BG4 bit is set,
+    then the BG is made of 16x16 tiles. Otherwise, 8x8 tiles are used.
+    """
+
     main_screen_enable = True
     sub_screen_enable = True
     hoffset = 0

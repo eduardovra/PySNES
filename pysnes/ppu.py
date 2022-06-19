@@ -424,16 +424,26 @@ class Ppu:
             Sprites with priority 0
             BG3 tiles with priority 0
             """
-            self.draw_background(renderer, self.bg3, 2, False)
-            if self._bgpriority == 0:
-                self.draw_background(renderer, self.bg3, 2, True)
+            #self.draw_background(renderer, self.bg3, 2, False)
+            #if self._bgpriority == 0:
+            #    self.draw_background(renderer, self.bg3, 2, True)
+            # it seems only bg3 and the sprints are being drawn correctely
+            # I suppose its related to bg1 and bg2 being 4bpp (bg3 is 2bpp in this mode)
+
+            # 18/06/2022
+            # decided I'm gonna try fixing the bitplane parsing
+            # the problem is I'm not sure the data is being copied to vram as it should
+            # and that might be the problem as well
+            # If I don't succeed, the next idea would be to implement support for
+            # importing save state from bnes, so I could be sure the data in memory
+            # is right and the problem is I'm interpreting it the wrong way...
             self.draw_background(renderer, self.bg2, 4, False)
             self.draw_background(renderer, self.bg1, 4, False)
             self.draw_background(renderer, self.bg2, 4, True)
             self.draw_background(renderer, self.bg1, 4, True)
-            self.draw_objects(renderer)
-            if self._bgpriority == 1:
-                self.draw_background(renderer, self.bg3, 2, True)
+            #self.draw_objects(renderer)
+            #if self._bgpriority == 1:
+            #    self.draw_background(renderer, self.bg3, 2, True)
 
         SDL_RenderPresent(renderer)
 
@@ -441,6 +451,14 @@ class Ppu:
         self, renderer, bg: Background, bpp: int, priority_selector: bool
     ) -> None:
         """Draw all tiles from a background"""
+        # each individual tile on a background is called a character
+        # they can be 8x8, 16x16 or 16x8 pixels
+        # the background can be 32 or 64 characters in width or heigth,
+        # so it ranges from 256x256 up to 1024x1024 pixels
+
+        # the tile map is a 16 bit chunk of memory configuring which characters
+        # are part of the bg and also how they should be displayed. it's stored in vram
+
         if not bg.main_screen_enable:
             return
 
@@ -621,6 +639,11 @@ class Ppu:
         )
 
     def draw_objects(self, renderer) -> None:
+        # objects are the building blocks for sprites
+        # they can move independently from the background and always use 4bpp
+        # they can be 8x8, 16x16, 32x32 or 64x64 pixels in size
+        # oam is the memory region where the objects properties are stored. each obj uses 34 bits
+
         for obj in self.oam.objects:
             # Draw object if it's within the visible area (256x224)
             # TODO handle wrapping

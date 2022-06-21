@@ -1,5 +1,5 @@
 from ctypes import c_uint8
-from typing import Optional, Union, Tuple
+from typing import List, Optional, Union, Tuple
 
 from sdl2 import *
 
@@ -432,37 +432,92 @@ class Ppu:
 
         x_offset, y_offset = bg.hoffset, bg_voffset
 
-        # TODO this is a new idea...
-        # ref for bitplanes https://sneslab.net/wiki/Graphics_Format
-        #tiles = self.parse_background_tiles(bg, priority_selector)
-        #for tile in tiles:
-        #    self.draw_tile(
-        #        renderer=renderer,
-        #        tile=tile.tilemap,
-        #        tile_data=tile.data,
-        #        bpp=bpp,
-        #        x_offset=tile.x_offset,
-        #        y_offset=tile.y_offset,
-        #    )
-
         # ok so it seems the section bellow iterates over the tilemaps
         # which have fixed data lengths, hence the hardcoded sizes make sense
         line_start = (
             bg.screen_addr * 2
         ) & 0xFFFF  # Each addr corresponds to 2 bytes in VRAM
 
+        x_y_positions = [(x, y) for x in range(32) for y in range(32)]
+        tiles: List[Tile] = []
+
         if bg.screen_size == 0:
             line_end = line_start + 0x800  # Total size of BG in memory (32x32 tiles x 2 bytes)
+
+            for mem_index, (x_pos, y_pos) in enumerate(x_y_positions):
+                entry_addr = line_start + mem_index * 2
+                tile_map = Tilemap.from_buffer(self.vram, entry_addr)
+                tile = Tile(
+                    tile_map=tile_map,
+                    map_num=0,
+                    map_position_x=x_pos,
+                    map_position_y=y_pos,
+                )
+                tiles.append(tile)
+
         elif bg.screen_size == 1:
             line_end = line_start + 0x1000  # Total size of BG in memory (64x32 tiles x 2 bytes)
+
+            for map_num in range(2):
+                map_offset = map_num * 0x800  # 0x800 is the size for a tilemap block
+                for mem_index, (x_pos, y_pos) in enumerate(x_y_positions):
+                    entry_addr = line_start + map_offset + mem_index * 2
+                    tile_map = Tilemap.from_buffer(self.vram, entry_addr)
+                    tile = Tile(
+                        tile_map=tile_map,
+                        map_num=map_num,
+                        map_position_x=x_pos,
+                        map_position_y=y_pos,
+                    )
+                    tiles.append(tile)
+
         elif bg.screen_size == 2:
             line_end = line_start + 0x1000  # Total size of BG in memory (32x64 tiles x 2 bytes)
+            assert False, "Not sure if the second tilemap should be numbered 1 or 2"
         else:
             line_end = line_start + 0x2000  # Total size of BG in memory (64x64 tiles x 2 bytes)
 
-        line_step = 0x40
+            for map_num in range(4):
+                map_offset = map_num * 0x800  # 0x800 is the size for a tilemap block
+                for mem_index, (x_pos, y_pos) in enumerate(x_y_positions):
+                    entry_addr = line_start + map_offset + mem_index * 2
+                    tile_map = Tilemap.from_buffer(self.vram, entry_addr)
+                    tile = Tile(
+                        tile_map=tile_map,
+                        map_num=map_num,
+                        map_position_x=x_pos,
+                        map_position_y=y_pos,
+                    )
+                    tiles.append(tile)
 
         tile_width, tile_height = 8 << bg.tile_size, 8 << bg.tile_size  # 8 or 16 when tile_size bit set
+
+        for tile in tiles:
+            if tile.tile_map.priority == priority_selector:
+                # had to swap x with y for this to work. it's weird but all
+                # I know is bnes do the same in the debugger view...
+                xx_offset = x_offset + tile.map_position_y * tile_width
+                yy_offset = y_offset + tile.map_position_x * tile_height
+                if tile.map_num in (1, 3):
+                    xx_offset += 32 * tile_width
+                if tile.map_num in (2, 3):
+                    yy_offset += 32 * tile_height
+
+                self.draw_tiles(
+                    renderer=renderer,
+                    bpp=bpp,
+                    x_offset=xx_offset,
+                    y_offset=yy_offset,
+                    tile=tile.tile_map,
+                    tile_base_addr=bg.tiledata_addr * 2,
+                    tile_width=tile_width,
+                    tile_height=tile_height,
+                    tile_addr=tile.tile_map.addr,
+                )
+
+        return
+
+        line_step = 0x40
 
         # Each iteration will print a line of 32 tiles x tile_width x tile_height pixels
         for line in range(line_start, line_end, line_step):
@@ -587,6 +642,7 @@ class Ppu:
         # and the second byte if composed of the
         # 8 most significant bits
         mask = 1 << pixel
+        assert bpp in (2, 4), bpp
         # 2bpp
         l, h = tile_data[i + 0], tile_data[i + 1]
         color = (h & mask) >> pixel << 1 | (l & mask) >> pixel << 0

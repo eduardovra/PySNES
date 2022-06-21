@@ -25,7 +25,7 @@ class PySNES:
 
     def setup_sdl(self) -> None:
         SDL_Init(SDL_INIT_VIDEO)
-        self.window = SDL_CreateWindow(b"PySNES", 0, 0, 768, 768, SDL_WINDOW_SHOWN)
+        self.window = SDL_CreateWindow(b"PySNES", 0, 0, 1024, 1024, SDL_WINDOW_SHOWN)
         self.renderer = SDL_CreateRenderer(self.window, -1, SDL_RENDERER_ACCELERATED)
         SDL_SetRenderDrawBlendMode(self.renderer, SDL_BLENDMODE_BLEND)
         SDL_RenderSetScale(self.renderer, 2, 2)

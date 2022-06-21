@@ -64,3 +64,10 @@ class Tilemap(LittleEndianStructure):
         ("h_flip", c_uint16, 1),
         ("v_flip", c_uint16, 1),
     ]
+
+@dataclass
+class Tile:
+    tile_map: Tilemap
+    map_num: int  # map number 0-3
+    map_position_x: int  # x index inside de map 0-31
+    map_position_y: int  # y index inside de map 0-31

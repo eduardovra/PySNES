@@ -54,7 +54,7 @@ class Tilemap(LittleEndianStructure):
     priotity = (high >> 5) & 1
     h_flip = (high >> 6) & 1
     v_flip = (high >> 7) & 1
-    addr = high & 3 | low
+    addr = high & 3 | low           More like a tile id, it's an index selecting which character to draw
     """
 
     _fields_ = [

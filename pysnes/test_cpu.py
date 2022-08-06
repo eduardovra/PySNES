@@ -18,7 +18,7 @@ TESTS_PATH = "ProcessorTests/65816/v1"
 def get_test_cases():
     onlyfiles = [
         os.path.join(TESTS_PATH, f) for f in os.listdir(TESTS_PATH)
-        if os.path.isfile(os.path.join(TESTS_PATH, f)) and f == 'ea.n.json'  # EA -> NOP
+        if os.path.isfile(os.path.join(TESTS_PATH, f)) and f.startswith('29.n')  # EA -> NOP, 29 -> AND
     ]
 
     test_cases, test_ids = [], []
@@ -28,7 +28,7 @@ def get_test_cases():
             for test_case in json.load(f):
                 test_ids.append(test_case["name"])
                 test_cases.append(test_case)
-                if len(test_cases) >= 10:
+                if len(test_cases) >= 1000000:
                     return test_cases, test_ids
 
     return test_cases, test_ids

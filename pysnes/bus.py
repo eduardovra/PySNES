@@ -21,6 +21,10 @@ class Bus:
         self.extended_ram = bytearray(0x7FFFFF - 0x7E8000 + 1)
         self.controller_port1, self.controller_port2 = controllers
 
+        # i'll set up an unammaped memory region to capture all writes the test
+        # does and are not necessarily mapped on real hardware
+        self.unmapped = bytearray(2**24)  # 24 bits -> 16Mb
+
     def __getitem__(self, abs_addr: int) -> int:
         assert 0x000000 <= abs_addr <= 0xFFFFFF, "Address outside 24 bit range"
 
@@ -132,8 +136,8 @@ class Bus:
         print(
             "\033[93mReading unmamped memory region: 0x{:06X}\033[0m".format(abs_addr)
         )
-        assert 0
-        return 0
+        #assert 0
+        return self.unmapped[abs_addr]
 
         raise RuntimeError(
             "Error reading unmamped memory region: 0x{:06X}".format(abs_addr)
@@ -356,7 +360,8 @@ class Bus:
                 abs_addr, data
             )
         )
-        #return
+        self.unmapped[abs_addr] = data
+        return
 
         raise RuntimeError(
             "Error writting unmamped memory region: 0x{:06X}".format(abs_addr)

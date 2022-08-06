@@ -5,8 +5,48 @@ if TYPE_CHECKING:
     from ...bus import Bus
 
 from .wdc65816.instructions import INSTRUCTIONS
-from .wdc65816.addressing_modes import WDC65816AddressingModes
-from .wdc65816.opcodes import WDC65816Opcodes
+from .wdc65816 import addressing_modes
+from .wdc65816 import opcodes
+
+
+class Reg:
+    def __init__(self, bits: int, value: int):
+        self.bits = bits
+        self.value = value
+
+    @property
+    def l(self) -> int:
+        """Low byte getter"""
+        return self.value & 0xFF
+
+    @l.setter
+    def l(self, value: int):
+        """Low byte setter"""
+        self.value &= 0xFFFF00
+        self.value |= value & 0xFF
+
+    @property
+    def h(self) -> int:
+        """High byte getter"""
+        return self.value >> 8 & 0xFF
+
+    @h.setter
+    def h(self, value: int):
+        """High byte setter"""
+        self.value &= 0xFF00FF
+        self.value |= value << 8 & 0xFF00
+
+    @property
+    def w(self) -> int:
+        """Low word getter"""
+        return self.value & 0xFFFF
+
+    @w.setter
+    def w(self, value: int):
+        """Low word setter"""
+        self.value &= 0xFF0000
+        self.value |= value & 0xFFFF
+
 
 class Cpu:
 
@@ -16,7 +56,7 @@ class Cpu:
 
     def reset_registers(self):
         # Registers
-        self.A: int = 0x0000  # Accumulator
+        self.A = Reg(16, 0x0000)  # Accumulator
         self.X: int = 0x0000  # X Index Register
         self.Y: int = 0x0000  # Y Index Register
         self.D: int = 0x0000  # Direct Page Register
@@ -28,6 +68,10 @@ class Cpu:
 
         # bsnes
         # r.vector = 0xfffc;  //reset vector address
+        # r24 u;  //temporary register
+        # r24 v;  //temporary register
+        # r24 w;  //temporary register
+        self.W = Reg(24, 0x00)
 
         # Emulation flag
         self.EF: bool = True  # Starts enabled
@@ -51,7 +95,7 @@ class Cpu:
             else:
                 suffix = "16"
 
-            method_addr_mode = getattr(WDC65816AddressingModes, f"{addr_mode}{suffix}")
+            method_addr_mode = getattr(addressing_modes, f"{addr_mode}{suffix}")
 
             try:
                 opcode_register, op_code_function, *args = args
@@ -60,7 +104,7 @@ class Cpu:
                 else:
                     suffix = "16"
 
-                method_opcode = getattr(WDC65816Opcodes, f"{op_code_function}{suffix}")
+                method_opcode = getattr(opcodes, f"{op_code_function}{suffix}")
                 return method_addr_mode(self, method_opcode, *args)
             except:
                 if not args:

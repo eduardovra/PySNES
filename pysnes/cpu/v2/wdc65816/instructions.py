@@ -1,5 +1,3 @@
-from .addressing_modes import WDC65816AddressingModes
-from .opcodes import WDC65816Opcodes
 
 INSTRUCTIONS = (
     (0x29, "MF", "ImmediateRead", "MF", "AND"),

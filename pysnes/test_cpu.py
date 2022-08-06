@@ -51,7 +51,7 @@ def test_v2(test_case):
     initial = test_case["initial"]
     cpu.PC = initial["pc"]
     cpu.S = initial["s"]
-    cpu.A = initial["a"]
+    cpu.A.w = initial["a"]
     cpu.X = initial["x"]
     cpu.Y = initial["y"]
     cpu.EF = bool(initial["e"])
@@ -98,7 +98,7 @@ def test_v2(test_case):
     # check on registers and ram
     assert cpu.PC == final["pc"]
     assert cpu.S == final["s"]
-    assert cpu.A == final["a"]
+    assert cpu.A.w == final["a"]
     assert cpu.X == final['x']
     assert cpu.Y == final['y']
     assert cpu.EF == bool(final['e'])

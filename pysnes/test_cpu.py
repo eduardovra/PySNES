@@ -5,7 +5,7 @@ from unittest.mock import call, patch, Mock
 import pytest
 from rich import print
 
-from .cpu import Cpu
+from .cpu.v1.cpu import Cpu as CpuV1
 from .bus import Bus
 from .apu import Apu
 from .ppu import Ppu
@@ -41,7 +41,7 @@ TEST_CASES, TEST_IDS = get_test_cases()
 def test(test_case):
     hardware_vectors = {"emulation": {"RESET": 0}}
     rom = Rom("roms/Super Mario World (U) [!].smc")
-    cpu = Cpu(hardware_vectors)
+    cpu = CpuV1(hardware_vectors)
     apu = Apu()
     ppu = Ppu(cpu)  # Pass CPU reference so PPU can control the NMI line
     bus = Bus(rom, cpu, apu, ppu, [Controller(), Controller()])
@@ -55,7 +55,7 @@ def test(test_case):
     cpu.X = initial["x"]
     cpu.Y = initial["y"]
     cpu.emulation = initial["e"]
-    p = Cpu.StatusRegister()
+    p = CpuV1.StatusRegister()
     p.set(initial["p"], cpu.emulation)
     cpu.P = p
     cpu.D = initial["d"]
@@ -94,7 +94,7 @@ def test(test_case):
     assert cpu.X == final['x']
     assert cpu.Y == final['y']
     assert cpu.emulation == final['e']
-    p = Cpu.StatusRegister()
+    p = CpuV1.StatusRegister()
     p.set(initial["p"], cpu.emulation)
     assert cpu.P.get(cpu.emulation) == p.get(cpu.emulation)
     assert cpu.D == final['d']

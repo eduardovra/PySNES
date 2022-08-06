@@ -5,7 +5,7 @@ from .instructions import InstructionSet
 from .dma import DMA
 
 if TYPE_CHECKING:
-    from .bus import Bus
+    from ...bus import Bus
 
 
 @dataclass

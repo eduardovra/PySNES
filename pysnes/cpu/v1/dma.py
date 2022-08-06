@@ -2,7 +2,7 @@ from typing import TYPE_CHECKING
 from dataclasses import dataclass
 
 if TYPE_CHECKING:
-    from .bus import Bus
+    from ...bus import Bus
 
 
 @dataclass

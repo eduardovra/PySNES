@@ -24,18 +24,18 @@ class Bus:
     def __getitem__(self, abs_addr: int) -> int:
         assert 0x000000 <= abs_addr <= 0xFFFFFF, "Address outside 24 bit range"
 
-        
-
-        bank = abs_addr >> 16
+        bank = abs_addr >> 16 & 0xFF
         addr = abs_addr & 0xFFFF
 
-        if (0x00 <= bank <= 0x6F) or (0x80 <= bank <= 0xFF):
-            if 0x8000 <= addr <= 0xFFFF:
-                if bank >= 0x80:
-                    bank -= 0x80  # Mirror of 0x00-0x6F
-                rom_addr = (bank * 0x8000) + (addr - 0x8000)
-                print(f"__getitem__({abs_addr}) -> {self.rom[rom_addr]} [rom_addr={rom_addr}]")
-                return self.rom[rom_addr]
+        # mirror LoROM sections
+        if 0x80 <= bank <= 0xFD:
+            bank = bank - 0x80
+
+        if ((0x00 <= bank <= 0x6F) and 0x8000 <= addr <= 0xFFFF) or \
+            ((0x40 <= bank <= 0x6F) and (0x0000 <= addr <= 0xFFFF)) or \
+            ((0x70 <= bank <= 0x7D) and (0x8000 <= addr <= 0xFFFF)):
+            rom_addr = (bank * 0x8000) + (addr - (0x8000 if addr >= 0x8000 else 0))
+            return self.rom[rom_addr]
 
         if 0x7E2000 <= abs_addr <= 0x7E7FFF:
             return self.high_ram[abs_addr - 0x7E2000]
@@ -143,8 +143,20 @@ class Bus:
         assert 0x000000 <= abs_addr <= 0xFFFFFF, "Address outside 24 bit range"
         assert 0x00 <= data <= 0xFF, "Data outside 8 bit range"
 
-        bank = abs_addr >> 16
+        bank = abs_addr >> 16 & 0xFF
         addr = abs_addr & 0xFFFF
+
+        # TODO dealing with the addresses tests are sending
+        # mirror LoROM sections
+        if 0x80 <= bank <= 0xFD:
+            bank = bank - 0x80
+
+        if ((0x00 <= bank <= 0x6F) and 0x8000 <= addr <= 0xFFFF) or \
+            ((0x40 <= bank <= 0x6F) and (0x0000 <= addr <= 0xFFFF)) or \
+            ((0x70 <= bank <= 0x7D) and (0x8000 <= addr <= 0xFFFF)):
+            rom_addr = (bank * 0x8000) + (addr - (0x8000 if addr >= 0x8000 else 0))
+            self.rom.rom[rom_addr] = data
+            return
 
         if (0x00 <= bank <= 0x3F) or bank == 0x7E:
             if 0x0000 <= addr <= 0x1FFF:
@@ -338,23 +350,13 @@ class Bus:
             self.extended_ram[abs_addr - 0x7E8000] = data
             return
 
-        # TODO dealing with the addresses tests are sending
-        if (0x40 <= bank <= 0x6F) or (0xC0 <= bank <= 0xEF):
-            if 0x8000 <= addr <= 0xFFFF:
-                if bank >= 0xC0:
-                    bank -= 0x80  # Mirror of 0x40-0x6F
-                rom_addr = (bank * 0x8000) + (addr - 0x8000)
-                print(f"__setitem__({abs_addr}, {data}) [rom_addr={rom_addr}]")
-                self.rom.rom[rom_addr] = data
-                return
-
         # TODO Just for testing the ROM
         print(
             "\033[93mWritting unmamped memory region: 0x{:06X} = 0x{:02X}\033[0m".format(
                 abs_addr, data
             )
         )
-        return
+        #return
 
         raise RuntimeError(
             "Error writting unmamped memory region: 0x{:06X}".format(abs_addr)

@@ -67,22 +67,40 @@ def test(test_case):
 
     final = test_case["final"]
 
-    real_getitem = Bus.__getitem__
+    calls_performed = []
 
+    real_getitem = Bus.__getitem__
     def getitem(*args, **kwargs):
-        return real_getitem(*args, **kwargs)
+        data = real_getitem(*args, **kwargs)
+        calls_performed.append(f"getitem({args}) -> {data}")
+        return data
+    real_setitem = Bus.__setitem__
+    def setitem(*args, **kwargs):
+        calls_performed.append(f"settitem({args})")
+        return real_setitem(*args, **kwargs)
 
     print("\nInitiating test")
-    with patch.object(Bus, "__getitem__", autospec=True) as mock_getitem:
+    with patch.object(Bus, "__getitem__", autospec=True) as mock_getitem, \
+            patch.object(Bus, "__setitem__", autospec=True) as mock_setitem:
         mock_getitem.side_effect = getitem
+        mock_setitem.side_effect = setitem
         while cpu.PC != final["pc"]:
             cpu.fetch_and_execute()
 
-    assert mock_getitem.mock_calls == [
-        call(bus, 14005826),
-        call(bus, 46659),
-        call(bus, 46660),
-    ]
+    calls_expected = []
+    for address, value, outputs in test_case["cycles"]:
+        if outputs[3] == 'r':
+            calls_expected.append(f"getitem({address}) -> {value}")
+        elif outputs[3] == 'w':
+            calls_expected.append(f"setitem({address}, {value})")
+
+    assert calls_performed == calls_expected
+
+    #assert mock_getitem.mock_calls == [
+    #    call(bus, 14005826),
+    #    call(bus, 46659),
+    #    call(bus, 46660),
+    #]
 
     # TODO check on registers and ram
     assert cpu.PC == final["pc"]

@@ -1,5 +1,6 @@
 import os
 import json
+from unittest.mock import call, patch, Mock
 
 import pytest
 from rich import print
@@ -15,15 +16,28 @@ from .controller import Controller
 TESTS_PATH = "ProcessorTests/65816/v1"
 
 def get_test_cases():
-    locations = [1]
-    # query locations
-    #...
-    return locations
+    onlyfiles = [
+        os.path.join(TESTS_PATH, f) for f in os.listdir(TESTS_PATH)
+        if os.path.isfile(os.path.join(TESTS_PATH, f)) #and f == 'ea.n.json'  # EA -> NOP
+    ]
 
-TEST_CASES = get_test_cases()
+    test_cases, test_ids = [], []
+    for file_path in onlyfiles:
+        print(file_path)
+        with open(file_path) as f:
+            for test_case in json.load(f):
+                test_ids.append(test_case["name"])
+                test_cases.append(test_case)
+                if len(test_cases) >= 10:
+                    return test_cases, test_ids
+
+    return test_cases, test_ids
 
 
-@pytest.mark.parametrize('test_case', TEST_CASES)
+TEST_CASES, TEST_IDS = get_test_cases()
+
+
+@pytest.mark.parametrize('test_case', TEST_CASES, ids=TEST_IDS)
 def test(test_case):
     hardware_vectors = {"emulation": {"RESET": 0}}
     rom = Rom("roms/Super Mario World (U) [!].smc")
@@ -33,61 +47,58 @@ def test(test_case):
     bus = Bus(rom, cpu, apu, ppu, [Controller(), Controller()])
     cpu.attach(bus)
 
-    onlyfiles = [
-        os.path.join(TESTS_PATH, f) for f in os.listdir(TESTS_PATH)
-        if os.path.isfile(os.path.join(TESTS_PATH, f)) #and f == 'ea.n.json'  # EA -> NOP
+    #print(test_case)
+    initial = test_case["initial"]
+    cpu.PC = initial["pc"]
+    cpu.S = initial["s"]
+    cpu.A = initial["a"]
+    cpu.X = initial["x"]
+    cpu.Y = initial["y"]
+    cpu.emulation = initial["e"]
+    p = Cpu.StatusRegister()
+    p.set(initial["p"], cpu.emulation)
+    cpu.P = p
+    cpu.D = initial["d"]
+    cpu.DB = initial["dbr"]
+    cpu.PB = initial["pbr"]
+    print("Loading ram values")
+    for addr, value in initial["ram"]:
+        cpu.bus[addr] = value
+
+    final = test_case["final"]
+
+    real_getitem = Bus.__getitem__
+
+    def getitem(*args, **kwargs):
+        return real_getitem(*args, **kwargs)
+
+    print("\nInitiating test")
+    with patch.object(Bus, "__getitem__", autospec=True) as mock_getitem:
+        mock_getitem.side_effect = getitem
+        while cpu.PC != final["pc"]:
+            cpu.fetch_and_execute()
+
+    assert mock_getitem.mock_calls == [
+        call(bus, 14005826),
+        call(bus, 46659),
+        call(bus, 46660),
     ]
-    for file_path in onlyfiles:
-        print(file_path)
-        with open(file_path) as f:
-            data = json.load(f)[0]
-            print(data)
-            initial = data["initial"]
-            cpu.PC = initial["pc"]
-            cpu.S = initial["s"]
-            cpu.A = initial["a"]
-            cpu.X = initial["x"]
-            cpu.Y = initial["y"]
-            cpu.emulation = initial["e"]
-            p = Cpu.StatusRegister()
-            p.set(initial["p"], cpu.emulation)
-            cpu.P = p
-            cpu.D = initial["d"]
-            cpu.DB = initial["dbr"]
-            cpu.PB = initial["pbr"]
-            print("Loading ram values")
-            for addr, value in initial["ram"]:
-                cpu.bus[addr] = value
 
-            final = data["final"]
+    # TODO check on registers and ram
+    assert cpu.PC == final["pc"]
+    assert cpu.S == final["s"]
+    assert cpu.A == final["a"]
+    assert cpu.X == final['x']
+    assert cpu.Y == final['y']
+    assert cpu.emulation == final['e']
+    p = Cpu.StatusRegister()
+    p.set(initial["p"], cpu.emulation)
+    assert cpu.P.get(cpu.emulation) == p.get(cpu.emulation)
+    assert cpu.D == final['d']
+    assert cpu.DB == final['dbr']
+    assert cpu.PB == final['pbr']
+    print("\nChecking on memory")
+    for addr, value in final["ram"]:
+        assert cpu.bus[addr] == value
 
-            print("\nInitiating test")
-            while True:
-                cpu.fetch_and_execute()
-                #print(f"pc={cpu.PC}")
-                if cpu.PC == final["pc"]:
-                    break
-
-            # TODO check on registers and ram
-            assert cpu.PC == final["pc"]
-            assert cpu.S == final["s"]
-            assert cpu.A == final["a"]
-            assert cpu.X == final['x']
-            assert cpu.Y == final['y']
-            assert cpu.emulation == final['e']
-            p = Cpu.StatusRegister()
-            p.set(initial["p"], cpu.emulation)
-            assert cpu.P.get(cpu.emulation) == p.get(cpu.emulation)
-            assert cpu.D == final['d']
-            assert cpu.DB == final['dbr']
-            assert cpu.PB == final['pbr']
-            print("\nChecking on memory")
-            for addr, value in final["ram"]:
-                assert cpu.bus[addr] == value
-
-            # TODO intercept memory access calls (using mock?) and compare with data["cycles"]
-
-
-            #break
-
-    assert False
+    # TODO intercept memory access calls (using mock?) and compare with data["cycles"]

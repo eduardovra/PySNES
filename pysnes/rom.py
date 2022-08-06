@@ -1,3 +1,7 @@
+# Scripts to convert SNES ROMs to SNES Classic (.sfrom) format and to read .sfrom headers
+# https://gist.github.com/anpage/4834433944a2875ee6d4cbb5786c6bf7
+
+
 class Rom:
     rom: bytes
 

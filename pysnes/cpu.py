@@ -100,7 +100,7 @@ class Cpu:
         self.Y: int = 0x0000  # Y Index Register
         self.D: int = 0x0000  # Direct Page Register
         self.S: int = 0x01FF  # Stack Pointer
-        # self.PB: int = 0x00  # Program Bank Register
+        self.PB: int = 0x00  # Program Bank Register
         self.DB: int = 0x00  # Data Bank Register
         self.PC: int = self.hardware_vectors["emulation"]["RESET"]
         self.P = self.StatusRegister()
@@ -240,7 +240,7 @@ class Cpu:
             print(f"CPU finished SPC700UploadLoop {hex(self.PC)}")
 
         # self.opcode_PC = self.PC
-        self.opcode = self.bus[self.PC]
+        self.opcode = self.bus[(self.PB << 16) + self.PC]
         self.PC += 1
         try:
             cycles = self.instruction_set.execute(self.opcode)

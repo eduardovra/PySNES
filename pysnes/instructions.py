@@ -2,7 +2,7 @@ from collections import deque
 import csv
 from ctypes import c_int16, c_int8
 
-DEBUG_ENABLED = False
+DEBUG_ENABLED = True
 
 """
 Branch Instructions
@@ -261,7 +261,7 @@ class AddressingMode:
         Bank: Zero
         High/Low: The contents of the instruction- and processor-specific interrupt vector.
         """
-        assert cpu.emulation == 0
+        assert cpu.emulation == 0, cpu.emulation
         addr = cpu.PC
         # BRK is one byte, but program counter value pushed onto stack is
         # incremented by 2 allowing for optional signature byte.
@@ -1893,7 +1893,7 @@ class InstructionSet:
 
     def execute(self, opcode: int) -> int:
         instruction = self.instructions[opcode]
-        self.cpu.current_instruction_PC = self.cpu.PC - 1
+        self.cpu.current_instruction_PC = (self.cpu.PB << 16) + self.cpu.PC - 1
         # p_debug = instruction.mnemonic in ("JSR", "RTS")
         # p_debug = False
 

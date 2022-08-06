@@ -24,6 +24,8 @@ class Bus:
     def __getitem__(self, abs_addr: int) -> int:
         assert 0x000000 <= abs_addr <= 0xFFFFFF, "Address outside 24 bit range"
 
+        
+
         bank = abs_addr >> 16
         addr = abs_addr & 0xFFFF
 
@@ -32,6 +34,7 @@ class Bus:
                 if bank >= 0x80:
                     bank -= 0x80  # Mirror of 0x00-0x6F
                 rom_addr = (bank * 0x8000) + (addr - 0x8000)
+                print(f"__getitem__({abs_addr}) -> {self.rom[rom_addr]} [rom_addr={rom_addr}]")
                 return self.rom[rom_addr]
 
         if 0x7E2000 <= abs_addr <= 0x7E7FFF:
@@ -334,6 +337,16 @@ class Bus:
         if 0x7E8000 <= abs_addr <= 0x7FFFFF:
             self.extended_ram[abs_addr - 0x7E8000] = data
             return
+
+        # TODO dealing with the addresses tests are sending
+        if (0x40 <= bank <= 0x6F) or (0xC0 <= bank <= 0xEF):
+            if 0x8000 <= addr <= 0xFFFF:
+                if bank >= 0xC0:
+                    bank -= 0x80  # Mirror of 0x40-0x6F
+                rom_addr = (bank * 0x8000) + (addr - 0x8000)
+                print(f"__setitem__({abs_addr}, {data}) [rom_addr={rom_addr}]")
+                self.rom.rom[rom_addr] = data
+                return
 
         # TODO Just for testing the ROM
         print(

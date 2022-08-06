@@ -300,6 +300,7 @@ class Ppu:
 
         # Wrap H counter
         if self.h_counter > 339:
+            self.render_scanline(renderer)
             # H counter range is 0-339, but visible part is 22-277
             self.master_cycles = 0
             self.h_counter = 0
@@ -307,11 +308,11 @@ class Ppu:
 
         # Wrap V counter
         if self.v_counter == 262:
+            self.update_screen(renderer)
             # V counter range is 0-261, but visible part is 1-224
             self.v_counter = 0
             # Flip even/odd frame
             self.field ^= 1
-            self.render(renderer)
 
         # H-Blank is 62 dots
         self.cpu.status.h_blank_on = not (22 <= self.h_counter <= 277)
@@ -320,11 +321,16 @@ class Ppu:
         # NMI line
         self.cpu.status.nmi_line = self.cpu.status.v_blank_on
 
-    def render(self, renderer) -> None:
-        # Default background color
+    def update_screen(self, renderer):
+        """Update screen image with buffer"""
+        # swap active buffer
+        SDL_RenderPresent(renderer)
+        # set default background color
         self.set_color(renderer, 2, 0, 0)
         SDL_RenderClear(renderer)
 
+    def render_scanline(self, renderer):
+        """Render current scanline in self.v_counter"""
         # Check F-Blank
         if self.display_disable:
             return
@@ -521,6 +527,8 @@ class Ppu:
         Determines the number of horizontal and vertical
         tiles to be drawn accordingly to width and height,
         then calls self.draw_tile to render them
+
+        Despite the name, this will generally render 1 tile only...
         """
         # TODO what this method should be doing is to draw all 32 tiles
         # in the tilemap (tilemaps always have 32x32 tiles)
@@ -592,6 +600,12 @@ class Ppu:
             screen_height = 448 # 224 when non interlaced
             if y >= screen_height:
                 y = y % screen_height
+
+            # ugly hack to only draw the current scanline
+            if y != self.v_counter:
+                #print(f"y={y} != self.v_counter={self.v_counter}")
+                continue
+            #print(f"rendering y={y}")
 
             # Each iteration will print a pixel from the line
             for pixel, x in zip(pixel_sequence, x_sequence):

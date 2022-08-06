@@ -14,8 +14,11 @@ class Rom:
         “SMC” comes from Super MagiCom, a floppy-based cart copying device for backup/piracy.
         The original .smc files produced by the device contained a 512 byte header.
         """
+        self.rom = bytearray(0x400000)  # https://en.wikibooks.org/wiki/Super_NES_Programming/SNES_memory_map
         with open(self.rom_file_path, "rb") as f:
-            self.rom = f.read()
+            for i, b in enumerate(f.read()):
+                self.rom[i] = b
+            #self.rom = bytes(f.read())  # altered just for tests..
 
         # Strip out potential header
         self.smc_header_length = len(self.rom) % 0x400

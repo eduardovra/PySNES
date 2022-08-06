@@ -5,7 +5,8 @@ if TYPE_CHECKING:
     from ...bus import Bus
 
 from .wdc65816.instructions import INSTRUCTIONS
-
+from .wdc65816.addressing_modes import WDC65816AddressingModes
+from .wdc65816.opcodes import WDC65816Opcodes
 
 class Cpu:
 
@@ -29,7 +30,7 @@ class Cpu:
         # r.vector = 0xfffc;  //reset vector address
 
         # Emulation flag
-        self.EF = True  # Starts enabled
+        self.EF: bool = True  # Starts enabled
 
         # Debug stuff
         self.address = 0  # Last accessed address
@@ -40,19 +41,46 @@ class Cpu:
     def load_instructions(self):
         self.instructions: Any = [None] * 256
         self.debug_symbols: Any = [""] * 256
-        for opcode, addr_mode, *args in INSTRUCTIONS:
-            self.instructions[opcode] = partial(addr_mode, self, *args)
-            self.debug_symbols[opcode] = f"{addr_mode.__name__}"
-            if args:
-                if hasattr(args[0], "__name__"):
-                    self.debug_symbols[opcode] += f" {args[0].__name__} {args[1:]}"
+
+        # wrapper to pick correct method based on register values at runtime
+        def wrapper(self, register: str, addr_mode: str, *args):
+            if not register:
+                suffix = ""
+            elif getattr(self, register):
+                suffix = "8"
+            else:
+                suffix = "16"
+
+            method_addr_mode = getattr(WDC65816AddressingModes, f"{addr_mode}{suffix}")
+
+            try:
+                opcode_register, op_code_function, *args = args
+                if getattr(self, opcode_register):
+                    suffix = "8"
                 else:
-                    self.debug_symbols[opcode] += f" {args}"
+                    suffix = "16"
+
+                method_opcode = getattr(WDC65816Opcodes, f"{op_code_function}{suffix}")
+                return method_addr_mode(self, method_opcode, *args)
+            except:
+                if not args:
+                    raise
+                return method_addr_mode(self, *args)
+
+        # load instructions into main table and setup up debugging symbols
+        for opcode, reg_addr_mode, addr_mode, *args in INSTRUCTIONS:
+            self.instructions[opcode] = partial(wrapper, self, reg_addr_mode, addr_mode, *args)
+            self.debug_symbols[opcode] = addr_mode
+            if args:
+                args = " ".join(str(a) for a in args)
+                self.debug_symbols[opcode] += f" {args}"
             self.debug_symbols[opcode] = self.debug_symbols[opcode].ljust(30)
 
     def attach(self, bus: "Bus") -> None:
         self.bus = bus
-        #self.dma = DMA(bus)  # TODO Ugly
+
+    def write(self, addr, data):
+        self.bus[addr] = data
 
     def read(self, addr):
         return self.bus[addr]
@@ -66,43 +94,15 @@ class Cpu:
     def fetch_and_execute(self):
         opcode = self.fetch()
 
-        #debug_str = "\033[92mCPU 0x{:06X} {} {}\033[0m".format(
-        #    self.cpu.current_instruction_PC,
-        #    str(instruction).ljust(40),
-        #    self.cpu,
-        #)
-
-        #debug_str = "APU 0x{:04X} 0x{:02X} {}".format(
-        #    self.PC - 1,
-        #    opcode,
-        #    self.debug_symbols[opcode],
-        #)
-        #apu_str = str(self)
+        debug_str = "\033[92mCPU 0x{:06X} {} {}\033[0m".format(
+            self.PB << 16 | self.PC - 1,
+            self.debug_symbols[opcode].ljust(40),
+            "", #self.cpu,
+        )
+        print(debug_str)
 
         instruction = self.instructions[opcode]
-
         instruction()
-        return
-
-        try:
-            instruction()
-        except:
-            if not self.print_debug:
-                print("\033[93m{} [{:04X}] [{:02X}] {}\033[0m".format(
-                        debug_str,
-                        self.address,
-                        self.data,
-                        apu_str,
-                    ))
-            raise
-        finally:
-            if self.print_debug:
-                print("\033[93m{} [{:04X}] [{:02X}] {}\033[0m".format(
-                    debug_str,
-                    self.address,
-                    self.data,
-                    apu_str,
-                ))
 
     @property
     def P(self) -> int:

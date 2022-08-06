@@ -18,7 +18,7 @@ TESTS_PATH = "ProcessorTests/65816/v1"
 def get_test_cases():
     onlyfiles = [
         os.path.join(TESTS_PATH, f) for f in os.listdir(TESTS_PATH)
-        if os.path.isfile(os.path.join(TESTS_PATH, f)) #and f == 'ea.n.json'  # EA -> NOP
+        if os.path.isfile(os.path.join(TESTS_PATH, f)) and f == 'ea.n.json'  # EA -> NOP
     ]
 
     test_cases, test_ids = [], []
@@ -70,14 +70,14 @@ def test(test_case):
     calls_performed = []
 
     real_getitem = Bus.__getitem__
-    def getitem(*args, **kwargs):
-        data = real_getitem(*args, **kwargs)
-        calls_performed.append(f"getitem({args}) -> {data}")
-        return data
+    def getitem(self, address):
+        value = real_getitem(self, address)
+        calls_performed.append(f"getitem({address}) -> {value}")
+        return value
     real_setitem = Bus.__setitem__
-    def setitem(*args, **kwargs):
-        calls_performed.append(f"settitem({args})")
-        return real_setitem(*args, **kwargs)
+    def setitem(self, address, value):
+        calls_performed.append(f"settitem({address}, {value})")
+        return real_setitem(self, address, value)
 
     print("\nInitiating test")
     with patch.object(Bus, "__getitem__", autospec=True) as mock_getitem, \
@@ -87,22 +87,7 @@ def test(test_case):
         while cpu.PC != final["pc"]:
             cpu.fetch_and_execute()
 
-    calls_expected = []
-    for address, value, outputs in test_case["cycles"]:
-        if outputs[3] == 'r':
-            calls_expected.append(f"getitem({address}) -> {value}")
-        elif outputs[3] == 'w':
-            calls_expected.append(f"setitem({address}, {value})")
-
-    assert calls_performed == calls_expected
-
-    #assert mock_getitem.mock_calls == [
-    #    call(bus, 14005826),
-    #    call(bus, 46659),
-    #    call(bus, 46660),
-    #]
-
-    # TODO check on registers and ram
+    # check on registers and ram
     assert cpu.PC == final["pc"]
     assert cpu.S == final["s"]
     assert cpu.A == final["a"]
@@ -119,4 +104,80 @@ def test(test_case):
     for addr, value in final["ram"]:
         assert cpu.bus[addr] == value
 
-    # TODO intercept memory access calls (using mock?) and compare with data["cycles"]
+    # check on read/write cycles
+    calls_expected = []
+    for address, value, outputs in test_case["cycles"]:
+        # The environment used does not activate RAM unless one of VDA, VPA or VPB is active,
+        # therefore affected bus transactions with the read line set do not produce a value.
+        # null is recorded in its place.
+        if value is None:
+            continue
+
+        if outputs[3] == 'r':
+            calls_expected.append(f"getitem({address}) -> {value}")
+        elif outputs[3] == 'w':
+            calls_expected.append(f"setitem({address}, {value})")
+
+    assert calls_performed == calls_expected
+
+# VP == VPB
+
+"""
+=====================
+Appendix C: IC Pinouts
+=====================
+
+           /=============\                     /=============\
+       VP  I1          40I RES            Vss  I1          40I RES
+      RDY  I2          39I VDA            RDY  I2          39I o2 (OUT)
+    ABORT  I3          38I M/X       o1 (OUT)  I3          38I SO
+      IRQ  I4          37I o2 (IN)        IRQ  I4          37I o2 (IN)
+       ML  I5          36I BE              NC  I5          36I NC
+      NMI  I6          35I E              NMI  I6          35I NC
+      VPA  I7          34I R/W           SYNC  I7          34I R/W
+      VDD  I8          33I D0/BA0         Vdd  I8          33I D0
+       A0  I9  W65C816 32I D1/BA1          A0  I9   6502   32I D1
+       A1  I10         31I D2/BA2          A1  I10         31I D2
+       A2  I11         30I D3/BA3          A2  I11         30I D3
+       A3  I12         29I D4/BA4          A3  I12         29I D4
+       A4  I13         28I D5/BA5          A4  I13         28I D5
+       A5  I14         27I D6/BA6          A5  I14         27I D6
+       A6  I15         26I D7/BA7          A6  I15         26I D7
+       A7  I16         25I A15             A7  I16         25I A15
+       A8  I17         24I A14             A8  I17         24I A14
+       A9  I18         23I A13             A9  I18         23I A13
+      A10  I19         22I A12            A10  I19         22I A12
+      A11  I20         21I Vss            A11  I20         21I Vss
+           \=============/                     \=============/
+
+Notes:
+   ML: Memory Lock line (pin 5) is asserted low during the execution of
+       the read-modify-write (asl,dec,inc,lsr,rol,ror,trb, and tsb
+       instructions to inform other ics that the bus may not be claimed
+       yet.
+
+   VP: Vector Pull is asserted whenever any of the hardware vector
+       address's are being accessed during an IRQ.
+
+ Abort:  An input.  When asserted caused the current instruction to be
+         aborted.
+
+   VPA/VDA.  Valid Program Address and Valid Data Address.  These two
+             signals extend on the 6502 SYNC line - to better handle
+             DMA schemes.
+
+       VPA   VDA
+        0     0  -Internal Operation
+        0     1  -Valid program address
+        1     0  -Valid data address
+        1     1  -Opcode fetch
+
+
+    M/X: Memory and Index lines.  These signals are multiplexed on pin
+         38.  M is available during phase zero and X during Phase one.
+         These two signals reflect the contents of the status register
+         m and x flags, allowing other devices to decode opcode fetches.
+
+    E: Emulation pin.  This signal reflects the state of the processors
+       emulation bit (E).
+"""

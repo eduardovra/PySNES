@@ -6,6 +6,7 @@ import pytest
 from rich import print
 
 from .cpu.v1.cpu import Cpu as CpuV1
+from .cpu.v2.cpu import Cpu as CpuV2
 from .bus import Bus
 from .apu import Apu
 from .ppu import Ppu
@@ -18,7 +19,7 @@ TESTS_PATH = "ProcessorTests/65816/v1"
 def get_test_cases():
     onlyfiles = [
         os.path.join(TESTS_PATH, f) for f in os.listdir(TESTS_PATH)
-        if os.path.isfile(os.path.join(TESTS_PATH, f)) and f.startswith('29.n')  # EA -> NOP, 29 -> AND
+        if os.path.isfile(os.path.join(TESTS_PATH, f)) and f.startswith('ea.n')  # EA -> NOP, 29 -> AND
     ]
 
     test_cases, test_ids = [], []
@@ -38,7 +39,7 @@ TEST_CASES, TEST_IDS = get_test_cases()
 
 
 @pytest.mark.parametrize('test_case', TEST_CASES, ids=TEST_IDS)
-def test(test_case):
+def test_v1(test_case):
     hardware_vectors = {"emulation": {"RESET": 0}}
     rom = Rom("roms/Super Mario World (U) [!].smc")
     cpu = CpuV1(hardware_vectors)
@@ -97,6 +98,86 @@ def test(test_case):
     p = CpuV1.StatusRegister()
     p.set(initial["p"], cpu.emulation)
     assert cpu.P.get(cpu.emulation) == p.get(cpu.emulation)
+    assert cpu.D == final['d']
+    assert cpu.DB == final['dbr']
+    assert cpu.PB == final['pbr']
+    print("\nChecking on memory")
+    for addr, value in final["ram"]:
+        assert cpu.bus[addr] == value
+
+    # check on read/write cycles
+    calls_expected = []
+    for address, value, outputs in test_case["cycles"]:
+        # The environment used does not activate RAM unless one of VDA, VPA or VPB is active,
+        # therefore affected bus transactions with the read line set do not produce a value.
+        # null is recorded in its place.
+        if value is None:
+            continue
+
+        if outputs[3] == 'r':
+            calls_expected.append(f"getitem({address}) -> {value}")
+        elif outputs[3] == 'w':
+            calls_expected.append(f"setitem({address}, {value})")
+
+    assert calls_performed == calls_expected
+
+
+@pytest.mark.parametrize('test_case', TEST_CASES, ids=TEST_IDS)
+def test_v2(test_case):
+    hardware_vectors = {"emulation": {"RESET": 0}}
+    rom = Rom("roms/Super Mario World (U) [!].smc")
+    cpu = CpuV2()
+    apu = Apu()
+    ppu = Ppu(cpu)  # Pass CPU reference so PPU can control the NMI line
+    bus = Bus(rom, cpu, apu, ppu, [Controller(), Controller()])
+    cpu.attach(bus)
+
+    #print(test_case)
+    initial = test_case["initial"]
+    cpu.PC = initial["pc"]
+    cpu.S = initial["s"]
+    cpu.A = initial["a"]
+    cpu.X = initial["x"]
+    cpu.Y = initial["y"]
+    cpu.EF = bool(initial["e"])
+    cpu.P = initial["p"]
+    cpu.D = initial["d"]
+    cpu.DB = initial["dbr"]
+    cpu.PB = initial["pbr"]
+    print("Loading ram values")
+    for addr, value in initial["ram"]:
+        cpu.bus[addr] = value
+
+    final = test_case["final"]
+
+    calls_performed = []
+
+    real_getitem = Bus.__getitem__
+    def getitem(self, address):
+        value = real_getitem(self, address)
+        calls_performed.append(f"getitem({address}) -> {value}")
+        return value
+    real_setitem = Bus.__setitem__
+    def setitem(self, address, value):
+        calls_performed.append(f"settitem({address}, {value})")
+        return real_setitem(self, address, value)
+
+    print("\nInitiating test")
+    with patch.object(Bus, "__getitem__", autospec=True) as mock_getitem, \
+            patch.object(Bus, "__setitem__", autospec=True) as mock_setitem:
+        mock_getitem.side_effect = getitem
+        mock_setitem.side_effect = setitem
+        while cpu.PC != final["pc"]:
+            cpu.fetch_and_execute()
+
+    # check on registers and ram
+    assert cpu.PC == final["pc"]
+    assert cpu.S == final["s"]
+    assert cpu.A == final["a"]
+    assert cpu.X == final['x']
+    assert cpu.Y == final['y']
+    assert cpu.EF == bool(final['e'])
+    assert cpu.P == initial["p"]
     assert cpu.D == final['d']
     assert cpu.DB == final['dbr']
     assert cpu.PB == final['pbr']

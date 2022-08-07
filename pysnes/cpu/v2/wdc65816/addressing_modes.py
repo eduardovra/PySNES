@@ -1,4 +1,6 @@
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Callable
+from ctypes import c_int8
+import functools
 
 if TYPE_CHECKING:
     from ..cpu import Cpu
@@ -15,16 +17,49 @@ auto WDC65816::instruction() -> void {
 """
 
 
+def decorator_mode_8bit(func):
+    """Creates function variants for 8/16 bit modes based on M/X flag"""
+    @functools.wraps(func)
+    def mf_wrapper(cpu: "Cpu", *args, **kwargs):
+        return func(cpu, cpu.MF, *args, **kwargs)
+    func.MF = mf_wrapper
+
+    @functools.wraps(func)
+    def xf_wrapper(cpu: "Cpu", *args, **kwargs):
+        return func(cpu, cpu.XF, *args, **kwargs)
+    func.XF = xf_wrapper
+
+    return func
+
+
+def Branch(cpu: "Cpu", cond: Callable):
+    take = cond(cpu)
+    if take:
+        cpu.U.l = cpu.fetch()
+        displacement = c_int8(cpu.U.l)
+        cpu.V.w = cpu.PC.d + displacement.value
+        cpu.idle6(cpu.V.w)
+        cpu.idle()
+        cpu.PC.w = cpu.V.w
+        cpu.idleBranch()
+    else:
+        cpu.fetch()
+
+
+def ClearFlag(cpu: "Cpu", flag: str):
+    setattr(cpu, flag, False)
+
+
 def NoOperation(cpu: "Cpu"):
     pass
 
 
-def ImmediateRead8(cpu: "Cpu", func):
-    cpu.W.l = cpu.fetch()
-    func(cpu, cpu.W.l)
-
-
-def ImmediateRead16(cpu: "Cpu", func):
-    cpu.W.l = cpu.fetch()
-    cpu.W.h = cpu.fetch()
-    func(cpu, cpu.W.w)
+@decorator_mode_8bit
+def ImmediateRead(cpu: "Cpu", mode_8bit: bool, func):
+    if mode_8bit:
+        cpu.W.l = cpu.fetch()
+        func(cpu, mode_8bit, cpu.W.l)
+    else:
+        cpu.W.l = cpu.fetch()
+        cpu.W.h = cpu.fetch()
+        func(cpu, mode_8bit, cpu.W.w)

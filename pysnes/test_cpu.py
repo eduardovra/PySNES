@@ -19,7 +19,7 @@ TESTS_PATH = "ProcessorTests/65816/v1"
 def get_test_cases():
     onlyfiles = [
         os.path.join(TESTS_PATH, f) for f in os.listdir(TESTS_PATH)
-        if os.path.isfile(os.path.join(TESTS_PATH, f)) and f.startswith('29')  # EA -> NOP, 29 -> AND
+        if os.path.isfile(os.path.join(TESTS_PATH, f)) and f.upper().startswith('A0')  # EA -> NOP, 29 -> AND, A0 -> LDY
     ]
 
     test_cases, test_ids = [], []
@@ -38,28 +38,35 @@ def get_test_cases():
 TEST_CASES, TEST_IDS = get_test_cases()
 
 
+class FakeBus:
+    def __init__(self):
+        self.memory = bytearray(2**24)
+
+    def __getitem__(self, addr):
+        return self.memory[addr]
+
+    def __setitem__(self, addr, value):
+        self.memory[addr] = value
+
+
 @pytest.mark.parametrize('test_case', TEST_CASES, ids=TEST_IDS)
 def test_v2(test_case):
-    rom = Rom("roms/Super Mario World (U) [!].smc")
     cpu = CpuV2()
-    apu = Apu()
-    ppu = Ppu(cpu)  # Pass CPU reference so PPU can control the NMI line
-    bus = Bus(rom, cpu, apu, ppu, [Controller(), Controller()])
+    bus = FakeBus()
     cpu.attach(bus)
 
-    #print(test_case)
     initial = test_case["initial"]
-    cpu.PC = initial["pc"]
-    cpu.S = initial["s"]
+    cpu.PC.w = initial["pc"]
+    cpu.S.w = initial["s"]
     cpu.A.w = initial["a"]
-    cpu.X = initial["x"]
-    cpu.Y = initial["y"]
+    cpu.X.w = initial["x"]
+    cpu.Y.w = initial["y"]
     cpu.EF = bool(initial["e"])
     cpu.P = initial["p"]
-    cpu.D = initial["d"]
-    cpu.DB = initial["dbr"]
-    cpu.PB = initial["pbr"]
-    print("Loading ram values")
+    cpu.D.w = initial["d"]
+    cpu.DB.l = initial["dbr"]
+    cpu.PB.l = initial["pbr"]
+    #print("Loading ram values")
     for addr, value in initial["ram"]:
         cpu.bus[addr] = value
 
@@ -77,36 +84,36 @@ def test_v2(test_case):
         elif outputs[3] == 'w':
             calls_expected.append(f"setitem({address}, {value})")
 
-    real_getitem = Bus.__getitem__
+    real_getitem = FakeBus.__getitem__
     def getitem(self, address):
         value = real_getitem(self, address)
         calls_performed.append(f"getitem({address}) -> {value}")
         return value
-    real_setitem = Bus.__setitem__
+    real_setitem = FakeBus.__setitem__
     def setitem(self, address, value):
         calls_performed.append(f"settitem({address}, {value})")
         return real_setitem(self, address, value)
 
-    print("\nInitiating test")
-    with patch.object(Bus, "__getitem__", autospec=True) as mock_getitem, \
-            patch.object(Bus, "__setitem__", autospec=True) as mock_setitem:
+    #print("\nInitiating test")
+    with patch.object(FakeBus, "__getitem__", autospec=True) as mock_getitem, \
+            patch.object(FakeBus, "__setitem__", autospec=True) as mock_setitem:
         mock_getitem.side_effect = getitem
         mock_setitem.side_effect = setitem
-        while cpu.PC != final["pc"]:
+        while cpu.PC.w != final["pc"]:  # TODO consider PBR
             cpu.fetch_and_execute()
 
     # check on registers and ram
-    assert cpu.PC == final["pc"]
-    assert cpu.S == final["s"]
+    assert cpu.PC.w == final["pc"]
+    assert cpu.S.w == final["s"]
     assert cpu.A.w == final["a"]
-    assert cpu.X == final['x']
-    assert cpu.Y == final['y']
+    assert cpu.X.w == final['x']
+    assert cpu.Y.w == final['y']
     assert cpu.EF == bool(final['e'])
     assert cpu.P == final["p"]
-    assert cpu.D == final['d']
-    assert cpu.DB == final['dbr']
-    assert cpu.PB == final['pbr']
-    print("\nChecking on memory")
+    assert cpu.D.w == final['d']
+    assert cpu.DB.l == final['dbr']
+    assert cpu.PB.l == final['pbr']
+    #print("\nChecking on memory")
     for addr, value in final["ram"]:
         assert cpu.bus[addr] == value
 

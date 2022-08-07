@@ -5,8 +5,6 @@ if TYPE_CHECKING:
     from ...bus import Bus
 
 from .wdc65816.instructions import INSTRUCTIONS
-from .wdc65816 import addressing_modes
-from .wdc65816 import opcodes
 
 
 class Reg:
@@ -49,7 +47,6 @@ class Reg:
 
 
 class Cpu:
-
     def __init__(self) -> None:
         self.reset_registers()
         self.load_instructions()
@@ -57,20 +54,22 @@ class Cpu:
     def reset_registers(self):
         # Registers
         self.A = Reg(16, 0x0000)  # Accumulator
-        self.X: int = 0x0000  # X Index Register
-        self.Y: int = 0x0000  # Y Index Register
-        self.D: int = 0x0000  # Direct Page Register
-        self.S: int = 0x01FF  # Stack Pointer
-        self.P = 0x34  # Status register
-        self.PB: int = 0x00  # Program Bank Register
-        self.DB: int = 0x00  # Data Bank Register
-        self.PC: int = 0x00  # self.hardware_vectors["emulation"]["RESET"]
+        self.X = Reg(16, 0x0000)  # X Index Register
+        self.Y = Reg(16, 0x0000)  # Y Index Register
+        self.D = Reg(16, 0x0000)  # Direct Page Register
+        self.S = Reg(16, 0x01FF)  # Stack Pointer
+        self.P = 0x34             # Status register
+        self.PB = Reg(8, 0x00)    # Program Bank Register
+        self.DB = Reg(8, 0x00)    # Data Bank Register
+        self.PC = Reg(24, 0x00)   # self.hardware_vectors["emulation"]["RESET"]
 
         # bsnes
         # r.vector = 0xfffc;  //reset vector address
         # r24 u;  //temporary register
         # r24 v;  //temporary register
         # r24 w;  //temporary register
+        self.U = Reg(24, 0x00)
+        self.V = Reg(24, 0x00)
         self.W = Reg(24, 0x00)
 
         # Emulation flag
@@ -86,36 +85,13 @@ class Cpu:
         self.instructions: Any = [None] * 256
         self.debug_symbols: Any = [""] * 256
 
-        # wrapper to pick correct method based on register values at runtime
-        def wrapper(self, register: str, addr_mode: str, *args):
-            if not register:
-                suffix = ""
-            elif getattr(self, register):
-                suffix = "8"
-            else:
-                suffix = "16"
-
-            method_addr_mode = getattr(addressing_modes, f"{addr_mode}{suffix}")
-
-            try:
-                opcode_register, op_code_function, *args = args
-                if getattr(self, opcode_register):
-                    suffix = "8"
-                else:
-                    suffix = "16"
-
-                method_opcode = getattr(opcodes, f"{op_code_function}{suffix}")
-                return method_addr_mode(self, method_opcode, *args)
-            except:
-                if not args:
-                    raise
-                return method_addr_mode(self, *args)
-
         # load instructions into main table and setup up debugging symbols
-        for opcode, reg_addr_mode, addr_mode, *args in INSTRUCTIONS:
-            self.instructions[opcode] = partial(wrapper, self, reg_addr_mode, addr_mode, *args)
-            self.debug_symbols[opcode] = addr_mode
+        for opcode, addr_mode, *args in INSTRUCTIONS:
+            self.instructions[opcode] = partial(addr_mode, self, *args)
+            self.debug_symbols[opcode] = "{:02X} {}".format(opcode, addr_mode.__name__)
             if args:
+                if callable(args[0]):
+                    args[0] = args[0].__name__
                 args = " ".join(str(a) for a in args)
                 self.debug_symbols[opcode] += f" {args}"
             self.debug_symbols[opcode] = self.debug_symbols[opcode].ljust(30)
@@ -130,16 +106,15 @@ class Cpu:
         return self.bus[addr]
 
     def fetch(self):
-        data = self.read(self.PB << 16 | self.PC)
-        assert isinstance(data, int) and 0 <= data <= 0xFF
-        self.PC = (self.PC + 1) & 0xFFFF
+        data = self.read(self.PB.l << 16 | self.PC.w)
+        self.PC.w += 1
         return data
 
     def fetch_and_execute(self):
         opcode = self.fetch()
 
         debug_str = "\033[92mCPU 0x{:06X} {} {}\033[0m".format(
-            self.PB << 16 | self.PC - 1,
+            self.PB.l << 16 | self.PC.w - 1,
             self.debug_symbols[opcode].ljust(40),
             "", #self.cpu,
         )

@@ -1,11 +1,26 @@
+from typing import TYPE_CHECKING, Callable
+
+if TYPE_CHECKING:
+    from ..cpu import Cpu
+
+from . import addressing_modes as AM, opcodes as OP
+
 
 INSTRUCTIONS = (
-    (0x29, "MF", "ImmediateRead", "MF", "AND"),
-    #(0xEA, " ", WDC65816AddressingModes.NoOperation),
+    #(0x00, AM.Interrupt, lambda cpu: 0xfffe if cpu.EF else 0xffe6),  # opA(0x00, Interrupt, EF ? (r16)0xfffe : (r16)0xffe6)
+    #(0x0A, AM.ImpliedModify, "MF", OP.ASL, "A"),  # opM(0x0a, ImpliedModify, m(ASL), A)
+    (0x10, AM.Branch, lambda cpu: not cpu.NF),  # opA(0x10, Branch, NF == 0)
+    (0x18, AM.ClearFlag, "CF"),  # opA(0x18, ClearFlag, CF)
+    # opX(0x54, BlockMove, +1)
+    #(0x10, AM.Transfer16, "A", "D"),  # opA(0x5b, Transfer16, A, D)
+    (0x29, AM.ImmediateRead.MF, OP.AND),  # opM(0x29, ImmediateRead, m(AND))
+    (0xA0, AM.ImmediateRead.XF, OP.LDY),  # opX(0xa0, ImmediateRead, x(LDY))
+    (0xEA, AM.NoOperation),  # opA(0xea, NoOperation)
 )
 
+
 """
-  opA(0x00, Interrupt, EF ? (r16)0xfffe : (r16)0xffe6)  //emulation mode lacks BRK vector; uses IRQ vector instead
+  opA(0x00, Interrupt, EF ? (r16)0xfffe : (r16)0xffe6)
   opM(0x01, IndexedIndirectRead, m(ORA))
   opA(0x02, Interrupt, EF ? (r16)0xfff4 : (r16)0xffe4)
   opM(0x03, StackRead, m(ORA))

@@ -1,5 +1,14 @@
 # PySNES
 
+## Virtualenv (3.8)
+
+```
+snap install pypy3 --classic
+/snap/bin/pypy3 -m venv venv
+. venv/bin/activate
+pip install -r requirements.txt
+```
+
 ## Overall architecture
 
 The main loop would be something like:

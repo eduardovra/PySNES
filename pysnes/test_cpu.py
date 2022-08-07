@@ -7,11 +7,7 @@ from rich import print
 
 from .cpu.v1.cpu import Cpu as CpuV1
 from .cpu.v2.cpu import Cpu as CpuV2
-from .bus import Bus
-from .apu import Apu
-from .ppu import Ppu
-from .rom import Rom
-from .controller import Controller
+
 
 
 TESTS_PATH = "ProcessorTests/65816/v1"
@@ -19,12 +15,11 @@ TESTS_PATH = "ProcessorTests/65816/v1"
 def get_test_cases():
     onlyfiles = [
         os.path.join(TESTS_PATH, f) for f in os.listdir(TESTS_PATH)
-        if os.path.isfile(os.path.join(TESTS_PATH, f)) and f.upper().startswith('A0')  # EA -> NOP, 29 -> AND, A0 -> LDY
+        if os.path.isfile(os.path.join(TESTS_PATH, f)) #and f.upper().startswith('A0')  # EA -> NOP, 29 -> AND, A0 -> LDY
     ]
 
     test_cases, test_ids = [], []
     for file_path in onlyfiles:
-        print(file_path)
         with open(file_path) as f:
             for test_case in json.load(f):
                 test_ids.append(test_case["name"])
@@ -123,6 +118,12 @@ def test_v2(test_case):
 
 @pytest.mark.parametrize('test_case', TEST_CASES, ids=TEST_IDS)
 def test_v1(test_case):
+    from .bus import Bus
+    from .apu import Apu
+    from .ppu import Ppu
+    from .rom import Rom
+    from .controller import Controller
+
     hardware_vectors = {"emulation": {"RESET": 0}}
     rom = Rom("roms/Super Mario World (U) [!].smc")
     cpu = CpuV1(hardware_vectors)

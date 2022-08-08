@@ -22,7 +22,7 @@ def get_test_cases():
     for file_path in onlyfiles:
         with open(file_path) as f:
             for test_case in json.load(f):
-                test_ids.append(test_case["name"])
+                test_ids.append(test_case["name"].replace(" ", "_"))
                 test_cases.append(test_case)
                 if len(test_cases) >= 1000000:
                     return test_cases, test_ids

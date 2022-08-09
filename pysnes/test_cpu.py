@@ -9,13 +9,13 @@ from .cpu.v1.cpu import Cpu as CpuV1
 from .cpu.v2.cpu import Cpu as CpuV2
 
 
-
+# https://github.com/TomHarte/ProcessorTests/tree/main/65816
 TESTS_PATH = "ProcessorTests/65816/v1"
 
 def get_test_cases():
     onlyfiles = [
         os.path.join(TESTS_PATH, f) for f in os.listdir(TESTS_PATH)
-        if os.path.isfile(os.path.join(TESTS_PATH, f)) #and f.upper().startswith('A0')  # EA -> NOP, 29 -> AND, A0 -> LDY
+        if os.path.isfile(os.path.join(TESTS_PATH, f)) and f.upper().startswith('2D')  # EA -> NOP, 29 -> AND, A0 -> LDY
     ]
 
     test_cases, test_ids = [], []
@@ -116,7 +116,7 @@ def test_v2(test_case):
     assert calls_performed == calls_expected
 
 
-@pytest.mark.parametrize('test_case', TEST_CASES, ids=TEST_IDS)
+@pytest.mark.parametrize('test_case', [], ids=[])
 def test_v1(test_case):
     from .bus import Bus
     from .apu import Apu

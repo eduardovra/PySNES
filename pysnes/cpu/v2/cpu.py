@@ -76,8 +76,6 @@ class Cpu:
         self.EF: bool = True  # Starts enabled
 
         # Debug stuff
-        self.address = 0  # Last accessed address
-        self.data = 0  # Last accessed data
         self.breakpoint = None
         self.print_debug = False
 
@@ -104,6 +102,16 @@ class Cpu:
 
     def read(self, addr):
         return self.bus[addr]
+
+    def readBank(self, address):
+        return self.read((self.DB.l << 16) + address & 0xffffff)
+
+    def idle(self):
+        pass
+
+    def idle4(self, x, y):
+        #if(!XF || x >> 8 != y >> 8) idle();
+        pass
 
     def fetch(self):
         data = self.read(self.PB.l << 16 | self.PC.w)

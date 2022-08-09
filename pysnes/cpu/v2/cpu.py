@@ -35,6 +35,17 @@ class Reg:
         self.value |= value << 8 & 0xFF00
 
     @property
+    def b(self) -> int:
+        """Bank byte getter"""
+        return self.value >> 16 & 0xFF
+
+    @b.setter
+    def b(self, value: int):
+        """Bank byte setter"""
+        self.value &= 0xFFFF
+        self.value |= value << 16 & 0xFF0000
+
+    @property
     def w(self) -> int:
         """Low word getter"""
         return self.value & 0xFFFF
@@ -44,6 +55,16 @@ class Reg:
         """Low word setter"""
         self.value &= 0xFF0000
         self.value |= value & 0xFFFF
+
+    @property
+    def d(self) -> int:
+        """24 bit getter"""
+        return self.value & 0xFFFFFF
+
+    @d.setter
+    def d(self, value: int):
+        """24 bit setter"""
+        self.value = value & 0xFFFFFF
 
 
 class Cpu:
@@ -97,6 +118,13 @@ class Cpu:
     def attach(self, bus: "Bus") -> None:
         self.bus = bus
 
+    def idle(self):
+        pass
+
+    def idle4(self, x, y):
+        #if(!XF || x >> 8 != y >> 8) idle();
+        pass
+
     def write(self, addr, data):
         self.bus[addr] = data
 
@@ -106,12 +134,8 @@ class Cpu:
     def readBank(self, address):
         return self.read((self.DB.l << 16) + address & 0xffffff)
 
-    def idle(self):
-        pass
-
-    def idle4(self, x, y):
-        #if(!XF || x >> 8 != y >> 8) idle();
-        pass
+    def readLong(self, address):
+        return self.read(address & 0xffffff)
 
     def fetch(self):
         data = self.read(self.PB.l << 16 | self.PC.w)

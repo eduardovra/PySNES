@@ -60,3 +60,23 @@ def BankRead(cpu: "Cpu", mode_8bit: bool, func, i: str = ""):
             cpu.W.l = cpu.readBank(cpu.V.w + I.w + 0)
             cpu.W.h = cpu.readBank(cpu.V.w + I.w + 1)
             func(cpu, mode_8bit, cpu.W.w)
+
+
+@decorator_mode_8bit
+def LongRead(cpu: "Cpu", mode_8bit: bool, func, i: str = ""):
+    from ...cpu import Reg
+    I = getattr(cpu, i, Reg(16, 0))
+
+    if mode_8bit:
+        cpu.V.l = cpu.fetch()
+        cpu.V.h = cpu.fetch()
+        cpu.V.b = cpu.fetch()
+        cpu.W.l = cpu.readLong(cpu.V.d + I.w + 0)
+        func(cpu, mode_8bit, cpu.W.l)
+    else:
+        cpu.V.l = cpu.fetch()
+        cpu.V.h = cpu.fetch()
+        cpu.V.b = cpu.fetch()
+        cpu.W.l = cpu.readLong(cpu.V.d + I.w + 0)
+        cpu.W.h = cpu.readLong(cpu.V.d + I.w + 1)
+        func(cpu, mode_8bit, cpu.W.w)

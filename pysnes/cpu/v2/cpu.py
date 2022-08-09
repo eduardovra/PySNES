@@ -121,6 +121,10 @@ class Cpu:
     def idle(self):
         pass
 
+    def idle2(self):
+        if (self.D.l):
+            self.idle()
+
     def idle4(self, x, y):
         #if(!XF || x >> 8 != y >> 8) idle();
         pass
@@ -131,11 +135,31 @@ class Cpu:
     def read(self, addr):
         return self.bus[addr]
 
+    def readDirect(self, address):
+        if self.EF and not self.D.l:
+            return self.read(self.D.w | address & 0xff)
+        return self.read(self.D.w + address & 0xffff)
+
+    def readDirectN(self, address):
+        return self.read(self.D.w + address & 0xffff)
+
     def readBank(self, address):
         return self.read((self.DB.l << 16) + address & 0xffffff)
 
+    def writeBank(self, address, data):
+        self.write((self.DB.l << 16) + address & 0xffffff, data);
+
     def readLong(self, address):
         return self.read(address & 0xffffff)
+
+    def writeLong(self, address, data):
+        self.write(address & 0xffffff, data)
+
+    def readStack(self, address):
+        return self.read(self.S.w + address & 0xffff)
+
+    def writeStack(self, address, data):
+        self.write(self.S.w + address & 0xffff, data)
 
     def fetch(self):
         data = self.read(self.PB.l << 16 | self.PC.w)

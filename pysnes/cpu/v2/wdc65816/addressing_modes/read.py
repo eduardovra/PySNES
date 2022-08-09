@@ -80,3 +80,156 @@ def LongRead(cpu: "Cpu", mode_8bit: bool, func, i: str = ""):
         cpu.W.l = cpu.readLong(cpu.V.d + I.w + 0)
         cpu.W.h = cpu.readLong(cpu.V.d + I.w + 1)
         func(cpu, mode_8bit, cpu.W.w)
+
+
+@decorator_mode_8bit
+def DirectRead(cpu: "Cpu", mode_8bit: bool, func, i: str = ""):
+    I = getattr(cpu, i, None)
+
+    if mode_8bit:
+        if I is None:
+            cpu.U.l = cpu.fetch()
+            cpu.idle2()
+            cpu.W.l = cpu.readDirect(cpu.U.l + 0)
+            func(cpu, mode_8bit, cpu.W.l)
+        else:
+            cpu.U.l = cpu.fetch()
+            cpu.idle2()
+            cpu.idle()
+            cpu.W.l = cpu.readDirect(cpu.U.l + I.w + 0)
+            func(cpu, mode_8bit, cpu.W.l)
+    else:
+        if I is None:
+            cpu.U.l = cpu.fetch()
+            cpu.idle2()
+            cpu.W.l = cpu.readDirect(cpu.U.l + 0)
+            cpu.W.h = cpu.readDirect(cpu.U.l + 1)
+            func(cpu, mode_8bit, cpu.W.w)
+        else:
+            cpu.U.l = cpu.fetch()
+            cpu.idle2()
+            cpu.idle()
+            cpu.W.l = cpu.readDirect(cpu.U.l + I.w + 0)
+            cpu.W.h = cpu.readDirect(cpu.U.l + I.w + 1)
+            func(cpu, mode_8bit, cpu.W.w)
+
+
+@decorator_mode_8bit
+def IndirectRead(cpu: "Cpu", mode_8bit: bool, func):
+    if mode_8bit:
+        cpu.U.l = cpu.fetch()
+        cpu.idle2()
+        cpu.V.l = cpu.readDirect(cpu.U.l + 0)
+        cpu.V.h = cpu.readDirect(cpu.U.l + 1)
+        cpu.W.l = cpu.readBank(cpu.V.w + 0)
+        func(cpu, mode_8bit, cpu.W.l)
+    else:
+        cpu.U.l = cpu.fetch()
+        cpu.idle2()
+        cpu.V.l = cpu.readDirect(cpu.U.l + 0)
+        cpu.V.h = cpu.readDirect(cpu.U.l + 1)
+        cpu.W.l = cpu.readBank(cpu.V.w + 0)
+        cpu.W.h = cpu.readBank(cpu.V.w + 1)
+        func(cpu, mode_8bit, cpu.W.w)
+
+
+@decorator_mode_8bit
+def IndexedIndirectRead(cpu: "Cpu", mode_8bit: bool, func):
+    if mode_8bit:
+        cpu.U.l = cpu.fetch()
+        cpu.idle2()
+        cpu.idle()
+        cpu.V.l = cpu.readDirect(cpu.U.l + cpu.X.w + 0)
+        cpu.V.h = cpu.readDirect(cpu.U.l + cpu.X.w + 1)
+        cpu.W.l = cpu.readBank(cpu.V.w + 0)
+        func(cpu, mode_8bit, cpu.W.l)
+    else:
+        cpu.U.l = cpu.fetch()
+        cpu.idle2()
+        cpu.idle()
+        cpu.V.l = cpu.readDirect(cpu.U.l + cpu.X.w + 0)
+        cpu.V.h = cpu.readDirect(cpu.U.l + cpu.X.w + 1)
+        cpu.W.l = cpu.readBank(cpu.V.w + 0)
+        cpu.W.h = cpu.readBank(cpu.V.w + 1)
+        func(cpu, mode_8bit, cpu.W.w)
+
+
+@decorator_mode_8bit
+def IndirectIndexedRead(cpu: "Cpu", mode_8bit: bool, func):
+    if mode_8bit:
+        cpu.U.l = cpu.fetch()
+        cpu.idle2()
+        cpu.V.l = cpu.readDirect(cpu.U.l + 0)
+        cpu.V.h = cpu.readDirect(cpu.U.l + 1)
+        cpu.idle4(cpu.V.w, cpu.V.w + cpu.Y.w)
+        cpu.W.l = cpu.readBank(cpu.V.w + cpu.Y.w + 0)
+        func(cpu, mode_8bit, cpu.W.l)
+    else:
+        cpu.U.l = cpu.fetch()
+        cpu.idle2()
+        cpu.V.l = cpu.readDirect(cpu.U.l + 0)
+        cpu.V.h = cpu.readDirect(cpu.U.l + 1)
+        cpu.idle4(cpu.V.w, cpu.V.w + cpu.Y.w)
+        cpu.W.l = cpu.readBank(cpu.V.w + cpu.Y.w + 0)
+        cpu.W.h = cpu.readBank(cpu.V.w + cpu.Y.w + 1)
+        func(cpu, mode_8bit, cpu.W.w)
+
+
+@decorator_mode_8bit
+def IndirectLongRead(cpu: "Cpu", mode_8bit: bool, func, i: str = ""):
+    from ...cpu import Reg
+    I = getattr(cpu, i, Reg(16, 0))
+
+    if mode_8bit:
+        cpu.U.l = cpu.fetch()
+        cpu.idle2()
+        cpu.V.l = cpu.readDirectN(cpu.U.l + 0)
+        cpu.V.h = cpu.readDirectN(cpu.U.l + 1)
+        cpu.V.b = cpu.readDirectN(cpu.U.l + 2)
+        cpu.W.l = cpu.readLong(cpu.V.d + I.w + 0)
+        func(cpu, mode_8bit, cpu.W.l)
+    else:
+        cpu.U.l = cpu.fetch()
+        cpu.idle2()
+        cpu.V.l = cpu.readDirectN(cpu.U.l + 0)
+        cpu.V.h = cpu.readDirectN(cpu.U.l + 1)
+        cpu.V.b = cpu.readDirectN(cpu.U.l + 2)
+        cpu.W.l = cpu.readLong(cpu.V.d + I.w + 0)
+        cpu.W.h = cpu.readLong(cpu.V.d + I.w + 1)
+        func(cpu, mode_8bit, cpu.W.w)
+
+
+@decorator_mode_8bit
+def StackRead(cpu: "Cpu", mode_8bit: bool, func):
+    if mode_8bit:
+        cpu.U.l = cpu.fetch()
+        cpu.idle()
+        cpu.W.l = cpu.readStack(cpu.U.l + 0)
+        func(cpu, mode_8bit, cpu.W.l)
+    else:
+        cpu.U.l = cpu.fetch()
+        cpu.idle()
+        cpu.W.l = cpu.readStack(cpu.U.l + 0)
+        cpu.W.h = cpu.readStack(cpu.U.l + 1)
+        func(cpu, mode_8bit, cpu.W.w)
+
+
+@decorator_mode_8bit
+def IndirectStackRead(cpu: "Cpu", mode_8bit: bool, func):
+    if mode_8bit:
+        cpu.U.l = cpu.fetch()
+        cpu.idle()
+        cpu.V.l = cpu.readStack(cpu.U.l + 0)
+        cpu.V.h = cpu.readStack(cpu.U.l + 1)
+        cpu.idle()
+        cpu.W.l = cpu.readBank(cpu.V.w + cpu.Y.w + 0)
+        func(cpu, mode_8bit, cpu.W.l)
+    else:
+        cpu.U.l = cpu.fetch()
+        cpu.idle()
+        cpu.V.l = cpu.readStack(cpu.U.l + 0)
+        cpu.V.h = cpu.readStack(cpu.U.l + 1)
+        cpu.idle()
+        cpu.W.l = cpu.readBank(cpu.V.w + cpu.Y.w + 0)
+        cpu.W.h = cpu.readBank(cpu.V.w + cpu.Y.w + 1)
+        func(cpu, mode_8bit, cpu.W.w)

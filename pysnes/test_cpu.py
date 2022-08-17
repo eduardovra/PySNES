@@ -15,7 +15,7 @@ TESTS_PATH = "ProcessorTests/65816/v1"
 def get_test_cases():
     onlyfiles = [
         os.path.join(TESTS_PATH, f) for f in os.listdir(TESTS_PATH)
-        if os.path.isfile(os.path.join(TESTS_PATH, f)) and f.upper().startswith('35')  # EA -> NOP, 29 -> AND, A0 -> LDY
+        if os.path.isfile(os.path.join(TESTS_PATH, f)) and f.upper().startswith('35.E')  # EA -> NOP, 29 -> AND, A0 -> LDY
     ]
 
     test_cases, test_ids = [], []
@@ -100,8 +100,8 @@ def test_v2(test_case):
     # check on registers and ram
     assert cpu.PC.w == final["pc"]
     assert cpu.S.w == final["s"]
-    assert cpu.A.w == final["a"]
-    assert cpu.X.w == final['x']
+    assert cpu.A.w == final["a"], f"{hex(cpu.A.w)} != {hex(final['a'])}"
+    assert cpu.X.w == final['x'], f"{hex(cpu.X.w)} != {hex(final['x'])}"
     assert cpu.Y.w == final['y']
     assert cpu.EF == bool(final['e'])
     assert cpu.P == final["p"]

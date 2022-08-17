@@ -1,7 +1,4 @@
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from ..cpu import Cpu
+from ..cpu import Cpu
 
 
 # TODO remove once all opcodes are implemented
@@ -14,7 +11,7 @@ def __getattr__(name: str):
         return not_implemented
 
 
-def AND(cpu: "Cpu", mode_8bit: bool, data: int):
+def AND(cpu: Cpu, mode_8bit: bool, data: int):
     if mode_8bit:
         cpu.A.l &= data
         cpu.ZF = cpu.A.l == 0
@@ -27,7 +24,7 @@ def AND(cpu: "Cpu", mode_8bit: bool, data: int):
         return cpu.A.w
 
 
-def LDY(cpu: "Cpu", mode_8bit: bool, data: int):
+def LDY(cpu: Cpu, mode_8bit: bool, data: int):
     if mode_8bit:
         cpu.Y.l = data
         cpu.ZF = cpu.Y.l == 0

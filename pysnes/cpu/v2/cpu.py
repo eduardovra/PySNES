@@ -4,8 +4,6 @@ from typing import Any, TYPE_CHECKING
 if TYPE_CHECKING:
     from ...bus import Bus
 
-from .wdc65816.instructions import INSTRUCTIONS
-
 
 class Reg:
     def __init__(self, bits: int, value: int):
@@ -101,6 +99,8 @@ class Cpu:
         self.print_debug = False
 
     def load_instructions(self):
+        from .wdc65816.instructions import INSTRUCTIONS
+
         self.instructions: Any = [None] * 256
         self.debug_symbols: Any = [""] * 256
 
@@ -136,7 +136,14 @@ class Cpu:
         return self.bus[addr]
 
     def readDirect(self, address):
-        if self.EF and not self.D.l:
+        # this is not part of bsnes implementation but it seems
+        # tests expect the page to wrap around when in emulation mode
+        # even if self.D.l is not zero
+        #if self.EF:
+        #    test = (self.D.h << 8) | ((self.D.l + address) & 0xff)
+            #print(f"{hex(self.D.w)=} {hex(address)=} {hex(test)=}")
+        #    return self.read(test)
+        if self.EF and self.D.l == 0:
             return self.read(self.D.w | address & 0xff)
         return self.read(self.D.w + address & 0xffff)
 

@@ -1,8 +1,4 @@
-from typing import TYPE_CHECKING, Callable, Optional
-from ctypes import c_int8
-
-if TYPE_CHECKING:
-    from ...cpu import Cpu
+from ...cpu import Cpu, Reg
 
 from .decorator import decorator_mode_8bit
 
@@ -20,7 +16,7 @@ auto WDC65816::instruction() -> void {
 
 
 @decorator_mode_8bit
-def ImmediateRead(cpu: "Cpu", mode_8bit: bool, func):
+def ImmediateRead(cpu: Cpu, mode_8bit: bool, func):
     if mode_8bit:
         cpu.W.l = cpu.fetch()
         func(cpu, mode_8bit, cpu.W.l)
@@ -31,7 +27,7 @@ def ImmediateRead(cpu: "Cpu", mode_8bit: bool, func):
 
 
 @decorator_mode_8bit
-def BankRead(cpu: "Cpu", mode_8bit: bool, func, i: str = ""):
+def BankRead(cpu: Cpu, mode_8bit: bool, func, i: str = ""):
     I = getattr(cpu, i, None)
 
     if mode_8bit:
@@ -63,8 +59,7 @@ def BankRead(cpu: "Cpu", mode_8bit: bool, func, i: str = ""):
 
 
 @decorator_mode_8bit
-def LongRead(cpu: "Cpu", mode_8bit: bool, func, i: str = ""):
-    from ...cpu import Reg
+def LongRead(cpu: Cpu, mode_8bit: bool, func, i: str = ""):
     I = getattr(cpu, i, Reg(16, 0))
 
     if mode_8bit:
@@ -83,7 +78,7 @@ def LongRead(cpu: "Cpu", mode_8bit: bool, func, i: str = ""):
 
 
 @decorator_mode_8bit
-def DirectRead(cpu: "Cpu", mode_8bit: bool, func, i: str = ""):
+def DirectRead(cpu: Cpu, mode_8bit: bool, func, i: str = ""):
     I = getattr(cpu, i, None)
 
     if mode_8bit:
@@ -96,7 +91,7 @@ def DirectRead(cpu: "Cpu", mode_8bit: bool, func, i: str = ""):
             cpu.U.l = cpu.fetch()
             cpu.idle2()
             cpu.idle()
-            cpu.W.l = cpu.readDirect(cpu.U.l + I.w + 0)
+            cpu.W.l = cpu.readDirect(cpu.U.l + I.w + 0)  # TODO this seems to be reading from the wrong address and test_v2[35_e_1] fails
             func(cpu, mode_8bit, cpu.W.l)
     else:
         if I is None:
@@ -115,7 +110,7 @@ def DirectRead(cpu: "Cpu", mode_8bit: bool, func, i: str = ""):
 
 
 @decorator_mode_8bit
-def IndirectRead(cpu: "Cpu", mode_8bit: bool, func):
+def IndirectRead(cpu: Cpu, mode_8bit: bool, func):
     if mode_8bit:
         cpu.U.l = cpu.fetch()
         cpu.idle2()
@@ -134,7 +129,7 @@ def IndirectRead(cpu: "Cpu", mode_8bit: bool, func):
 
 
 @decorator_mode_8bit
-def IndexedIndirectRead(cpu: "Cpu", mode_8bit: bool, func):
+def IndexedIndirectRead(cpu: Cpu, mode_8bit: bool, func):
     if mode_8bit:
         cpu.U.l = cpu.fetch()
         cpu.idle2()
@@ -155,7 +150,7 @@ def IndexedIndirectRead(cpu: "Cpu", mode_8bit: bool, func):
 
 
 @decorator_mode_8bit
-def IndirectIndexedRead(cpu: "Cpu", mode_8bit: bool, func):
+def IndirectIndexedRead(cpu: Cpu, mode_8bit: bool, func):
     if mode_8bit:
         cpu.U.l = cpu.fetch()
         cpu.idle2()
@@ -176,8 +171,7 @@ def IndirectIndexedRead(cpu: "Cpu", mode_8bit: bool, func):
 
 
 @decorator_mode_8bit
-def IndirectLongRead(cpu: "Cpu", mode_8bit: bool, func, i: str = ""):
-    from ...cpu import Reg
+def IndirectLongRead(cpu: Cpu, mode_8bit: bool, func, i: str = ""):
     I = getattr(cpu, i, Reg(16, 0))
 
     if mode_8bit:
@@ -200,7 +194,7 @@ def IndirectLongRead(cpu: "Cpu", mode_8bit: bool, func, i: str = ""):
 
 
 @decorator_mode_8bit
-def StackRead(cpu: "Cpu", mode_8bit: bool, func):
+def StackRead(cpu: Cpu, mode_8bit: bool, func):
     if mode_8bit:
         cpu.U.l = cpu.fetch()
         cpu.idle()
@@ -215,7 +209,7 @@ def StackRead(cpu: "Cpu", mode_8bit: bool, func):
 
 
 @decorator_mode_8bit
-def IndirectStackRead(cpu: "Cpu", mode_8bit: bool, func):
+def IndirectStackRead(cpu: Cpu, mode_8bit: bool, func):
     if mode_8bit:
         cpu.U.l = cpu.fetch()
         cpu.idle()

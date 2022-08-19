@@ -139,10 +139,10 @@ class Cpu:
         # this is not part of bsnes implementation but it seems
         # tests expect the page to wrap around when in emulation mode
         # even if self.D.l is not zero
-        #if self.EF:
-        #    test = (self.D.h << 8) | ((self.D.l + address) & 0xff)
+        if self.EF:
+            test = (self.D.h << 8) | ((self.D.l + address) & 0xff)
             #print(f"{hex(self.D.w)=} {hex(address)=} {hex(test)=}")
-        #    return self.read(test)
+            return self.read(test)
         if self.EF and self.D.l == 0:
             return self.read(self.D.w | address & 0xff)
         return self.read(self.D.w + address & 0xffff)

@@ -91,7 +91,7 @@ def DirectRead(cpu: Cpu, mode_8bit: bool, func, i: str = ""):
             cpu.U.l = cpu.fetch()
             cpu.idle2()
             cpu.idle()
-            cpu.W.l = cpu.readDirect(cpu.U.l + I.w + 0)  # TODO this seems to be reading from the wrong address and test_v2[35_e_1] fails
+            cpu.W.l = cpu.readDirect(cpu.U.l + I.w + 0)
             func(cpu, mode_8bit, cpu.W.l)
     else:
         if I is None:

@@ -140,12 +140,16 @@ class Cpu:
         # tests expect the page to wrap around when in emulation mode
         # even if self.D.l is not zero
         if self.EF:
-            test = (self.D.h << 8) | ((self.D.l + address) & 0xff)
-            #print(f"{hex(self.D.w)=} {hex(address)=} {hex(test)=}")
-            return self.read(test)
+            addr = (self.D.h << 8) | ((self.D.l + address) & 0xff)
+            return self.read(addr)
         if self.EF and self.D.l == 0:
             return self.read(self.D.w | address & 0xff)
         return self.read(self.D.w + address & 0xffff)
+
+    def writeDirect(self, address, data):
+        if self.EF and self.D.l == 0:
+            return self.write(self.D.w | address & 0xff, data)
+        return self.write(self.D.w + address & 0xffff, data)
 
     def readDirectN(self, address):
         return self.read(self.D.w + address & 0xffff)

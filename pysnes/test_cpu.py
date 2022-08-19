@@ -15,7 +15,7 @@ TESTS_PATH = "ProcessorTests/65816/v1"
 def get_test_cases():
     onlyfiles = [
         os.path.join(TESTS_PATH, f) for f in os.listdir(TESTS_PATH)
-        if os.path.isfile(os.path.join(TESTS_PATH, f)) and f.upper().startswith('35.E')  # EA -> NOP, 29 -> AND, A0 -> LDY
+        if os.path.isfile(os.path.join(TESTS_PATH, f)) and f.upper().startswith('8C')  # EA -> NOP, 29 -> AND, A0 -> LDY
     ]
 
     test_cases, test_ids = [], []
@@ -86,7 +86,7 @@ def test_v2(test_case):
         return value
     real_setitem = FakeBus.__setitem__
     def setitem(self, address, value):
-        calls_performed.append(f"settitem({address}, {value})")
+        calls_performed.append(f"setitem({address}, {value})")
         return real_setitem(self, address, value)
 
     #print("\nInitiating test")

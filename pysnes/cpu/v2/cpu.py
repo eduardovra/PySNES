@@ -118,6 +118,9 @@ class Cpu:
     def attach(self, bus: "Bus") -> None:
         self.bus = bus
 
+    def idleIRQ(self):
+        pass
+
     def idle(self):
         pass
 

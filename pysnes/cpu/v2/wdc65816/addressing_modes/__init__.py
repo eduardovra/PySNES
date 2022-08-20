@@ -1,6 +1,7 @@
 from .decorator import decorator_mode_8bit
 from .read import *
 from .write import *
+from .modify import *
 from .other import *
 from .pc import *
 

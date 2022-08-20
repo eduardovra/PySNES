@@ -35,3 +35,16 @@ def LDY(cpu: Cpu, mode_8bit: bool, data: int):
         cpu.ZF = cpu.Y.w == 0
         cpu.NF = bool(cpu.Y.w & 0x8000)
         return data
+
+
+def INC(cpu: Cpu, mode_8bit: bool, data: int):
+    if mode_8bit:
+        data = (data + 1) & 0xFF
+        cpu.ZF = data == 0
+        cpu.NF = bool(data & 0x80)
+        return data
+    else:
+        data = (data + 1) & 0xFFFF
+        cpu.ZF = data == 0
+        cpu.NF = bool(data & 0x8000)
+        return data

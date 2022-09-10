@@ -15,7 +15,7 @@ TESTS_PATH = "ProcessorTests/65816/v1"
 def get_test_cases():
     onlyfiles = [
         os.path.join(TESTS_PATH, f) for f in os.listdir(TESTS_PATH)
-        if os.path.isfile(os.path.join(TESTS_PATH, f)) and f.upper().startswith('10')  # EA -> NOP, 29 -> AND, A0 -> LDY
+        if os.path.isfile(os.path.join(TESTS_PATH, f)) and f.upper().startswith('62')  # EA -> NOP, 29 -> AND, A0 -> LDY
     ]
 
     test_cases, test_ids = [], []
@@ -61,7 +61,6 @@ def test_v2(test_case):
     cpu.D.w = initial["d"]
     cpu.DB.l = initial["dbr"]
     cpu.PB.l = initial["pbr"]
-    #print("Loading ram values")
     for addr, value in initial["ram"]:
         cpu.bus[addr] = value
 
@@ -89,7 +88,6 @@ def test_v2(test_case):
         calls_performed.append(f"setitem({address}, {value})")
         return real_setitem(self, address, value)
 
-    #print("\nInitiating test")
     with patch.object(FakeBus, "__getitem__", autospec=True) as mock_getitem, \
             patch.object(FakeBus, "__setitem__", autospec=True) as mock_setitem:
         mock_getitem.side_effect = getitem
@@ -109,9 +107,8 @@ def test_v2(test_case):
     assert cpu.D.w == final['d']
     assert cpu.DB.l == final['dbr']
     assert cpu.PB.l == final['pbr']
-    #print("\nChecking on memory")
     for addr, value in final["ram"]:
-        assert cpu.bus[addr] == value
+        assert cpu.bus[addr] == value, f"cpu.bus[{hex(addr)}] = {hex(cpu.bus[addr])} != {hex(value)}"
 
     # check on read/write cycles
     assert calls_performed == calls_expected

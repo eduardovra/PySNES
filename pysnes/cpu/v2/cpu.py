@@ -94,6 +94,11 @@ class Cpu:
         # Emulation flag
         self.EF: bool = True  # Starts enabled
 
+        # other regs used by bsnes
+        self.irq: bool = False  # IRQ pin (0 = low, 1 = trigger)
+        self.wai: bool = False  # raised during wai, cleared after interrupt triggered
+        self.stp: bool = False  # raised during stp, never cleared
+
         # Debug stuff
         self.breakpoint = None
         self.print_debug = False
@@ -139,6 +144,10 @@ class Cpu:
 
     def idleJump(self):
         pass
+
+    def synchronizing(self):
+        """bsnes thing that don't belong here"""
+        return False
 
     def write(self, addr, data):
         self.bus[addr] = data

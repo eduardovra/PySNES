@@ -78,7 +78,7 @@ def DirectModify(cpu: Cpu, mode_8bit: bool, func):
 
 
 @decorator_mode_8bit
-def DirectIndexedModify8(cpu: Cpu, mode_8bit: bool, func):
+def DirectIndexedModify(cpu: Cpu, mode_8bit: bool, func):
     if mode_8bit:
         cpu.U.l = cpu.fetch()
         cpu.idle2()

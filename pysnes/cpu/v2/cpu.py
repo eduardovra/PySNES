@@ -129,7 +129,15 @@ class Cpu:
             self.idle()
 
     def idle4(self, x, y):
-        #if(!XF || x >> 8 != y >> 8) idle();
+        """if(!XF || x >> 8 != y >> 8) idle();"""
+
+    def idle6(self, address):
+        """if(EF && PC.h != address >> 8) idle();"""
+
+    def idleBranch(self):
+        pass
+
+    def idleJump(self):
         pass
 
     def write(self, addr, data):
@@ -179,6 +187,28 @@ class Cpu:
         data = self.read(self.PB.l << 16 | self.PC.w)
         self.PC.w += 1
         return data
+
+    def pull(self):
+        if self.EF:
+            self.S.l += 1
+        else:
+            self.S.w += 1
+        return self.read(self.S.w)
+
+    def push(self, data):
+        self.write(self.S.w, data)
+        if self.EF:
+            self.S.l -= 1
+        else:
+            self.S.w -= 1
+
+    def pullN(self):
+        self.S.w += 1
+        return self.read(self.S.w);
+
+    def pushN(self, data):
+        self.write(self.S.w, data)
+        self.S.w -= 1
 
     def fetch_and_execute(self):
         opcode = self.fetch()

@@ -15,7 +15,7 @@ TESTS_PATH = "ProcessorTests/65816/v1"
 def get_test_cases():
     onlyfiles = [
         os.path.join(TESTS_PATH, f) for f in os.listdir(TESTS_PATH)
-        if os.path.isfile(os.path.join(TESTS_PATH, f)) and f.upper().startswith('E8')  # EA -> NOP, 29 -> AND, A0 -> LDY
+        if os.path.isfile(os.path.join(TESTS_PATH, f)) and f.upper().startswith('10')  # EA -> NOP, 29 -> AND, A0 -> LDY
     ]
 
     test_cases, test_ids = [], []
@@ -94,7 +94,8 @@ def test_v2(test_case):
             patch.object(FakeBus, "__setitem__", autospec=True) as mock_setitem:
         mock_getitem.side_effect = getitem
         mock_setitem.side_effect = setitem
-        while cpu.PC.w != final["pc"]:  # TODO consider PBR
+        #while cpu.PC.w != final["pc"]:  # TODO consider PBR
+        while len(calls_performed) < len(calls_expected):
             cpu.fetch_and_execute()
 
     # check on registers and ram

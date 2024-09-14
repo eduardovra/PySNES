@@ -19,7 +19,7 @@ TESTS_PATH = "ProcessorTests/65816/v1"
 def get_test_cases():
     onlyfiles = [
         os.path.join(TESTS_PATH, f) for f in os.listdir(TESTS_PATH)
-        if os.path.isfile(os.path.join(TESTS_PATH, f)) # and f.upper().startswith('42')  # EA -> NOP, 29 -> AND, A0 -> LDY
+        if os.path.isfile(os.path.join(TESTS_PATH, f)) # and f.upper().startswith('E9')  # EA -> NOP, 29 -> AND, A0 -> LDY
     ]
 
     # onlyfiles = onlyfiles[:3]  # limit to 3 files
@@ -132,12 +132,12 @@ def test_v2(test_case):
     assert cpu.S.w == final["s"], f"{hex(cpu.S.w)} != {hex(final['s'])}"
     assert cpu.A.w == final["a"], f"{hex(cpu.A.w)} != {hex(final['a'])}"
     assert cpu.X.w == final['x'], f"{hex(cpu.X.w)} != {hex(final['x'])}"
-    assert cpu.Y.w == final['y']
+    assert cpu.Y.w == final['y'], f"{hex(cpu.Y.w)} != {hex(final['y'])}"
     assert cpu.EF == bool(final['e'])
-    assert cpu.P == final["p"]
-    assert cpu.D.w == final['d']
-    assert cpu.DB.l == final['dbr']
-    assert cpu.PB.l == final['pbr']
+    assert cpu.P == final["p"], f"{hex(cpu.P)} != {hex(final['p'])}"
+    assert cpu.D.w == final['d'], f"{hex(cpu.D.w)} != {hex(final['d'])}"
+    assert cpu.DB.l == final['dbr'], f"{hex(cpu.DB.l)} != {hex(final['dbr'])}"
+    assert cpu.PB.l == final['pbr'], f"{hex(cpu.PB.l)} != {hex(final['pbr'])}"
     for addr, value in final["ram"]:
         assert cpu.bus[addr] == value, f"cpu.bus[{hex(addr)}] = {hex(cpu.bus[addr])} != {hex(value)}"
 
@@ -237,7 +237,7 @@ def test_v1(test_case):
 
 # VP == VPB
 
-"""
+r"""
 =====================
 Appendix C: IC Pinouts
 =====================

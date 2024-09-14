@@ -288,8 +288,10 @@ def ROR(cpu: Cpu, mode_8bit: bool, data: int):
 
 def SBC(cpu: Cpu, mode_8bit: bool, data: int):
     # bsnes - result is always an int
-    data = ~data  # this may come as 8bit or 16bit - might need to mask this
+    data = ~data  # this may come as 8bit or 16bit - masking below
     if mode_8bit:
+        data &= 0xff
+
         if not cpu.DF:
             result = cpu.A.l + data + cpu.CF
         else:
@@ -309,6 +311,8 @@ def SBC(cpu: Cpu, mode_8bit: bool, data: int):
         cpu.A.l = result
         return cpu.A.l
     else:
+        data &= 0xffff
+
         if not cpu.DF:
             result = cpu.A.w + data + cpu.CF
         else:

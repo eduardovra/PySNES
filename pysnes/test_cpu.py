@@ -19,7 +19,7 @@ TESTS_PATH = "ProcessorTests/65816/v1"
 def get_test_cases():
     onlyfiles = [
         os.path.join(TESTS_PATH, f) for f in os.listdir(TESTS_PATH)
-        if os.path.isfile(os.path.join(TESTS_PATH, f)) # and f.upper().startswith('CB')  # EA -> NOP, 29 -> AND, A0 -> LDY
+        if os.path.isfile(os.path.join(TESTS_PATH, f)) # and f.upper().startswith('08')  # EA -> NOP, 29 -> AND, A0 -> LDY
     ]
 
     # onlyfiles = onlyfiles[:3]  # limit to 3 files
@@ -39,8 +39,7 @@ def get_test_cases():
 
                 test_ids.append(test_id)
                 test_cases.append(test_case)
-                # if len(test_cases) >= 3:  # reduce to 3 test cases
-                #     return test_cases, test_ids
+
                 if len(test_cases) >= 1000000:
                     return test_cases, test_ids
 

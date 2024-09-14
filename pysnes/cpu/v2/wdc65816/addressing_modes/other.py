@@ -184,6 +184,13 @@ def TransferXS(cpu: Cpu):
         cpu.S.w = cpu.X.w
 
 
+def Push8(cpu: Cpu, f: str):
+    F = getattr(cpu, f)
+    cpu.idle()
+    # workaround for the fact that F can be an int (status reg) or a Reg
+    cpu.push(F if isinstance(F, int) else F.l)
+
+
 @decorator_mode_8bit
 def Push(cpu: Cpu, mode_8bit: bool, f: str):
     F = getattr(cpu, f)

@@ -184,11 +184,15 @@ def TransferXS(cpu: Cpu):
         cpu.S.w = cpu.X.w
 
 
-def Push8(cpu: Cpu, f: str):
+def Push8(cpu: Cpu, f: str, sub_f: str = ""):
     F = getattr(cpu, f)
-    cpu.idle()
+    if sub_f:  # to suport 'PC.b'
+        F = getattr(F, sub_f)
     # workaround for the fact that F can be an int (status reg) or a Reg
-    cpu.push(F if isinstance(F, int) else F.l)
+    if isinstance(F, int):
+        F = Reg(8, F)
+    cpu.idle()
+    cpu.push(F.l)
 
 
 @decorator_mode_8bit
@@ -205,8 +209,8 @@ def Push(cpu: Cpu, mode_8bit: bool, f: str):
 
 def PushD(cpu: Cpu):
     cpu.idle()
-    cpu.pushN(cpu.DB.h)
-    cpu.pushN(cpu.DB.l)
+    cpu.pushN(cpu.D.h)
+    cpu.pushN(cpu.D.l)
     if cpu.EF:
         cpu.S.h = 0x01
 

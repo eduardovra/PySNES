@@ -77,7 +77,7 @@ INSTRUCTIONS = (
     (0x48, AM.Push.MF, "A"),                                 # opM(0x48, Push, A)
     (0x49, AM.ImmediateRead.MF, OP.EOR),                     # opM(0x49, ImmediateRead, m(EOR))
     (0x4a, AM.ImpliedModify.MF, OP.LSR, "A"),                # opM(0x4a, ImpliedModify, m(LSR), A)
-    (0x4b, AM.Push8, "PC"),                                  # opA(0x4b, Push8, (r16)PC.b)
+    (0x4b, AM.Push8, "PC", "b"),                             # opA(0x4b, Push8, (r16)PC.b)
     (0x4c, AM.JumpShort),                                    # opA(0x4c, JumpShort)
     (0x4d, AM.BankRead.MF, OP.EOR),                          # opM(0x4d, BankRead, m(EOR))
     (0x4e, AM.BankModify.MF, OP.LSR),                        # opM(0x4e, BankModify, m(LSR))

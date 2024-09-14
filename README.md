@@ -1,6 +1,6 @@
 # PySNES
 
-## Virtualenv (3.8)
+## Virtualenv (3.10)
 
 ```
 snap install pypy3 --classic

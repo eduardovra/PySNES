@@ -40,6 +40,7 @@ def JumpLong(cpu: Cpu):
     cpu.V.h = cpu.fetch()
     cpu.V.b = cpu.fetch()
     cpu.PC.d = cpu.V.d
+    cpu.PB.l = cpu.V.b  # added by me
     cpu.idleJump()
 
 
@@ -68,6 +69,7 @@ def JumpIndirectLong(cpu: Cpu):
     cpu.V.l = cpu.read((cpu.U.w + 0) & 0xffff)
     cpu.V.h = cpu.read((cpu.U.w + 1) & 0xffff)
     cpu.V.b = cpu.read((cpu.U.w + 2) & 0xffff)
+    cpu.PB.l = cpu.V.b  # added by me
     cpu.PC.d = cpu.V.d
     cpu.idleJump()
 
@@ -86,13 +88,15 @@ def CallShort(cpu: Cpu):
 def CallLong(cpu: Cpu):
     cpu.V.l = cpu.fetch()
     cpu.V.h = cpu.fetch()
-    cpu.pushN(cpu.PC.b)
+    # cpu.pushN(cpu.PC.b)
+    cpu.pushN(cpu.PB.l)  # added by me
     cpu.idle()
     cpu.V.b = cpu.fetch()
     cpu.PC.w -= 1
     cpu.pushN(cpu.PC.h)
     cpu.pushN(cpu.PC.l)
     cpu.PC.d = cpu.V.d
+    cpu.PB.l = cpu.V.b  # added by me
     if cpu.EF:
         cpu.S.h = 0x01
     cpu.idleJump()
@@ -128,6 +132,7 @@ def ReturnInterrupt(cpu: Cpu):
     else:
         cpu.PC.h = cpu.pull()
         cpu.PC.b = cpu.pull()
+        cpu.PB.l = cpu.PC.b  # added by me
     cpu.idleJump()
 
 
@@ -148,6 +153,7 @@ def ReturnLong(cpu: Cpu):
     cpu.V.l = cpu.pullN()
     cpu.V.h = cpu.pullN()
     cpu.V.b = cpu.pullN()
+    cpu.PB.l = cpu.V.b  # added by me
     cpu.PC.d = cpu.V.d
     cpu.PC.w += 1
     if cpu.EF:

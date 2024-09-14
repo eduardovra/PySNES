@@ -19,7 +19,7 @@ TESTS_PATH = "ProcessorTests/65816/v1"
 def get_test_cases():
     onlyfiles = [
         os.path.join(TESTS_PATH, f) for f in os.listdir(TESTS_PATH)
-        if os.path.isfile(os.path.join(TESTS_PATH, f)) # and f.upper().startswith('E9')  # EA -> NOP, 29 -> AND, A0 -> LDY
+        if os.path.isfile(os.path.join(TESTS_PATH, f)) # and f.upper().startswith('22')  # EA -> NOP, 29 -> AND, A0 -> LDY
     ]
 
     # onlyfiles = onlyfiles[:3]  # limit to 3 files
@@ -87,8 +87,6 @@ def test_v2(test_case):
     for addr, value in initial["ram"]:
         print(f"Loading cpu.bus[{hex(addr)}] = {hex(value)}")
         cpu.bus[addr] = value
-
-    print(test_case)
 
     final = test_case["final"]
     calls_expected, calls_performed = [], []

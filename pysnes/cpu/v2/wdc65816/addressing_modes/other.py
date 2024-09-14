@@ -66,7 +66,8 @@ def Interrupt(cpu: Cpu, get_vector: Callable):
     vector = Reg(16, get_vector(cpu))
     cpu.fetch()
     if not cpu.EF:
-        cpu.push(cpu.PC.b)
+        # cpu.push(cpu.PC.b)
+        cpu.push(cpu.PB.l)  # added by me
     cpu.push(cpu.PC.h)
     cpu.push(cpu.PC.l)
     cpu.push(cpu.P)
@@ -75,6 +76,7 @@ def Interrupt(cpu: Cpu, get_vector: Callable):
     cpu.PC.l = cpu.read(vector.w + 0)
     cpu.PC.h = cpu.read(vector.w + 1)
     cpu.PC.b = 0x00
+    cpu.PB.l = cpu.PC.b  # added by me
 
 
 def Stop(cpu: Cpu):

@@ -82,7 +82,7 @@ def test_v2(test_case):
     cpu.P = initial["p"]
     cpu.D.w = initial["d"]
     cpu.DB.l = initial["dbr"]
-    cpu.PB.l = initial["pbr"]
+    cpu.PC.b = initial["pbr"]
     print(f"Loaded CPU {cpu}")
     for addr, value in initial["ram"]:
         print(f"Loading cpu.bus[{hex(addr)}] = {hex(value)}")
@@ -135,7 +135,7 @@ def test_v2(test_case):
     assert cpu.P == final["p"], f"{hex(cpu.P)} != {hex(final['p'])}"
     assert cpu.D.w == final['d'], f"{hex(cpu.D.w)} != {hex(final['d'])}"
     assert cpu.DB.l == final['dbr'], f"{hex(cpu.DB.l)} != {hex(final['dbr'])}"
-    assert cpu.PB.l == final['pbr'], f"{hex(cpu.PB.l)} != {hex(final['pbr'])}"
+    assert cpu.PC.b == final['pbr'], f"{hex(cpu.PC.b)} != {hex(final['pbr'])}"
     for addr, value in final["ram"]:
         assert cpu.bus[addr] == value, f"cpu.bus[{hex(addr)}] = {hex(cpu.bus[addr])} != {hex(value)}"
 

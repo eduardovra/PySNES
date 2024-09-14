@@ -71,7 +71,7 @@ class Cpu:
         self.load_instructions()
 
     def __str__(self) -> str:
-        return f"A:{self.A.w:04X} X:{self.X.w:04X} Y:{self.Y.w:04X} D:{self.D.w:04X} S:{self.S.w:04X} P:{self.P:02X} DB:{self.DB.l:02X} PB:{self.PB.l:02X} PC:{self.PC.w:06X}"
+        return f"A:{self.A.w:04X} X:{self.X.w:04X} Y:{self.Y.w:04X} D:{self.D.w:04X} S:{self.S.w:04X} P:{self.P:02X} DB:{self.DB.l:02X} PB:{self.PC.b:02X} PC:{self.PC.w:06X}"
 
     def reset_registers(self):
         # Registers
@@ -81,7 +81,7 @@ class Cpu:
         self.D = Reg(16, 0x0000)  # Direct Page Register
         self.S = Reg(16, 0x01FF)  # Stack Pointer
         self.P = 0x34             # Status register
-        self.PB = Reg(8, 0x00)    # Program Bank Register
+        # self.PB = Reg(8, 0x00)  # Program Bank Register (removed in favor of PC.b)
         self.DB = Reg(8, 0x00)    # Data Bank Register
         self.PC = Reg(24, 0x00)   # self.hardware_vectors["emulation"]["RESET"]
 
@@ -201,7 +201,8 @@ class Cpu:
         self.write(self.S.w + address & 0xffff, data)
 
     def fetch(self):
-        data = self.read(self.PB.l << 16 | self.PC.w)
+        # data = self.read(self.PB.l << 16 | self.PC.w)
+        data = self.read(self.PC.d)
         self.PC.w += 1
         return data
 
@@ -231,7 +232,7 @@ class Cpu:
         opcode = self.fetch()
 
         debug_str = "\033[92mCPU 0x{:06X} {} {}\033[0m".format(
-            self.PB.l << 16 | self.PC.w - 1,
+            self.PC.b << 16 | self.PC.w - 1,
             self.debug_symbols[opcode].ljust(40),
             "", #self.cpu,
         )

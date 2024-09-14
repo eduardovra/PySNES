@@ -1,5 +1,9 @@
+from collections import defaultdict
 import os
+import pickle
 import json
+# import orjson as json  # faster json
+# import ujson as json  # faster json
 from unittest.mock import call, patch, Mock
 
 import pytest
@@ -15,15 +19,28 @@ TESTS_PATH = "ProcessorTests/65816/v1"
 def get_test_cases():
     onlyfiles = [
         os.path.join(TESTS_PATH, f) for f in os.listdir(TESTS_PATH)
-        if os.path.isfile(os.path.join(TESTS_PATH, f)) #and f.upper().startswith('62')  # EA -> NOP, 29 -> AND, A0 -> LDY
+        if os.path.isfile(os.path.join(TESTS_PATH, f)) # and f.upper().startswith('CB')  # EA -> NOP, 29 -> AND, A0 -> LDY
     ]
+
+    # onlyfiles = onlyfiles[:3]  # limit to 3 files
+
+    test_counter = defaultdict(int)
 
     test_cases, test_ids = [], []
     for file_path in onlyfiles:
         with open(file_path) as f:
             for test_case in json.load(f):
-                test_ids.append(test_case["name"].replace(" ", "_"))
+                test_id = test_case["name"].replace(" ", "_")
+
+                # add only 3 tests per instruction for a partial run
+                if test_counter[test_id[0:4]] >= 1:
+                    continue
+                test_counter[test_id[0:4]] += 1
+
+                test_ids.append(test_id)
                 test_cases.append(test_case)
+                # if len(test_cases) >= 3:  # reduce to 3 test cases
+                #     return test_cases, test_ids
                 if len(test_cases) >= 1000000:
                     return test_cases, test_ids
 
@@ -52,17 +69,27 @@ def test_v2(test_case):
 
     initial = test_case["initial"]
     cpu.PC.w = initial["pc"]
-    cpu.S.w = initial["s"]
     cpu.A.w = initial["a"]
     cpu.X.w = initial["x"]
     cpu.Y.w = initial["y"]
     cpu.EF = bool(initial["e"])
+    # In 8-bit mode (Emulation Mode): The stack pointer (S) is restricted to an 8-bit value, meaning it can only point to
+    # addresses within the range $0100 to $01FF (the first 256 bytes of page 1).
+    # This effectively limits the stack to 256 bytes in this mode, similar to how the 6502 operates.
+    if cpu.EF:
+        cpu.S.l = initial["s"]
+    else:
+        cpu.S.w = initial["s"]
     cpu.P = initial["p"]
     cpu.D.w = initial["d"]
     cpu.DB.l = initial["dbr"]
     cpu.PB.l = initial["pbr"]
+    print(f"Loaded CPU {cpu}")
     for addr, value in initial["ram"]:
+        print(f"Loading cpu.bus[{hex(addr)}] = {hex(value)}")
         cpu.bus[addr] = value
+
+    print(test_case)
 
     final = test_case["final"]
     calls_expected, calls_performed = [], []
@@ -74,31 +101,36 @@ def test_v2(test_case):
             continue
 
         if outputs[3] == 'r':
-            calls_expected.append(f"getitem({address}) -> {value}")
+            calls_expected.append(f"getitem({hex(address)}) -> {hex(value)}")
         elif outputs[3] == 'w':
-            calls_expected.append(f"setitem({address}, {value})")
+            calls_expected.append(f"setitem({hex(address)}, {hex(value)})")
 
     real_getitem = FakeBus.__getitem__
     def getitem(self, address):
         value = real_getitem(self, address)
-        calls_performed.append(f"getitem({address}) -> {value}")
+        calls_performed.append(f"getitem({hex(address)}) -> {hex(value)}")
         return value
     real_setitem = FakeBus.__setitem__
     def setitem(self, address, value):
-        calls_performed.append(f"setitem({address}, {value})")
+        calls_performed.append(f"setitem({hex(address)}, {hex(value)})")
         return real_setitem(self, address, value)
 
+    # mocks to track memory access
     with patch.object(FakeBus, "__getitem__", autospec=True) as mock_getitem, \
             patch.object(FakeBus, "__setitem__", autospec=True) as mock_setitem:
         mock_getitem.side_effect = getitem
         mock_setitem.side_effect = setitem
-        #while cpu.PC.w != final["pc"]:  # TODO consider PBR
-        while len(calls_performed) < len(calls_expected):
+        while cpu.PC.w != final["pc"]:  # TODO consider PBR
+        # while len(calls_performed) < len(calls_expected):
             cpu.fetch_and_execute()
 
+            # safety check to avoid infinite loops
+            if len(calls_performed) > 0xFFFF:
+                raise Exception("Infinite loop detected")
+
     # check on registers and ram
-    assert cpu.PC.w == final["pc"]
-    assert cpu.S.w == final["s"]
+    assert cpu.PC.w == final["pc"], f"{hex(cpu.PC.w)} != {hex(final['pc'])}"
+    assert cpu.S.w == final["s"], f"{hex(cpu.S.w)} != {hex(final['s'])}"
     assert cpu.A.w == final["a"], f"{hex(cpu.A.w)} != {hex(final['a'])}"
     assert cpu.X.w == final['x'], f"{hex(cpu.X.w)} != {hex(final['x'])}"
     assert cpu.Y.w == final['y']

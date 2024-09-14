@@ -1,7 +1,7 @@
 from functools import partial
 from typing import Any
 
-from ..types import Reg8, Reg16
+from ..register_types import Reg8, Reg16
 
 from .spc700.instructions import INSTRUCTIONS
 from .apu import Timer  # TODO Move to new module

@@ -10,7 +10,7 @@ greenlet==0.4.13
 importlib-metadata==4.8.1
 iniconfig==1.1.1
 mypy-extensions==0.4.3
-numpy==1.19.5
+#numpy==1.19.5
 nvidia-ml-py==11.450.51
 packaging==21.3
 pathspec==0.9.0

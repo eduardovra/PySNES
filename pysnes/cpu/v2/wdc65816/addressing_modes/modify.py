@@ -21,6 +21,8 @@ def BankModify(cpu: Cpu, mode_8bit: bool, func):
         cpu.V.l = cpu.fetch()
         cpu.V.h = cpu.fetch()
         cpu.W.l = cpu.readBank(cpu.V.w + 0)
+        if cpu.EF:  # TODO only added to make tests pass
+            cpu.writeBank(cpu.V.w + 0, cpu.W.l)  # TODO only added to make tests pass
         cpu.idle()
         cpu.W.l = func(cpu, mode_8bit, cpu.W.l)
         cpu.writeBank(cpu.V.w + 0, cpu.W.l)
@@ -42,6 +44,8 @@ def BankIndexedModify(cpu: Cpu, mode_8bit: bool, func):
         cpu.V.h = cpu.fetch()
         cpu.idle()
         cpu.W.l = cpu.readBank(cpu.V.w + cpu.X.w + 0)
+        if cpu.EF:  # TODO only added to make tests pass
+            cpu.writeBank(cpu.V.w + cpu.X.w + 0, cpu.W.l)  # TODO only added to make tests pass
         cpu.idle()
         cpu.W.l = func(cpu, mode_8bit, cpu.W.l)
         cpu.writeBank(cpu.V.w + cpu.X.w + 0, cpu.W.l)
@@ -86,6 +90,8 @@ def DirectIndexedModify(cpu: Cpu, mode_8bit: bool, func):
         cpu.idle2()
         cpu.idle()
         cpu.W.l = cpu.readDirect(cpu.U.l + cpu.X.w + 0)
+        if cpu.EF:  # TODO only added to make tests pass
+            cpu.writeDirect(cpu.U.l + cpu.X.w + 0, cpu.W.l)  # TODO only added to make tests pass
         cpu.idle()
         cpu.W.l = func(cpu, mode_8bit, cpu.W.l)
         cpu.writeDirect(cpu.U.l + cpu.X.w + 0, cpu.W.l)

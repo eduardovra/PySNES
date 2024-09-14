@@ -137,7 +137,7 @@ INSTRUCTIONS = (
     (0x84, AM.DirectWrite.XF, "Y"),                          # opX(0x84, DirectWrite, Y)
     (0x85, AM.DirectWrite.MF, "A"),                          # opM(0x85, DirectWrite, A)
     (0x86, AM.DirectWrite.XF, "X"),                          # opX(0x86, DirectWrite, X)
-    (0x87, AM.IndirectLongWrite.MF, "ZERO"),                 # opM(0x87, IndirectLongWrite)
+    (0x87, AM.IndirectLongWrite.MF),                         # opM(0x87, IndirectLongWrite)
     (0x88, AM.ImpliedModify.XF, OP.DEC, "Y"),                # opX(0x88, ImpliedModify, x(DEC), Y)
     (0x89, AM.BitImmediate.MF),                              # opM(0x89, BitImmediate)
     (0x8a, AM.Transfer.MF, "X", "A"),                        # opM(0x8a, Transfer, X, A)

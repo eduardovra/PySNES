@@ -96,8 +96,6 @@ class Cpu:
 
         self.Z = Reg(16, 0x0000)  # this only exists in bsnes but not in actual hardware
 
-        self.ZERO = Reg(16, 0x0000)  # I made up this register for instruction 0x87
-
         # Emulation flag
         self.EF: bool = True  # Starts enabled
 

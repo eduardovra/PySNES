@@ -33,8 +33,10 @@ def BankWrite(cpu: Cpu, mode_8bit: bool, f: str, i: str = ""):
 
 
 @decorator_mode_8bit
-def LongWrite(cpu: Cpu, mode_8bit: bool, i: str):
-    I = getattr(cpu, i)
+def LongWrite(cpu: Cpu, mode_8bit: bool, i: str = ""):
+    from ...cpu import Reg
+
+    I = getattr(cpu, i, Reg(16, 0x0000))
 
     if mode_8bit:
         cpu.V.l = cpu.fetch()
@@ -51,31 +53,22 @@ def LongWrite(cpu: Cpu, mode_8bit: bool, i: str):
 
 @decorator_mode_8bit
 def DirectWrite(cpu: Cpu, mode_8bit: bool, f: str, i: str = ""):
+    from ...cpu import Reg
+
     F = getattr(cpu, f)
-    I = getattr(cpu, i, None)
+    I = getattr(cpu, i, Reg(16, 0x0000))
 
     if mode_8bit:
-        if I is None:
-            cpu.U.l = cpu.fetch()
-            cpu.idle2()
-            cpu.writeDirect(cpu.U.l + 0, F.l)
-        else:
-            cpu.U.l = cpu.fetch()
-            cpu.idle2()
-            cpu.idle()
-            cpu.writeDirect(cpu.U.l + I.w + 0, F.l)
+        cpu.U.l = cpu.fetch()
+        cpu.idle2()
+        cpu.idle()
+        cpu.writeDirect(cpu.U.l + I.w + 0, F.l)
     else:
-        if I is None:
-            cpu.U.l = cpu.fetch()
-            cpu.idle2()
-            cpu.writeDirect(cpu.U.l + 0, F.l)
-            cpu.writeDirect(cpu.U.l + 1, F.h)
-        else:
-            cpu.U.l = cpu.fetch()
-            cpu.idle2()
-            cpu.idle()
-            cpu.writeDirect(cpu.U.l + I.w + 0, F.l)
-            cpu.writeDirect(cpu.U.l + I.w + 1, F.h)
+        cpu.U.l = cpu.fetch()
+        cpu.idle2()
+        cpu.idle()
+        cpu.writeDirect(cpu.U.l + I.w + 0, F.l)
+        cpu.writeDirect(cpu.U.l + I.w + 1, F.h)
 
 
 @decorator_mode_8bit
@@ -134,8 +127,10 @@ def IndirectIndexedWrite(cpu: Cpu, mode_8bit: bool):
 
 
 @decorator_mode_8bit
-def IndirectLongWrite(cpu: Cpu, mode_8bit: bool, i: str):
-    I = getattr(cpu, i)
+def IndirectLongWrite(cpu: Cpu, mode_8bit: bool, i: str = ""):
+    from ...cpu import Reg
+
+    I = getattr(cpu, i, Reg(16, 0x0000))
 
     if mode_8bit:
         cpu.U.l = cpu.fetch()

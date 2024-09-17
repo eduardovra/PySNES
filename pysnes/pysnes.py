@@ -2,6 +2,7 @@ import argparse
 from ctypes import byref
 
 from sdl2 import *
+import sdl2.ext
 import imgui
 from imgui.integrations.sdl2 import SDL2Renderer
 
@@ -29,6 +30,17 @@ class PySNES:
         self.cpu.PC.w = rom.hardware_vectors["emulation"]["RESET"]
 
     def setup_sdl(self) -> None:
+        # window, gl_context = impl_pysdl2_init()
+        # imgui.create_context()
+        # impl = SDL2Renderer(window)
+
+        # sdl2.ext.init()
+        # self.window = sdl2.ext.Window("PySNES", size=(1024, 1024))
+        # self.window.show()
+        # self.renderer = sdl2.ext.Renderer(self.window)
+        # self.renderer.blendmode = SDL_BLENDMODE_BLEND
+        # self.renderer.scale = 2, 2
+
         SDL_Init(SDL_INIT_VIDEO)
         self.window = SDL_CreateWindow(b"PySNES", 0, 0, 1024, 1024, SDL_WINDOW_SHOWN)
         self.renderer = SDL_CreateRenderer(self.window, -1, SDL_RENDERER_ACCELERATED)

@@ -9,6 +9,12 @@ snap install pypy3 --classic
 pip install -r requirements.txt
 ```
 
+## Pypy setup
+
+I tried using pypy from snap but it wasn't opening the window.
+Then I switched to using the pre-compiled version from tarball.
+
+https://doc.pypy.org/en/latest/install.html
 
 ## Running the emulator
 

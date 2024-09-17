@@ -109,6 +109,7 @@ venv/
 ENV/
 env.bak/
 venv.bak/
+venv_cpython
 
 # Spyder project settings
 .spyderproject
@@ -130,3 +131,6 @@ dmypy.json
 
 # ROMs
 roms/
+
+# Pypy tarball
+pypy3.10-v7.3.17-linux64*

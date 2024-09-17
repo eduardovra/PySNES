@@ -9,6 +9,14 @@ snap install pypy3 --classic
 pip install -r requirements.txt
 ```
 
+
+## Running the emulator
+
+```
+python -m pysnes.pysnes
+```
+
+
 ## Overall architecture
 
 The main loop would be something like:

@@ -184,13 +184,15 @@ def TransferXS(cpu: Cpu):
         cpu.S.w = cpu.X.w
 
 
-def Push8(cpu: Cpu, f: str, sub_f: str = ""):
-    F = getattr(cpu, f)
-    if sub_f:  # to suport 'PC.b'
-        F = getattr(F, sub_f)
+def Push8(cpu: Cpu, f: str):
+    f_split = f.split(".")  # to suport 'PC.b'
+    F = getattr(cpu, f_split[0])
+    if len(f_split) > 1:
+        F = getattr(F, f_split[1])
+
     # workaround for the fact that F can be an int (status reg) or a Reg
-    if isinstance(F, int):
-        F = Reg(8, F)
+    F = F if isinstance(F, Reg) else Reg(8, F)
+
     cpu.idle()
     cpu.push(F.l)
 

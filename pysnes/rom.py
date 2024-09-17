@@ -1,3 +1,5 @@
+from rich import print
+
 # Scripts to convert SNES ROMs to SNES Classic (.sfrom) format and to read .sfrom headers
 # https://gist.github.com/anpage/4834433944a2875ee6d4cbb5786c6bf7
 
@@ -19,13 +21,16 @@ class Rom:
         The original .smc files produced by the device contained a 512 byte header.
         """
         self.rom = bytearray(0x400000)  # https://en.wikibooks.org/wiki/Super_NES_Programming/SNES_memory_map
+
+        print(f"Loading ROM file: {self.rom_file_path}")
         with open(self.rom_file_path, "rb") as f:
-            for i, b in enumerate(f.read()):
+            self.rom_file_contents = f.read()
+            for i, b in enumerate(self.rom_file_contents):
                 self.rom[i] = b
             #self.rom = bytes(f.read())  # altered just for tests..
 
         # Strip out potential header
-        self.smc_header_length = len(self.rom) % 0x400
+        self.smc_header_length = len(self.rom_file_contents) % 0x400
         self.rom = self.rom[self.smc_header_length :]
         rom_type = "LoROM"
         page_offset = 0x7F00
@@ -70,6 +75,7 @@ class Rom:
             "checksum_complement": self.rom[page_offset + 0xDC],
             "checksum": self.rom[page_offset + 0xDE],
         }
+        print(self.snes_header)
 
         # The bitmask to use is 001A0BCD, the basic value is $20:
         # - A == 0 means SlowROM (+ $0), A == 1 means FastROM (+ $10).
@@ -118,3 +124,9 @@ class Rom:
                 "COP": self.rom[page_offset | 0xF4] | self.rom[page_offset | 0xF5] << 8,
             },
         }
+
+        hardware_vectors_str = {
+            "emulation": {k: hex(v) for k, v in self.hardware_vectors["emulation"].items()},
+            "native": {k: hex(v) for k, v in self.hardware_vectors["native"].items()},
+        }
+        print(hardware_vectors_str)

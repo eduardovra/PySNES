@@ -2,6 +2,8 @@ import argparse
 from ctypes import byref
 
 from sdl2 import *
+import imgui
+from imgui.integrations.sdl2 import SDL2Renderer
 
 from .rom import Rom
 from .bus import Bus
@@ -22,6 +24,9 @@ class PySNES:
         self.cpu.attach(bus)
         self.ticks = 0
         self.setup_sdl()
+
+        # Reset PC to the address in the cartridge reset vector
+        self.cpu.PC.w = rom.hardware_vectors["emulation"]["RESET"]
 
     def setup_sdl(self) -> None:
         SDL_Init(SDL_INIT_VIDEO)

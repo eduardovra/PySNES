@@ -66,9 +66,13 @@ class Reg:
 
 
 class Cpu:
-    def __init__(self) -> None:
+    def __init__(self, hardware_vectors: dict) -> None:
         self.reset_registers()
         self.load_instructions()
+
+        # NOTE shoehorned to make v2 compatible with v1
+        from ..v1.cpu import CpuStatus
+        self.status = CpuStatus()
 
     def __str__(self) -> str:
         return f"A:{self.A.w:04X} X:{self.X.w:04X} Y:{self.Y.w:04X} D:{self.D.w:04X} S:{self.S.w:04X} P:{self.P:02X} DB:{self.DB.l:02X} PB:{self.PC.b:02X} PC:{self.PC.w:06X}"
@@ -127,6 +131,10 @@ class Cpu:
 
     def attach(self, bus: "Bus") -> None:
         self.bus = bus
+
+        # NOTE shoehorned to make v2 compatible with v1
+        from ..v1.cpu import DMA
+        self.dma = DMA(bus)
 
     def idleIRQ(self):
         pass
@@ -255,3 +263,9 @@ class Cpu:
         self.MF = bool(data & 0x20)
         self.VF = bool(data & 0x40)
         self.NF = bool(data & 0x80)
+
+    def tick(self):
+        """Fetches and executes an instruction"""
+        # NOTE this is for compatibility with cpu v1
+        # not sure I'm keeping this standard
+        return self.fetch_and_execute()

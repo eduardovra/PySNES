@@ -5,6 +5,7 @@ from sdl2 import *
 import sdl2.ext
 import imgui
 from imgui.integrations.sdl2 import SDL2Renderer
+import OpenGL.GL as gl
 
 from .rom import Rom
 from .bus import Bus
@@ -23,57 +24,71 @@ class PySNES:
         self.controllers = [Controller(), Controller(disabled=True)]
         bus = Bus(rom, self.cpu, self.apu, self.ppu, self.controllers)
         self.cpu.attach(bus)
-        self.ticks = 0
+        self.frames = 0
         self.setup_sdl()
 
         # Reset PC to the address in the cartridge reset vector
         self.cpu.PC.w = rom.hardware_vectors["emulation"]["RESET"]
 
     def setup_sdl(self) -> None:
-        # window, gl_context = impl_pysdl2_init()
-        # imgui.create_context()
-        # impl = SDL2Renderer(window)
-
-        # sdl2.ext.init()
-        # self.window = sdl2.ext.Window("PySNES", size=(1024, 1024))
-        # self.window.show()
-        # self.renderer = sdl2.ext.Renderer(self.window)
-        # self.renderer.blendmode = SDL_BLENDMODE_BLEND
-        # self.renderer.scale = 2, 2
-
         SDL_Init(SDL_INIT_VIDEO)
-        self.window = SDL_CreateWindow(b"PySNES", 0, 0, 1024, 1024, SDL_WINDOW_SHOWN)
-        self.renderer = SDL_CreateRenderer(self.window, -1, SDL_RENDERER_ACCELERATED)
-        SDL_SetRenderDrawBlendMode(self.renderer, SDL_BLENDMODE_BLEND)
-        SDL_RenderSetScale(self.renderer, 2, 2)
+
+        SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1)
+        SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24)
+        SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 8)
+        SDL_GL_SetAttribute(SDL_GL_ACCELERATED_VISUAL, 1)
+        SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS, 1)
+        SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, 8)
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, SDL_GL_CONTEXT_FORWARD_COMPATIBLE_FLAG)
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 4)
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 1)
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE)
+
+        SDL_SetHint(SDL_HINT_MAC_CTRL_CLICK_EMULATE_RIGHT_CLICK, b"1")
+        SDL_SetHint(SDL_HINT_VIDEO_HIGHDPI_DISABLED, b"1")
+
+        self.window = SDL_CreateWindow(b"PySNES", 0, 0, 1024, 1024, SDL_WINDOW_SHOWN | SDL_WINDOW_OPENGL)
+
+        # window, gl_context = impl_pysdl2_init()
+        self.gl_context = SDL_GL_CreateContext(self.window)
+        SDL_GL_MakeCurrent(self.window, self.gl_context)
+        assert SDL_GL_SetSwapInterval(1) == 0
+        imgui.create_context()
+        self.impl = SDL2Renderer(self.window)
+
+        # imgui.get_io().display_size = 200, 200
+        # imgui.get_io().fonts.get_tex_data_as_rgba32()
+
+        # self.renderer = SDL_CreateRenderer(self.window, -1, SDL_RENDERER_ACCELERATED)
+        # SDL_SetRenderDrawBlendMode(self.renderer, SDL_BLENDMODE_BLEND)
+        # SDL_RenderSetScale(self.renderer, 2, 2)
         self.event = SDL_Event()
 
     def teardown_sdl(self) -> None:
-        SDL_DestroyRenderer(self.renderer)
+        self.impl.shutdown()
+        SDL_GL_DeleteContext(self.gl_context)
+        # SDL_DestroyRenderer(self.renderer)
         SDL_DestroyWindow(self.window)
         SDL_Quit()
 
     def tick(self):
-        """
-        Process one frame
-        """
-        # if self.cpu.PC == 0x0181EB:
-        # if self.ticks == 150000:
-        #    print("++++ BREAK ++++")
-        #    self.ppu.render()  # Render frame
-        #    return True
-
+        """Process one frame"""
         # Capture inputs from keyboard using SDL
         while SDL_PollEvent(byref(self.event)) != 0:
             if self.event.type == SDL_QUIT:
-                self.teardown_sdl()
-                return True
+                return False
             elif self.event.type == SDL_KEYUP:
                 controller = self.controllers[0]
                 controller.pressed_keys.remove(self.event.key.keysym.sym)
             elif self.event.type == SDL_KEYDOWN:
                 controller = self.controllers[0]
                 controller.pressed_keys.add(self.event.key.keysym.sym)
+
+            self.impl.process_event(self.event)
+
+        self.impl.process_inputs()
+
+        imgui.new_frame()
 
         # To determine the exact length of any CPU instruction,
         # you must examine its behavior for each cycle,
@@ -83,16 +98,37 @@ class PySNES:
 
         # Tick PPU with the number of master cycles used by the CPU
         # as it runs on the same clock source
-        self.ppu.tick(master_cycles, self.renderer)
+        # self.ppu.tick(master_cycles, self.renderer)
 
         # TODO figure out
         self.apu.tick()
 
+        is_expand, show_custom_window = imgui.begin("CPU Registers", True)
+        if is_expand:
+            #imgui.text("Bars")
+            #imgui.text_colored("Eggs", 0.2, 1.0, 0.0)
+            imgui.text(f"Frames: {self.frames}")
+            imgui.text(f"PC: 0x{self.cpu.PC.value:06X}")
+            imgui.text(f"A: 0x{self.cpu.A.value:02X}")
+            imgui.text(f"X: 0x{self.cpu.X.value:02X}")
+            imgui.text(f"Y: 0x{self.cpu.Y.value:02X}")
+            imgui.text(f"SP: 0x{self.cpu.S.value:02X}")
+            imgui.text(f"P: 0x{self.cpu.P}")
+        imgui.end()
+
+        gl.glClearColor(1.0, 1.0, 1.0, 1)
+        gl.glClear(gl.GL_COLOR_BUFFER_BIT)
+
+        imgui.render()
+        self.impl.render(imgui.get_draw_data())
+        SDL_GL_SwapWindow(self.window)
+
         # TODO Sleep to limit frequency on 60Hz
+        # SDL_Delay(5)
 
-        self.ticks += 1
+        self.frames += 1
 
-        return False
+        return True  # keep running
 
 
 def main():
@@ -149,8 +185,11 @@ def main():
     # rom = "roms/Magical Quest Starring Mickey Mouse, The (USA).sfc"
 
     pysnes = PySNES(rom)
-    while not pysnes.tick():
+    while pysnes.tick():
         pass
+
+    pysnes.teardown_sdl()
+
     return
 
     trace = "roms/Super Mario World (U) [!]-trace.log"

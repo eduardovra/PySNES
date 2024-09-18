@@ -1,6 +1,9 @@
 from functools import partial
 from typing import Any, TYPE_CHECKING
 
+from rich import print
+import imgui
+
 if TYPE_CHECKING:
     from ...bus import Bus
 
@@ -239,12 +242,18 @@ class Cpu:
     def fetch_and_execute(self):
         opcode = self.fetch()
 
-        debug_str = "\033[92mCPU 0x{:06X} {} {}\033[0m".format(
+        debug_str = "CPU 0x{:06X} {}".format(
             self.PC.b << 16 | self.PC.w - 1,
             self.debug_symbols[opcode].ljust(40),
-            "", #self.cpu,
         )
-        print(debug_str)
+
+        # print in green using rich
+        # print(f"[green]{debug_str}[/green]")
+
+        is_expand, show_custom_window = imgui.begin("Current instruction", True)
+        if is_expand:
+            imgui.text_colored(debug_str, 0, 255, 0)
+        imgui.end()
 
         instruction = self.instructions[opcode]
         instruction()

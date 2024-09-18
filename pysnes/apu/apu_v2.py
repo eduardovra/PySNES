@@ -197,7 +197,7 @@ class Apu:
                     apu_str,
                 ))
 
-    def tick(self) -> None:
+    def tick(self, master_cycles) -> None:
         self.step_timers(128)  # TODO count real clock cycles
         self.fetch_and_execute()
 

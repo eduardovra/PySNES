@@ -1,8 +1,6 @@
 from functools import partial
 from typing import Any, TYPE_CHECKING
 
-from rich import print
-import imgui
 
 if TYPE_CHECKING:
     from ...bus import Bus
@@ -241,22 +239,16 @@ class Cpu:
 
     def fetch_and_execute(self):
         opcode = self.fetch()
+        instruction = self.instructions[opcode]
+        instruction()
 
-        debug_str = "CPU 0x{:06X} {}".format(
+    def get_current_instruction_debug_str(self) -> str:
+        opcode = self.read(self.PC.d)
+
+        return "CPU 0x{:06X} {}".format(
             self.PC.b << 16 | self.PC.w - 1,
             self.debug_symbols[opcode].ljust(40),
         )
-
-        # print in green using rich
-        # print(f"[green]{debug_str}[/green]")
-
-        is_expand, show_custom_window = imgui.begin("Current instruction", True)
-        if is_expand:
-            imgui.text_colored(debug_str, 0, 255, 0)
-        imgui.end()
-
-        instruction = self.instructions[opcode]
-        instruction()
 
     @property
     def P(self) -> int:
@@ -264,6 +256,7 @@ class Cpu:
 
     @P.setter
     def P(self, data: int):
+        assert 0 <= data <= 0xFF, f"Invalid value for P register: {hex(data)}"
         self.CF = bool(data & 0x01)
         self.ZF = bool(data & 0x02)
         self.IF = bool(data & 0x04)

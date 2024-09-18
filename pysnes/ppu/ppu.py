@@ -2,6 +2,7 @@ from ctypes import c_uint8
 from typing import List, Optional, Union, Tuple
 
 from sdl2 import *
+import OpenGL.GL as gl
 
 from .data_structures import *
 
@@ -283,7 +284,7 @@ class Ppu:
         self.bg4.sub_screen_enable = bool(data >> 3 & 1)
         self.oam_sub_screen_enable = bool(data >> 4 & 1)
 
-    def tick(self, master_cycles: int, renderer) -> None:
+    def tick(self, master_cycles: int, renderer = None) -> None:
         """
         The SNES master clock runs at about 21.477MHz NTSC
         The SNES runs 1 scanline every 1364 master cycles
@@ -638,7 +639,18 @@ class Ppu:
         # 00 is considered transparent in all palettes
         if color:
             self.set_color(renderer, bpp, palette, color)
-            SDL_RenderDrawPoint(renderer, x, y)
+
+            # SNES default resolution (NTSC)
+            SCREEN_WIDTH = 256
+            SCREEN_HEIGHT = 224
+            # For PAL mode:
+            # SCREEN_HEIGHT = 240
+
+            x_ndc = 2.0 * (x / SCREEN_WIDTH) - 1.0
+            y_ndc = 1.0 - 2.0 * (y / SCREEN_HEIGHT)
+            gl.glVertex2f(x_ndc, y_ndc)
+
+            # SDL_RenderDrawPoint(renderer, x, y)
 
     def set_color(self, renderer, bpp: int, palette: int, color: int) -> None:
         # 4 colors (2bpp palette) x 2 bytes each color
@@ -654,13 +666,15 @@ class Ppu:
         # Multiply the colors to make them more vibrant
         brightness = self.display_brightness // 15
         color_multiplier = 8 * brightness
-        SDL_SetRenderDrawColor(
-            renderer,
-            r * color_multiplier,
-            g * color_multiplier,
-            b * color_multiplier,
-            alpha,
-        )
+
+        gl.glColor3f(r * color_multiplier, g * color_multiplier, b * color_multiplier)
+        # SDL_SetRenderDrawColor(
+        #     renderer,
+        #     r * color_multiplier,
+        #     g * color_multiplier,
+        #     b * color_multiplier,
+        #     alpha,
+        # )
 
     def draw_objects(self, renderer) -> None:
         # objects are the building blocks for sprites

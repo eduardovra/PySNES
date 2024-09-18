@@ -6,6 +6,7 @@ import sdl2.ext
 import imgui
 from imgui.integrations.sdl2 import SDL2Renderer
 import OpenGL.GL as gl
+from rich import print
 
 from .rom import Rom
 from .bus import Bus
@@ -29,6 +30,8 @@ class PySNES:
 
         # Reset PC to the address in the cartridge reset vector
         self.cpu.PC.w = rom.hardware_vectors["emulation"]["RESET"]
+
+        self.paused = False
 
     def setup_sdl(self) -> None:
         SDL_Init(SDL_INIT_VIDEO)
@@ -55,6 +58,9 @@ class PySNES:
         assert SDL_GL_SetSwapInterval(1) == 0
         imgui.create_context()
         self.impl = SDL2Renderer(self.window)
+
+        # Set the point size
+        gl.glPointSize(10.0)
 
         # imgui.get_io().display_size = 200, 200
         # imgui.get_io().fonts.get_tex_data_as_rgba32()
@@ -93,31 +99,47 @@ class PySNES:
         # To determine the exact length of any CPU instruction,
         # you must examine its behavior for each cycle,
         # and count 6, 8, or 12 master cycles as appropriate.
-        master_cycles = self.cpu.tick()
+        if not self.paused:
+            master_cycles = self.cpu.tick()
         master_cycles = 8 * 5  # TODO discard CPU value for now
 
         # Tick PPU with the number of master cycles used by the CPU
         # as it runs on the same clock source
-        # self.ppu.tick(master_cycles, self.renderer)
+
+        # reset background color to white
+        gl.glClearColor(1.0, 1.0, 1.0, 1)
+        gl.glClear(gl.GL_COLOR_BUFFER_BIT)
+
+        # Begin drawing points
+        gl.glBegin(gl.GL_POINTS)
+
+        self.ppu.tick(master_cycles)
+
+        # gl.glEnd()
 
         # TODO figure out
-        self.apu.tick()
+        self.apu.tick(master_cycles)
+
+        is_expand, show_custom_window = imgui.begin("Current instruction", True)
+        if is_expand:
+            debug_str = self.cpu.get_current_instruction_debug_str()
+            # print in green using rich
+            # print(f"[green]{debug_str}[/green]")
+            imgui.text_colored(debug_str, 0, 255, 0)
+        imgui.end()
 
         is_expand, show_custom_window = imgui.begin("CPU Registers", True)
         if is_expand:
-            #imgui.text("Bars")
-            #imgui.text_colored("Eggs", 0.2, 1.0, 0.0)
             imgui.text(f"Frames: {self.frames}")
             imgui.text(f"PC: 0x{self.cpu.PC.value:06X}")
-            imgui.text(f"A: 0x{self.cpu.A.value:02X}")
-            imgui.text(f"X: 0x{self.cpu.X.value:02X}")
-            imgui.text(f"Y: 0x{self.cpu.Y.value:02X}")
-            imgui.text(f"SP: 0x{self.cpu.S.value:02X}")
-            imgui.text(f"P: 0x{self.cpu.P}")
+            imgui.text(f"A: 0x{self.cpu.A.value:04X}")
+            imgui.text(f"X: 0x{self.cpu.X.value:04X}")
+            imgui.text(f"Y: 0x{self.cpu.Y.value:04X}")
+            imgui.text(f"SP: 0x{self.cpu.S.value:04X}")
+            imgui.text(f"P: 0x{self.cpu.P:02X}")
+            if imgui.button("Continue" if self.paused else "Pause"):
+                self.paused = not self.paused
         imgui.end()
-
-        gl.glClearColor(1.0, 1.0, 1.0, 1)
-        gl.glClear(gl.GL_COLOR_BUFFER_BIT)
 
         imgui.render()
         self.impl.render(imgui.get_draw_data())

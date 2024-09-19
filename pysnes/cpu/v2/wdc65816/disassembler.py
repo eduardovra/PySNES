@@ -45,7 +45,7 @@ class Disassembler:
         _, name, func = self.TABLE[self.opcode]
         operand = func()
 
-        s = f"{self.pc:06X} {name} {operand.rjust(10, ' ')} [{self.effective:06X}] "
+        s = f"{self.pc:06X} {name} {operand.ljust(10, ' ')} [{self.effective:06X}] "
 
         s += f"A:{self.cpu.A.w:04X} X:{self.cpu.X.w:04X} Y:{self.cpu.Y.w:04X} S:{self.cpu.S.w:04X} D:{self.cpu.D.w:04X} B:{self.cpu.PC.b:02X} "
 

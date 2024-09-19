@@ -75,6 +75,9 @@ class Cpu:
         from ..v1.cpu import CpuStatus
         self.status = CpuStatus()
 
+        from .wdc65816.disassembler import Disassembler
+        self.disassembler = Disassembler(self)
+
     def __str__(self) -> str:
         return f"A:{self.A.w:04X} X:{self.X.w:04X} Y:{self.Y.w:04X} D:{self.D.w:04X} S:{self.S.w:04X} P:{self.P:02X} DB:{self.DB.l:02X} PB:{self.PC.b:02X} PC:{self.PC.w:06X}"
 

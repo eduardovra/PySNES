@@ -14,7 +14,7 @@ from .cpu import Cpu
 from .apu import Apu
 from .ppu import Ppu
 from .controller import Controller
-
+# from .cpu.v2.wdc65816.disassembler import Disassembler
 
 class PySNES:
     def __init__(self, rom_file_path: str) -> None:
@@ -25,6 +25,7 @@ class PySNES:
         self.controllers = [Controller(), Controller(disabled=True)]
         bus = Bus(rom, self.cpu, self.apu, self.ppu, self.controllers)
         self.cpu.attach(bus)
+        # self.disassembler = Disassembler(self.cpu)
         self.frames = 0
         self.setup_sdl()
 
@@ -96,6 +97,28 @@ class PySNES:
 
         imgui.new_frame()
 
+        is_expand, show_custom_window = imgui.begin("Current instruction", True)
+        if is_expand:
+            # debug_str = self.cpu.get_current_instruction_disassembly()
+            debug_str = self.cpu.disassembler.disassemble(self.cpu.PC.w)
+            if not self.paused:
+                print(f"[green]{debug_str}[/green]")  # trace log
+            imgui.text_colored(debug_str, 0, 255, 0)
+        imgui.end()
+
+        is_expand, show_custom_window = imgui.begin("CPU Registers", True)
+        if is_expand:
+            imgui.text(f"Frames: {self.frames}")
+            imgui.text(f"PC: 0x{self.cpu.PC.value:06X}")
+            imgui.text(f"A: 0x{self.cpu.A.value:04X}")
+            imgui.text(f"X: 0x{self.cpu.X.value:04X}")
+            imgui.text(f"Y: 0x{self.cpu.Y.value:04X}")
+            imgui.text(f"SP: 0x{self.cpu.S.value:04X}")
+            imgui.text(f"P: 0x{self.cpu.P:02X}")
+            if imgui.button("Continue" if self.paused else "Pause"):
+                self.paused = not self.paused
+        imgui.end()
+
         # To determine the exact length of any CPU instruction,
         # you must examine its behavior for each cycle,
         # and count 6, 8, or 12 master cycles as appropriate.
@@ -119,27 +142,6 @@ class PySNES:
 
         # TODO figure out
         self.apu.tick(master_cycles)
-
-        is_expand, show_custom_window = imgui.begin("Current instruction", True)
-        if is_expand:
-            debug_str = self.cpu.get_current_instruction_debug_str()
-            # print in green using rich
-            # print(f"[green]{debug_str}[/green]")
-            imgui.text_colored(debug_str, 0, 255, 0)
-        imgui.end()
-
-        is_expand, show_custom_window = imgui.begin("CPU Registers", True)
-        if is_expand:
-            imgui.text(f"Frames: {self.frames}")
-            imgui.text(f"PC: 0x{self.cpu.PC.value:06X}")
-            imgui.text(f"A: 0x{self.cpu.A.value:04X}")
-            imgui.text(f"X: 0x{self.cpu.X.value:04X}")
-            imgui.text(f"Y: 0x{self.cpu.Y.value:04X}")
-            imgui.text(f"SP: 0x{self.cpu.S.value:04X}")
-            imgui.text(f"P: 0x{self.cpu.P:02X}")
-            if imgui.button("Continue" if self.paused else "Pause"):
-                self.paused = not self.paused
-        imgui.end()
 
         imgui.render()
         self.impl.render(imgui.get_draw_data())

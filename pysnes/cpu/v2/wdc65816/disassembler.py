@@ -47,7 +47,7 @@ class Disassembler:
 
         s = f"{self.pc:06X} {name} {operand.ljust(10, ' ')} [{self.effective:06X}] "
 
-        s += f"A:{self.cpu.A.w:04X} X:{self.cpu.X.w:04X} Y:{self.cpu.Y.w:04X} S:{self.cpu.S.w:04X} D:{self.cpu.D.w:04X} B:{self.cpu.PC.b:02X} "
+        s += f"A:{self.cpu.A.w:04X} X:{self.cpu.X.w:04X} Y:{self.cpu.Y.w:04X} S:{self.cpu.S.w:04X} D:{self.cpu.D.w:04X} DB:{self.cpu.DB.l:02X} "
 
         if self.cpu.EF:
             s += "N" if self.cpu.NF else "n"
@@ -107,17 +107,17 @@ class Disassembler:
         return f"${self.operandByte:02X},y"
 
     def immediate(self):
-        return f"#{self.operandByte:02X}"
+        return f"#${self.operandByte:02X}"
 
     def immediateA(self):
         if self.cpu.MF:
-            return f"#{self.operandByte:02X}"
-        return f"#{self.operandWord:04X}"
+            return f"#${self.operandByte:02X}"
+        return f"#${self.operandWord:04X}"
 
     def immediateX(self):
         if self.cpu.XF:
-            return f"#{self.operandByte:02X}"
-        return f"#{self.operandWord:04X}"
+            return f"#${self.operandByte:02X}"
+        return f"#${self.operandWord:04X}"
 
     def implied(self):
         return ""
@@ -167,11 +167,11 @@ class Disassembler:
 
     def relative(self):
         self.effective = self.pc & 0xff0000 | c_uint16(self.pc + 2 + c_int8(self.operandByte).value).value
-        return f"${self.operandByte:04X}"
+        return f"${self.effective:04X}"
 
     def relativeWord(self):
         self.effective = self.pc & 0xff0000 | c_uint16(self.pc + 3 + c_int16(self.operandWord).value).value
-        return f"${self.operandWord:04X}"
+        return f"${self.effective:04X}"
 
     def stack(self):
         self.effective = c_uint16(self.cpu.S.w + self.operandByte).value
@@ -280,7 +280,7 @@ class Disassembler:
             (0x58, "cli", self.implied),
             (0x59, "eor", self.absoluteY),
             (0x5A, "phy", self.implied),
-            (0x5B, "tad", self.implied),
+            (0x5B, "tcd", self.implied),
             (0x5C, "jml", self.absoluteLong),
             (0x5D, "eor", self.absoluteX),
             (0x5E, "lsr", self.absoluteX),

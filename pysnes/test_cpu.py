@@ -62,7 +62,7 @@ class FakeBus:
 
 @pytest.mark.parametrize('test_case', TEST_CASES, ids=TEST_IDS)
 def test_v2(test_case):
-    cpu = CpuV2()
+    cpu = CpuV2(None)
     bus = FakeBus()
     cpu.attach(bus)
 

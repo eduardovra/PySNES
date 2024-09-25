@@ -65,11 +65,12 @@ class Ppu:
 
         # Clock
         self.ticks = 0
-        self.master_cycles = 0
+        self.line_clocks = 0
 
         self.field = 0  # 0 for even frames, 1 for odd frames
-        self.h_counter = 0
-        self.v_counter = 0
+        self.h_counter = 0  # current dot beign drawn
+        self.v_counter = 0  # current scanline beign drawn
+        self.frames = 0  # total frames rendered
 
     def inidisp_set(self, data: int) -> None:
         # TODO reset OAM addr if writing while on first blank line
@@ -284,8 +285,10 @@ class Ppu:
         self.bg4.sub_screen_enable = bool(data >> 3 & 1)
         self.oam_sub_screen_enable = bool(data >> 4 & 1)
 
-    def tick(self, master_cycles: int, renderer = None) -> None:
+    def tick(self, master_cycles: int = 2, renderer = None) -> None:
         """
+        https://wiki.superfamicom.org/timing
+
         The SNES master clock runs at about 21.477MHz NTSC
         The SNES runs 1 scanline every 1364 master cycles
         Frames are 262 scanlines in non-interlace mode
@@ -295,15 +298,15 @@ class Ppu:
         Each frame should be drawn every 16.6ms
         Each scanline should be drawn every 63.5us
         """
-        self.ticks += 1
-        self.master_cycles += master_cycles
-        self.h_counter = self.master_cycles // 4  # Each dot takes ~4 master cycles
+        # self.ticks += 1
+        self.line_clocks += master_cycles
+        self.h_counter = self.line_clocks // 4  # Each dot takes ~4 master cycles
 
         # Wrap H counter
         if self.h_counter > 339:
             self.render_scanline(renderer)
             # H counter range is 0-339, but visible part is 22-277
-            self.master_cycles = 0
+            self.line_clocks = 0
             self.h_counter = 0
             self.v_counter += 1
 
@@ -314,6 +317,8 @@ class Ppu:
             self.v_counter = 0
             # Flip even/odd frame
             self.field ^= 1
+            # Increment frame counter
+            self.frames += 1
 
         # H-Blank is 62 dots
         self.cpu.status.h_blank_on = not (22 <= self.h_counter <= 277)
@@ -648,6 +653,7 @@ class Ppu:
 
             x_ndc = 2.0 * (x / SCREEN_WIDTH) - 1.0
             y_ndc = 1.0 - 2.0 * (y / SCREEN_HEIGHT)
+            print(f"Drawing at x={x_ndc}, y={y_ndc}")
             gl.glVertex2f(x_ndc, y_ndc)
 
             # SDL_RenderDrawPoint(renderer, x, y)
@@ -667,7 +673,8 @@ class Ppu:
         brightness = self.display_brightness // 15
         color_multiplier = 8 * brightness
 
-        gl.glColor3f(r * color_multiplier, g * color_multiplier, b * color_multiplier)
+        gl.glColor3f(1.0, 1.0, 1.0)
+        # gl.glColor3f(r * color_multiplier, g * color_multiplier, b * color_multiplier)
         # SDL_SetRenderDrawColor(
         #     renderer,
         #     r * color_multiplier,

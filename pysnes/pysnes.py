@@ -14,6 +14,7 @@ from .cpu import Cpu
 from .apu import Apu
 from .ppu import Ppu
 from .controller import Controller
+from .trace_matcher import check_trace_line
 # from .cpu.v2.wdc65816.disassembler import Disassembler
 
 class PySNES:
@@ -101,6 +102,7 @@ class PySNES:
         if is_expand:
             # debug_str = self.cpu.get_current_instruction_disassembly()
             debug_str = self.cpu.disassembler.disassemble(self.cpu.PC.w)
+            debug_str += f" V:{self.ppu.v_counter} H:{self.ppu.h_counter} F:{self.ppu.frames}"
             if not self.paused:
                 print(f"[green]{debug_str}[/green]")  # trace log
             imgui.text_colored(debug_str, 0, 255, 0)
@@ -114,6 +116,7 @@ class PySNES:
             imgui.text(f"X: 0x{self.cpu.X.value:04X}")
             imgui.text(f"Y: 0x{self.cpu.Y.value:04X}")
             imgui.text(f"SP: 0x{self.cpu.S.value:04X}")
+            imgui.text(f"DB: 0x{self.cpu.DB.value:02X}")
             imgui.text(f"P: 0x{self.cpu.P:02X}")
             if imgui.button("Continue" if self.paused else "Pause"):
                 self.paused = not self.paused
@@ -124,13 +127,12 @@ class PySNES:
         # and count 6, 8, or 12 master cycles as appropriate.
         if not self.paused:
             master_cycles = self.cpu.tick()
-        master_cycles = 8 * 5  # TODO discard CPU value for now
 
         # Tick PPU with the number of master cycles used by the CPU
         # as it runs on the same clock source
 
-        # reset background color to white
-        gl.glClearColor(1.0, 1.0, 1.0, 1)
+        # reset background color to black
+        gl.glClearColor(0.0, 0.0, 0.0, 1)
         gl.glClear(gl.GL_COLOR_BUFFER_BIT)
 
         # Begin drawing points
@@ -168,7 +170,7 @@ def main():
     # rom = "/home/eduardovra/workspace/snes-test-roms/jonasquinn-test-roms/test_hdma/test_hdmasync.smc"
     # rom = "/home/eduardovra/workspace/snes-test-roms/jonasquinn-test-roms/test_dmatiming/demo.smc"
 
-    # rom = "/home/eduardovra/workspace/snes-test-roms/PeterLemon/SNES-CPUTest-CPU/ADC/CPUADC.sfc"
+    rom = "/home/eduardovra/workspace/snes-test-roms/PeterLemon/SNES-CPUTest-CPU/ADC/CPUADC.sfc"
     # rom = "/home/eduardovra/workspace/snes-test-roms/PeterLemon/SNES-CPUTest-CPU/AND/CPUAND.sfc"
     # rom = "/home/eduardovra/workspace/snes-test-roms/PeterLemon/SNES-CPUTest-CPU/ASL/CPUASL.sfc"
     # rom = "/home/eduardovra/workspace/snes-test-roms/PeterLemon/SNES-CPUTest-CPU/BIT/CPUBIT.sfc"
@@ -200,7 +202,7 @@ def main():
     # rom = "/home/eduardovra/workspace/snes-test-roms/PeterLemon/SNES-CPUTest-SPC700/ORA/SPC700ORA.sfc"
     # rom = "/home/eduardovra/workspace/snes-test-roms/PeterLemon/SNES-CPUTest-SPC700/SBC/SPC700SBC.sfc"
 
-    rom = "roms/Super Mario World (U) [!].smc"
+    # rom = "roms/Super Mario World (U) [!].smc"
     # rom = "roms/Donkey Kong Country (U) (V1.2) [!].smc"
     # rom = "roms/Legend of Zelda, The - A Link to the Past (USA).sfc"
     # rom = "roms/Super Bomberman 5 Gold Cartridge (J) [!].smc"
@@ -209,8 +211,16 @@ def main():
     # rom = "roms/Magical Quest Starring Mickey Mouse, The (USA).sfc"
 
     pysnes = PySNES(rom)
-    while pysnes.tick():
-        pass
+
+    # add trace crosscheck
+    trace_file = "/home/eduardovra/workspace/snes-test-roms/PeterLemon/SNES-CPUTest-CPU/ADC/CPUADC-trace.log"
+    with open(trace_file, "r") as f:
+        while line := f.readline():
+            check_trace_line(line, pysnes.cpu)
+            pysnes.tick()
+
+    # while pysnes.tick():
+    #     pass
 
     pysnes.teardown_sdl()
 

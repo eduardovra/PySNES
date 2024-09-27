@@ -3,6 +3,7 @@ from typing import List, Optional, Union, Tuple
 
 from sdl2 import *
 import OpenGL.GL as gl
+import numpy as np
 
 from .data_structures import *
 
@@ -71,6 +72,7 @@ class Ppu:
         self.h_counter = 0  # current dot beign drawn
         self.v_counter = 0  # current scanline beign drawn
         self.frames = 0  # total frames rendered
+        self.vertices = np.array([], dtype=np.float32)
 
     def inidisp_set(self, data: int) -> None:
         # TODO reset OAM addr if writing while on first blank line
@@ -329,11 +331,12 @@ class Ppu:
 
     def update_screen(self, renderer):
         """Update screen image with buffer"""
+        # self.vertices = []
         # swap active buffer
-        SDL_RenderPresent(renderer)
+        # SDL_RenderPresent(renderer)
         # set default background color
-        self.set_color(renderer, 2, 0, 0)
-        SDL_RenderClear(renderer)
+        # self.set_color(renderer, 2, 0, 0)
+        # SDL_RenderClear(renderer)
 
     def render_scanline(self, renderer):
         """Render current scanline in self.v_counter"""
@@ -644,30 +647,43 @@ class Ppu:
         # 8 most significant bits
         mask = 1 << pixel
         assert bpp in (2, 4), bpp
+
         # 2bpp
         l, h = tile_data[i + 0], tile_data[i + 1]
         color = (h & mask) >> pixel << 1 | (l & mask) >> pixel << 0
         if bpp >= 4:
             l, h = tile_data[i + 16], tile_data[i + 17]
             color |= (h & mask) >> pixel << 3 | (l & mask) >> pixel << 2
+
+        # NOTE: I guess this is GL_RGB5?
+
+        # SNES default resolution (NTSC)
+        SCREEN_WIDTH = 256
+        SCREEN_HEIGHT = 224
+        # For PAL mode:
+        # SCREEN_HEIGHT = 240
+
+        x_ndc = 2.0 * (x / SCREEN_WIDTH) - 1.0
+        y_ndc = 1.0 - 2.0 * (y / SCREEN_HEIGHT)
+        r, g, b = 0.0, 0.0, 0.0  # TODO default color to black for now
+
         # 00 is considered transparent in all palettes
         if color:
-            self.set_color(renderer, bpp, palette, color)
+            r_5bit, g_5bit, b_5bit = self.get_rbg_colors(renderer, bpp, palette, color)
 
-            # SNES default resolution (NTSC)
-            SCREEN_WIDTH = 256
-            SCREEN_HEIGHT = 224
-            # For PAL mode:
-            # SCREEN_HEIGHT = 240
+            r_8bit = (r_5bit * 255) // 31
+            g_8bit = (g_5bit * 255) // 31
+            b_8bit = (b_5bit * 255) // 31
 
-            x_ndc = 2.0 * (x / SCREEN_WIDTH) - 1.0
-            y_ndc = 1.0 - 2.0 * (y / SCREEN_HEIGHT)
-            print(f"Drawing at x={x_ndc}, y={y_ndc}")
-            gl.glVertex2f(x_ndc, y_ndc)
+            # normalize to [0, 1] for OpenGL
+            r = r_8bit / 255
+            g = g_8bit / 255
+            b = b_8bit / 255
 
-            # SDL_RenderDrawPoint(renderer, x, y)
+        print(f"Drawing x={x_ndc}, y={y_ndc}, r={r}, g={g}, b={b}")
+        self.vertices = np.append(self.vertices, [x_ndc, y_ndc, 0.0, r, g, b])
 
-    def set_color(self, renderer, bpp: int, palette: int, color: int) -> None:
+    def get_rbg_colors(self, renderer, bpp: int, palette: int, color: int) -> tuple:
         # 4 colors (2bpp palette) x 2 bytes each color
         palette_index = palette * (bpp ** 2) * 2
         color_index = palette_index + color * 2
@@ -675,6 +691,8 @@ class Ppu:
         r = data >> 0 & 0x1F
         g = data >> 5 & 0x1F
         b = data >> 10 & 0x1F
+        return r, g, b
+
         # alpha = SDL_ALPHA_OPAQUE if color else SDL_ALPHA_TRANSPARENT
         # TODO Try to enable again when all background are being rendered
         alpha = SDL_ALPHA_OPAQUE
@@ -682,7 +700,7 @@ class Ppu:
         brightness = self.display_brightness // 15
         color_multiplier = 8 * brightness
 
-        gl.glColor3f(1.0, 1.0, 1.0)
+        # gl.glColor3f(1.0, 1.0, 1.0)
         # gl.glColor3f(r * color_multiplier, g * color_multiplier, b * color_multiplier)
         # SDL_SetRenderDrawColor(
         #     renderer,

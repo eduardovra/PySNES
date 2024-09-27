@@ -1,7 +1,7 @@
 import argparse
 from ctypes import byref
 
-from sdl2 import *
+import sdl2 as sdl
 import imgui
 from imgui.integrations.sdl2 import SDL2Renderer
 import OpenGL.GL as gl
@@ -14,8 +14,9 @@ from .cpu import Cpu
 from .apu import Apu
 from .ppu import Ppu
 from .controller import Controller
+from .video import Video
 from .trace_matcher import check_trace_line
-# from .cpu.v2.wdc65816.disassembler import Disassembler
+
 
 class PySNES:
     def __init__(self, rom_file_path: str) -> None:
@@ -26,72 +27,30 @@ class PySNES:
         self.controllers = [Controller(), Controller(disabled=True)]
         bus = Bus(rom, self.cpu, self.apu, self.ppu, self.controllers)
         self.cpu.attach(bus)
-        # self.disassembler = Disassembler(self.cpu)
+        self.video = Video()
         self.frames = 0
-        self.setup_sdl()
+
+        # Initialize video and create window
+        self.video.initialize()
+
+        self.event = sdl.SDL_Event()
 
         # Reset PC to the address in the cartridge reset vector
         self.cpu.PC.w = rom.hardware_vectors["emulation"]["RESET"]
 
         self.paused = False
 
-    def setup_sdl(self) -> None:
-        SDL_Init(SDL_INIT_VIDEO)
-
-        SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1)
-        SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24)
-        SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 8)
-        SDL_GL_SetAttribute(SDL_GL_ACCELERATED_VISUAL, 1)
-        SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS, 1)
-        SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, 8)
-        SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, SDL_GL_CONTEXT_FORWARD_COMPATIBLE_FLAG)
-        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 4)
-        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 1)
-        SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE)
-
-        SDL_SetHint(SDL_HINT_MAC_CTRL_CLICK_EMULATE_RIGHT_CLICK, b"1")
-        SDL_SetHint(SDL_HINT_VIDEO_HIGHDPI_DISABLED, b"1")
-
-        self.window = SDL_CreateWindow(b"PySNES", 0, 0, 1024, 1024, SDL_WINDOW_SHOWN | SDL_WINDOW_OPENGL)
-
-        # window, gl_context = impl_pysdl2_init()
-        self.gl_context = SDL_GL_CreateContext(self.window)
-        SDL_GL_MakeCurrent(self.window, self.gl_context)
-        assert SDL_GL_SetSwapInterval(1) == 0
-        self.imgui_context = imgui.create_context()
-        self.impl = SDL2Renderer(self.window)
-
-        # Set the point size
-        # gl.glPointSize(10.0)
-
-        # imgui.get_io().display_size = 200, 200
-        # imgui.get_io().fonts.get_tex_data_as_rgba32()
-
-        # self.renderer = SDL_CreateRenderer(self.window, -1, SDL_RENDERER_ACCELERATED)
-        # SDL_SetRenderDrawBlendMode(self.renderer, SDL_BLENDMODE_BLEND)
-        # SDL_RenderSetScale(self.renderer, 2, 2)
-        self.event = SDL_Event()
-
-    def teardown_sdl(self) -> None:
-        self.impl.shutdown()
-        SDL_GL_DeleteContext(self.gl_context)
-        # SDL_DestroyRenderer(self.renderer)
-        SDL_DestroyWindow(self.window)
-        SDL_Quit()
-
     def draw_gui(self) -> None:
-
         # possible way to render game to imgui window
         # https://www.codingwiththomas.com/blog/rendering-an-opengl-framebuffer-into-a-dear-imgui-window
-
         imgui.new_frame()
 
         is_expand, show_custom_window = imgui.begin("Current instruction", True)
         if is_expand:
             debug_str = self.cpu.disassembler.disassemble(self.cpu.PC.w)
             debug_str += f" V:{self.ppu.v_counter:03} H:{self.ppu.h_counter:03} F:{self.ppu.frames}"
-            if not self.paused:
-                print(f"[green]{debug_str}[/green]")  # trace log
+            # if not self.paused:
+            #     print(f"[green]{debug_str}[/green]")  # trace log
             imgui.text_colored(debug_str, 0, 255, 0)
         imgui.end()
         is_expand, show_custom_window = imgui.begin("CPU Registers", True)
@@ -108,126 +67,22 @@ class PySNES:
                 self.paused = not self.paused
         imgui.end()
 
-    def test_draw(self):
-        # Define the vertex shader and fragment shader
-        VERTEX_SHADER_SOURCE = """
-        #version 330 core
-        layout (location = 0) in vec3 aPos;  // Vertex position
-        layout (location = 1) in vec3 aColor;  // Vertex color
-
-        out vec3 vertexColor;  // Output to fragment shader
-
-        void main() {
-            gl_Position = vec4(aPos, 1.0);  // Set the position of the point
-            vertexColor = aColor;  // Pass the color to the fragment shader
-        }
-        """
-
-        # Updated fragment shader that uses the passed-in color for rendering
-        FRAGMENT_SHADER_SOURCE = """
-        #version 330 core
-        in vec3 vertexColor;  // Input from vertex shader
-        out vec4 FragColor;
-
-        void main() {
-            FragColor = vec4(vertexColor, 1.0);  // Set the pixel color using the passed-in color
-        }
-        """
-
-        def compile_shader(source, shader_type):
-            shader = gl.glCreateShader(shader_type)
-            gl.glShaderSource(shader, source)
-            gl.glCompileShader(shader)
-            if not gl.glGetShaderiv(shader, gl.GL_COMPILE_STATUS):
-                raise RuntimeError(gl.glGetShaderInfoLog(shader))
-            return shader
-
-        def create_shader_program():
-            vertex_shader = compile_shader(VERTEX_SHADER_SOURCE, gl.GL_VERTEX_SHADER)
-            fragment_shader = compile_shader(FRAGMENT_SHADER_SOURCE, gl.GL_FRAGMENT_SHADER)
-
-            program = gl.glCreateProgram()
-            gl.glAttachShader(program, vertex_shader)
-            gl.glAttachShader(program, fragment_shader)
-            gl.glLinkProgram(program)
-
-            if not gl.glGetProgramiv(program, gl.GL_LINK_STATUS):
-                raise RuntimeError(gl.glGetProgramInfoLog(program))
-
-            # Clean up shaders since they are now linked into the program
-            gl.glDeleteShader(vertex_shader)
-            gl.glDeleteShader(fragment_shader)
-
-            return program
-
-        def generate_line():
-            # Window width in pixels
-            window_width = 1024
-
-            # OpenGL range is -1.0 to 1.0, total range = 2.0
-            opengl_range = 2.0
-
-            # Calculate the point spacing in OpenGL coordinates
-            point_spacing = opengl_range / window_width
-
-            vertices = []
-            for i in range(window_width):
-                # x, y, z, r, g, b
-                point = [i * point_spacing - 1.0, 0.0, 0.0, 0.0, 1.0, 0.0]
-                vertices.extend(point)
-
-            return np.array(vertices, dtype=np.float32)
-
-        shader_program = create_shader_program()
-
-        # Define positions and colors for 1024 points
-        vertices = generate_line()
-
-        # Generate VAO and VBO
-        VAO = gl.glGenVertexArrays(1)
-        VBO = gl.glGenBuffers(1)
-
-        # Bind VAO (stores the vertex attribute configuration)
-        gl.glBindVertexArray(VAO)
-
-        # Bind VBO and upload the vertex data
-        gl.glBindBuffer(gl.GL_ARRAY_BUFFER, VBO)
-        gl.glBufferData(gl.GL_ARRAY_BUFFER, vertices.nbytes, vertices, gl.GL_STATIC_DRAW)
-
-        # Specify the layout of the position data (3 floats per position)
-        gl.glVertexAttribPointer(0, 3, gl.GL_FLOAT, gl.GL_FALSE, 6 * vertices.itemsize, None)
-        gl.glEnableVertexAttribArray(0)
-
-        # Specify the layout of the color data (3 floats per color, offset by the position data)
-        gl.glVertexAttribPointer(1, 3, gl.GL_FLOAT, gl.GL_FALSE, 6 * vertices.itemsize, gl.ctypes.c_void_p(3 * vertices.itemsize))
-        gl.glEnableVertexAttribArray(1)
-
-        # Unbind the VBO and VAO
-        gl.glBindBuffer(gl.GL_ARRAY_BUFFER, 0)
-        gl.glBindVertexArray(0)
-
-        gl.glUseProgram(shader_program)
-        gl.glBindVertexArray(VAO)
-
-        # Draw the points
-        gl.glDrawArrays(gl.GL_POINTS, 0, 1024)  # 1024 points
-
     def tick(self):
         """Process one frame"""
         # Capture inputs from keyboard using SDL
-        while SDL_PollEvent(byref(self.event)) != 0:
-            if self.event.type == SDL_QUIT:
+        while sdl.SDL_PollEvent(byref(self.event)) != 0:
+            if self.event.type == sdl.SDL_QUIT:
                 return False
-            elif self.event.type == SDL_KEYUP:
+            elif self.event.type == sdl.SDL_KEYUP:
                 controller = self.controllers[0]
                 controller.pressed_keys.remove(self.event.key.keysym.sym)
-            elif self.event.type == SDL_KEYDOWN:
+            elif self.event.type == sdl.SDL_KEYDOWN:
                 controller = self.controllers[0]
                 controller.pressed_keys.add(self.event.key.keysym.sym)
 
-            self.impl.process_event(self.event)
+            self.video.impl.process_event(self.event)
 
-        self.impl.process_inputs()
+        self.video.impl.process_inputs()
 
         self.draw_gui()
 
@@ -244,16 +99,20 @@ class PySNES:
         gl.glClear(gl.GL_COLOR_BUFFER_BIT)
 
         # TEST DRAWING
-        self.test_draw()
-        # SDL_RenderDrawPoint(renderer, x, y)
+        self.video.test_draw()
 
-        # self.ppu.tick(master_cycles)
+        self.ppu.tick(master_cycles)
 
         # self.apu.tick(master_cycles)
 
-        imgui.render()
-        self.impl.render(imgui.get_draw_data())
-        SDL_GL_SwapWindow(self.window)
+        # Draw the vertices
+        self.video.draw_vertices(self.ppu.vertices)
+
+        # TODO clear when all vertices are drawn
+        #if len(self.ppu.vertices) > 100:
+        #    self.ppu.vertices = np.array([], dtype=np.float32)
+
+        self.video.update_screen() # Swap buffers
 
         # TODO Sleep to limit frequency on 60Hz
         # SDL_Delay(5)
@@ -328,7 +187,7 @@ def main():
     while pysnes.tick():
         pass
 
-    pysnes.teardown_sdl()
+    pysnes.video.teardown_sdl()
 
     return
 

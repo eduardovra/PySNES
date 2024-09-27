@@ -80,6 +80,10 @@ class PySNES:
         SDL_Quit()
 
     def draw_gui(self) -> None:
+
+        # possible way to render game to imgui window
+        # https://www.codingwiththomas.com/blog/rendering-an-opengl-framebuffer-into-a-dear-imgui-window
+
         imgui.new_frame()
 
         is_expand, show_custom_window = imgui.begin("Current instruction", True)
@@ -108,20 +112,25 @@ class PySNES:
         # Define the vertex shader and fragment shader
         VERTEX_SHADER_SOURCE = """
         #version 330 core
-        layout (location = 0) in vec3 aPos;
+        layout (location = 0) in vec3 aPos;  // Vertex position
+        layout (location = 1) in vec3 aColor;  // Vertex color
+
+        out vec3 vertexColor;  // Output to fragment shader
 
         void main() {
-            gl_Position = vec4(aPos.x, aPos.y, aPos.z, 1.0);
+            gl_Position = vec4(aPos, 1.0);  // Set the position of the point
+            vertexColor = aColor;  // Pass the color to the fragment shader
         }
         """
 
-        # Updated fragment shader to paint the triangle green
+        # Updated fragment shader that uses the passed-in color for rendering
         FRAGMENT_SHADER_SOURCE = """
         #version 330 core
+        in vec3 vertexColor;  // Input from vertex shader
         out vec4 FragColor;
 
         void main() {
-            FragColor = vec4(0.0, 1.0, 0.0, 1.0); // Set color to green
+            FragColor = vec4(vertexColor, 1.0);  // Set the pixel color using the passed-in color
         }
         """
 
@@ -141,7 +150,7 @@ class PySNES:
             gl.glAttachShader(program, vertex_shader)
             gl.glAttachShader(program, fragment_shader)
             gl.glLinkProgram(program)
-            
+
             if not gl.glGetProgramiv(program, gl.GL_LINK_STATUS):
                 raise RuntimeError(gl.glGetProgramInfoLog(program))
 
@@ -151,14 +160,28 @@ class PySNES:
 
             return program
 
+        def generate_line():
+            # Window width in pixels
+            window_width = 1024
+
+            # OpenGL range is -1.0 to 1.0, total range = 2.0
+            opengl_range = 2.0
+
+            # Calculate the point spacing in OpenGL coordinates
+            point_spacing = opengl_range / window_width
+
+            vertices = []
+            for i in range(window_width):
+                # x, y, z, r, g, b
+                point = [i * point_spacing - 1.0, 0.0, 0.0, 0.0, 1.0, 0.0]
+                vertices.extend(point)
+
+            return np.array(vertices, dtype=np.float32)
+
         shader_program = create_shader_program()
 
-        # Define triangle vertices
-        vertices = np.array([
-            -0.5, -0.5, 0.0,  # Bottom left
-            0.5, -0.5, 0.0,  # Bottom right
-            0.0,  0.5, 0.0   # Top
-        ], dtype=np.float32)
+        # Define positions and colors for 1024 points
+        vertices = generate_line()
 
         # Generate VAO and VBO
         VAO = gl.glGenVertexArrays(1)
@@ -171,9 +194,13 @@ class PySNES:
         gl.glBindBuffer(gl.GL_ARRAY_BUFFER, VBO)
         gl.glBufferData(gl.GL_ARRAY_BUFFER, vertices.nbytes, vertices, gl.GL_STATIC_DRAW)
 
-        # Specify the layout of the vertex data (3 floats per vertex)
-        gl.glVertexAttribPointer(0, 3, gl.GL_FLOAT, gl.GL_FALSE, 3 * vertices.itemsize, None)
+        # Specify the layout of the position data (3 floats per position)
+        gl.glVertexAttribPointer(0, 3, gl.GL_FLOAT, gl.GL_FALSE, 6 * vertices.itemsize, None)
         gl.glEnableVertexAttribArray(0)
+
+        # Specify the layout of the color data (3 floats per color, offset by the position data)
+        gl.glVertexAttribPointer(1, 3, gl.GL_FLOAT, gl.GL_FALSE, 6 * vertices.itemsize, gl.ctypes.c_void_p(3 * vertices.itemsize))
+        gl.glEnableVertexAttribArray(1)
 
         # Unbind the VBO and VAO
         gl.glBindBuffer(gl.GL_ARRAY_BUFFER, 0)
@@ -181,7 +208,9 @@ class PySNES:
 
         gl.glUseProgram(shader_program)
         gl.glBindVertexArray(VAO)
-        gl.glDrawArrays(gl.GL_TRIANGLES, 0, 3)
+
+        # Draw the points
+        gl.glDrawArrays(gl.GL_POINTS, 0, 1024)  # 1024 points
 
     def tick(self):
         """Process one frame"""
@@ -200,7 +229,7 @@ class PySNES:
 
         self.impl.process_inputs()
 
-        # self.draw_gui()
+        self.draw_gui()
 
         # To determine the exact length of any CPU instruction,
         # you must examine its behavior for each cycle,
@@ -211,22 +240,14 @@ class PySNES:
         # Tick PPU with the number of master cycles used by the CPU
         # as it runs on the same clock source
 
-        # reset background color to black
-        # gl.glClearColor(0.0, 0.0, 0.0, 1)
-        # gl.glClear(gl.GL_COLOR_BUFFER_BIT)
-
-        # Begin drawing points
-        # gl.glBegin(gl.GL_POINTS)
-
-        self.draw_gui()
+        # Clear the screen
+        gl.glClear(gl.GL_COLOR_BUFFER_BIT)
 
         # TEST DRAWING
         self.test_draw()
         # SDL_RenderDrawPoint(renderer, x, y)
 
         # self.ppu.tick(master_cycles)
-
-        # gl.glEnd()
 
         # self.apu.tick(master_cycles)
 

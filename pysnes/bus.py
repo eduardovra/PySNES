@@ -1,5 +1,7 @@
 from typing import List
 
+from rich import print
+
 from .rom import Rom
 from .cpu import Cpu
 from .apu import Apu
@@ -79,9 +81,7 @@ class Bus:
                 if 0x2140 <= addr <= 0x217F:
                     # 0x2140 - 0x204C == 0xF4 [addr of PORT0]
                     if 0x2140 <= addr <= 0x2143:  # TODO ugly
-                        print(
-                           f"  CPU read [{hex(addr)}] ==> {hex(self.apu.ports_w[addr - 0x2140])}"
-                        )
+                        print(f"  CPU read [{hex(addr)}] ==> {hex(self.apu.ports_w[addr - 0x2140])}")
                         return self.apu.ports_w[addr - 0x2140]
                     return self.apu[addr - 0x204C]
 
@@ -96,8 +96,7 @@ class Bus:
                 if addr == 0x4210:  # RDNMI - NMI Flag and 5A22 Version
                     data = (
                         self.cpu.status.nmi_line << 7
-                        | 1
-                        << 6  # This bit is open bus, I'm setting it to satisfy the PLP test program
+                        | 1 << 6  # This bit is open bus, I'm setting it to satisfy the PLP test program
                         | 0x02  # 5A22 chip version number [0-3]
                     )
                     # if not self.cpu.status.nmi_hold: # (bsnes)
@@ -124,18 +123,14 @@ class Bus:
                     return self.controller_port2.joy_h
 
                 if 0x421C <= addr <= 0x421F:  # Auto Joypad Read registers
-                    print(
-                        "\033[93mReading unmamped memory region: 0x{:06X}\033[0m".format(abs_addr)
-                    )
+                    print(f"[yellow]Reading unmamped memory region: 0x{abs_addr:06X}[/yellow]")
 
                 if 0x4300 <= addr <= 0x43FF:
                     print("READ DMA REGISTER: {}" % hex(addr))
                 return self.dma_ppu2_hw_registers[addr - 0x4200]
 
         # TODO Just for testing the ROM
-        print(
-            "\033[93mReading unmamped memory region: 0x{:06X}\033[0m".format(abs_addr)
-        )
+        print(f"[yellow]Reading unmamped memory region: 0x{abs_addr:06X}[/yellow]")
         #assert 0
         return self.unmapped[abs_addr]
 
@@ -355,11 +350,7 @@ class Bus:
             return
 
         # TODO Just for testing the ROM
-        print(
-            "\033[93mWritting unmamped memory region: 0x{:06X} = 0x{:02X}\033[0m".format(
-                abs_addr, data
-            )
-        )
+        print(f"[yellow]Writting unmamped memory region: 0x{abs_addr:06X} = 0x{data:02X}[/yellow]")
         self.unmapped[abs_addr] = data
         return
 

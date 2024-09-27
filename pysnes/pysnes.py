@@ -2,10 +2,10 @@ import argparse
 from ctypes import byref
 
 from sdl2 import *
-import sdl2.ext
 import imgui
 from imgui.integrations.sdl2 import SDL2Renderer
 import OpenGL.GL as gl
+import numpy as np
 from rich import print
 
 from .rom import Rom
@@ -58,11 +58,11 @@ class PySNES:
         self.gl_context = SDL_GL_CreateContext(self.window)
         SDL_GL_MakeCurrent(self.window, self.gl_context)
         assert SDL_GL_SetSwapInterval(1) == 0
-        imgui.create_context()
+        self.imgui_context = imgui.create_context()
         self.impl = SDL2Renderer(self.window)
 
         # Set the point size
-        gl.glPointSize(10.0)
+        # gl.glPointSize(10.0)
 
         # imgui.get_io().display_size = 200, 200
         # imgui.get_io().fonts.get_tex_data_as_rgba32()
@@ -78,6 +78,110 @@ class PySNES:
         # SDL_DestroyRenderer(self.renderer)
         SDL_DestroyWindow(self.window)
         SDL_Quit()
+
+    def draw_gui(self) -> None:
+        imgui.new_frame()
+
+        is_expand, show_custom_window = imgui.begin("Current instruction", True)
+        if is_expand:
+            debug_str = self.cpu.disassembler.disassemble(self.cpu.PC.w)
+            debug_str += f" V:{self.ppu.v_counter:03} H:{self.ppu.h_counter:03} F:{self.ppu.frames}"
+            if not self.paused:
+                print(f"[green]{debug_str}[/green]")  # trace log
+            imgui.text_colored(debug_str, 0, 255, 0)
+        imgui.end()
+        is_expand, show_custom_window = imgui.begin("CPU Registers", True)
+        if is_expand:
+            imgui.text(f"Frames: {self.frames}")
+            imgui.text(f"PC: 0x{self.cpu.PC.value:06X}")
+            imgui.text(f"A: 0x{self.cpu.A.value:04X}")
+            imgui.text(f"X: 0x{self.cpu.X.value:04X}")
+            imgui.text(f"Y: 0x{self.cpu.Y.value:04X}")
+            imgui.text(f"SP: 0x{self.cpu.S.value:04X}")
+            imgui.text(f"DB: 0x{self.cpu.DB.value:02X}")
+            imgui.text(f"P: 0x{self.cpu.P:02X}")
+            if imgui.button("Continue" if self.paused else "Pause"):
+                self.paused = not self.paused
+        imgui.end()
+
+    def test_draw(self):
+        # Define the vertex shader and fragment shader
+        VERTEX_SHADER_SOURCE = """
+        #version 330 core
+        layout (location = 0) in vec3 aPos;
+
+        void main() {
+            gl_Position = vec4(aPos.x, aPos.y, aPos.z, 1.0);
+        }
+        """
+
+        # Updated fragment shader to paint the triangle green
+        FRAGMENT_SHADER_SOURCE = """
+        #version 330 core
+        out vec4 FragColor;
+
+        void main() {
+            FragColor = vec4(0.0, 1.0, 0.0, 1.0); // Set color to green
+        }
+        """
+
+        def compile_shader(source, shader_type):
+            shader = gl.glCreateShader(shader_type)
+            gl.glShaderSource(shader, source)
+            gl.glCompileShader(shader)
+            if not gl.glGetShaderiv(shader, gl.GL_COMPILE_STATUS):
+                raise RuntimeError(gl.glGetShaderInfoLog(shader))
+            return shader
+
+        def create_shader_program():
+            vertex_shader = compile_shader(VERTEX_SHADER_SOURCE, gl.GL_VERTEX_SHADER)
+            fragment_shader = compile_shader(FRAGMENT_SHADER_SOURCE, gl.GL_FRAGMENT_SHADER)
+
+            program = gl.glCreateProgram()
+            gl.glAttachShader(program, vertex_shader)
+            gl.glAttachShader(program, fragment_shader)
+            gl.glLinkProgram(program)
+            
+            if not gl.glGetProgramiv(program, gl.GL_LINK_STATUS):
+                raise RuntimeError(gl.glGetProgramInfoLog(program))
+
+            # Clean up shaders since they are now linked into the program
+            gl.glDeleteShader(vertex_shader)
+            gl.glDeleteShader(fragment_shader)
+
+            return program
+
+        shader_program = create_shader_program()
+
+        # Define triangle vertices
+        vertices = np.array([
+            -0.5, -0.5, 0.0,  # Bottom left
+            0.5, -0.5, 0.0,  # Bottom right
+            0.0,  0.5, 0.0   # Top
+        ], dtype=np.float32)
+
+        # Generate VAO and VBO
+        VAO = gl.glGenVertexArrays(1)
+        VBO = gl.glGenBuffers(1)
+
+        # Bind VAO (stores the vertex attribute configuration)
+        gl.glBindVertexArray(VAO)
+
+        # Bind VBO and upload the vertex data
+        gl.glBindBuffer(gl.GL_ARRAY_BUFFER, VBO)
+        gl.glBufferData(gl.GL_ARRAY_BUFFER, vertices.nbytes, vertices, gl.GL_STATIC_DRAW)
+
+        # Specify the layout of the vertex data (3 floats per vertex)
+        gl.glVertexAttribPointer(0, 3, gl.GL_FLOAT, gl.GL_FALSE, 3 * vertices.itemsize, None)
+        gl.glEnableVertexAttribArray(0)
+
+        # Unbind the VBO and VAO
+        gl.glBindBuffer(gl.GL_ARRAY_BUFFER, 0)
+        gl.glBindVertexArray(0)
+
+        gl.glUseProgram(shader_program)
+        gl.glBindVertexArray(VAO)
+        gl.glDrawArrays(gl.GL_TRIANGLES, 0, 3)
 
     def tick(self):
         """Process one frame"""
@@ -96,31 +200,7 @@ class PySNES:
 
         self.impl.process_inputs()
 
-        imgui.new_frame()
-
-        is_expand, show_custom_window = imgui.begin("Current instruction", True)
-        if is_expand:
-            # debug_str = self.cpu.get_current_instruction_disassembly()
-            debug_str = self.cpu.disassembler.disassemble(self.cpu.PC.w)
-            debug_str += f" V:{self.ppu.v_counter} H:{self.ppu.h_counter} F:{self.ppu.frames}"
-            if not self.paused:
-                print(f"[green]{debug_str}[/green]")  # trace log
-            imgui.text_colored(debug_str, 0, 255, 0)
-        imgui.end()
-
-        is_expand, show_custom_window = imgui.begin("CPU Registers", True)
-        if is_expand:
-            imgui.text(f"Frames: {self.frames}")
-            imgui.text(f"PC: 0x{self.cpu.PC.value:06X}")
-            imgui.text(f"A: 0x{self.cpu.A.value:04X}")
-            imgui.text(f"X: 0x{self.cpu.X.value:04X}")
-            imgui.text(f"Y: 0x{self.cpu.Y.value:04X}")
-            imgui.text(f"SP: 0x{self.cpu.S.value:04X}")
-            imgui.text(f"DB: 0x{self.cpu.DB.value:02X}")
-            imgui.text(f"P: 0x{self.cpu.P:02X}")
-            if imgui.button("Continue" if self.paused else "Pause"):
-                self.paused = not self.paused
-        imgui.end()
+        # self.draw_gui()
 
         # To determine the exact length of any CPU instruction,
         # you must examine its behavior for each cycle,
@@ -132,18 +212,23 @@ class PySNES:
         # as it runs on the same clock source
 
         # reset background color to black
-        gl.glClearColor(0.0, 0.0, 0.0, 1)
-        gl.glClear(gl.GL_COLOR_BUFFER_BIT)
+        # gl.glClearColor(0.0, 0.0, 0.0, 1)
+        # gl.glClear(gl.GL_COLOR_BUFFER_BIT)
 
         # Begin drawing points
-        gl.glBegin(gl.GL_POINTS)
+        # gl.glBegin(gl.GL_POINTS)
 
-        self.ppu.tick(master_cycles)
+        self.draw_gui()
+
+        # TEST DRAWING
+        self.test_draw()
+        # SDL_RenderDrawPoint(renderer, x, y)
+
+        # self.ppu.tick(master_cycles)
 
         # gl.glEnd()
 
-        # TODO figure out
-        self.apu.tick(master_cycles)
+        # self.apu.tick(master_cycles)
 
         imgui.render()
         self.impl.render(imgui.get_draw_data())
@@ -213,14 +298,14 @@ def main():
     pysnes = PySNES(rom)
 
     # add trace crosscheck
-    trace_file = "/home/eduardovra/workspace/snes-test-roms/PeterLemon/SNES-CPUTest-CPU/ADC/CPUADC-trace.log"
-    with open(trace_file, "r") as f:
-        while line := f.readline():
-            check_trace_line(line, pysnes.cpu)
-            pysnes.tick()
+    # trace_file = "/home/eduardovra/workspace/snes-test-roms/PeterLemon/SNES-CPUTest-CPU/ADC/CPUADC-trace.log"
+    # with open(trace_file, "r") as f:
+    #     while line := f.readline():
+    #         check_trace_line(line, pysnes.cpu)
+    #         pysnes.tick()
 
-    # while pysnes.tick():
-    #     pass
+    while pysnes.tick():
+        pass
 
     pysnes.teardown_sdl()
 

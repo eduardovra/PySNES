@@ -348,6 +348,20 @@ class Cpu:
 
     def get_clock_cycles(self, addr: int) -> int:
         """Returns the number of clock cycles to perform IO on a given address"""
+
+        """
+        https://board.zsnes.com/phpBB3/viewtopic.php?t=12711
+
+        Hard to say exactly. The core clocks runs at 21.477MHz.
+        Each cycle can take 6, 8 or 12 clocks, let's assume 8 on average (12 is very rare.)
+        Each opcode takes 2-6 cycles, so let's say 4 on average.
+        21,477,272/32=~671,164 opcodes/second.
+
+        https://forums.nesdev.org/viewtopic.php?p=175515&sid=e26b9af85c521bb4c8fa1e905af2157c#p175515
+        Right. Every CPU instruction takes some number of CPU cycles; each CPU cycle in turn takes
+        6, 8, or 12 master clock cycles depending on which memory it's accessing.
+        """
+
         return self.clock_cycles_table[addr]
 
     @property
@@ -376,6 +390,8 @@ class Cpu:
             # Transition to high
             if self.status.nmi_enable:
                 self.status.nmi_transition = True
+
+        # Save last NMI line state
         self.status.nmi_line_last = self.status.nmi_line
 
         # Test for NMI rising edge and trigger interrupt on next iteration

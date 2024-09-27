@@ -19,7 +19,7 @@ TESTS_PATH = "ProcessorTests/65816/v1"
 def get_test_cases():
     onlyfiles = [
         os.path.join(TESTS_PATH, f) for f in os.listdir(TESTS_PATH)
-        if os.path.isfile(os.path.join(TESTS_PATH, f)) and f.upper().startswith('44')  # EA -> NOP, 29 -> AND, A0 -> LDY
+        if os.path.isfile(os.path.join(TESTS_PATH, f)) and f.upper().startswith('29')  # EA -> NOP, 29 -> AND, A0 -> LDY
     ]
 
     # onlyfiles = onlyfiles[:3]  # limit to 3 files
@@ -141,6 +141,9 @@ def test_v2(test_case):
 
     # check on read/write cycles
     assert calls_performed == calls_expected
+
+
+# https://emudev.de/q00-snes/65816-the-cpu/
 
 
 @pytest.mark.parametrize('test_case', [], ids=[])

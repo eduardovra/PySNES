@@ -380,6 +380,25 @@ class Cpu:
         self.VF = bool(data & 0x40)
         self.NF = bool(data & 0x80)
 
+    def run_scanline(self) -> int:
+        """
+        Runs a single scanline
+
+        https://wiki.superfamicom.org/timing
+
+        The SNES master clock runs at about 21.477MHz NTSC
+        The SNES runs 1 scanline every 1364 master cycles
+        Frames are 262 scanlines in non-interlace mode
+        There are always 340 dots ('pixels') per scanline
+        """
+        cycles = 0
+        target_cycles = self.cycles + 1364
+
+        while self.cycles < target_cycles:
+            cycles += self.tick()
+
+        return cycles
+
     def tick(self):
         """Advances the CPU by one step"""
         # NOTE this is for compatibility with cpu v1

@@ -1,9 +1,9 @@
 import argparse
 from ctypes import byref
+import time
 
 import sdl2 as sdl
 import imgui
-from imgui.integrations.sdl2 import SDL2Renderer
 import OpenGL.GL as gl
 import numpy as np
 from rich import print
@@ -38,23 +38,26 @@ class PySNES:
         # Reset PC to the address in the cartridge reset vector
         self.cpu.PC.w = rom.hardware_vectors["emulation"]["RESET"]
 
+        self.running = True
         self.paused = False
 
-    def draw_gui(self) -> None:
+    def create_gui(self) -> None:
         # possible way to render game to imgui window
         # https://www.codingwiththomas.com/blog/rendering-an-opengl-framebuffer-into-a-dear-imgui-window
         imgui.new_frame()
 
-        is_expand, show_custom_window = imgui.begin("Current instruction", True)
-        if is_expand:
+        # is_open is set when the window is expanded, is_visible is set when the x button is clicked
+        is_open, is_visible = imgui.begin("Current instruction", True)
+        if is_open:
             debug_str = self.cpu.disassembler.disassemble(self.cpu.PC.w)
             debug_str += f" V:{self.ppu.v_counter:03} H:{self.ppu.h_counter:03} F:{self.ppu.frames}"
             # if not self.paused:
             #     print(f"[green]{debug_str}[/green]")  # trace log
             imgui.text_colored(debug_str, 0, 255, 0)
         imgui.end()
-        is_expand, show_custom_window = imgui.begin("CPU Registers", True)
-        if is_expand:
+
+        is_open, is_visible = imgui.begin("CPU Registers", True)
+        if is_open:
             imgui.text(f"Frames: {self.frames}")
             imgui.text(f"PC: 0x{self.cpu.PC.value:06X}")
             imgui.text(f"A: 0x{self.cpu.A.value:04X}")
@@ -67,12 +70,52 @@ class PySNES:
                 self.paused = not self.paused
         imgui.end()
 
-    def tick(self):
-        """Process one frame"""
+    def main(self):
+        """Main loop"""
+        while self.running:
+            self.run_frame()
+
+    def run_frame(self):
+        """Run a frame"""
+        start = time.time()
+
+        # NTSC
+        SCREEN_WIDTH, SCREEN_HEIGHT = 256, 224
+
+        scanline = 0
+        while scanline < SCREEN_HEIGHT:
+            self.run_scanline()
+            scanline += 1
+
+        # Pool inputs
+        self.process_inputs()
+
+        # Create ImGUI components
+        self.create_gui()
+
+        # Draw the vertices
+        vertices = np.array(self.ppu.vertices, dtype=np.float32)
+        self.video.draw_vertices(vertices, 0, 0, 256, 224)
+
+        # Swap buffers
+        self.video.update_screen()
+
+        # Calculate frame time
+        end = time.time()
+        print(f"Frame time: {end - start}, FPS: {1 / (end - start)}")
+
+    def run_scanline(self):
+        """Run a scanline"""
+        clocks = self.cpu.run_scanline()
+        self.ppu.draw_scanline(clocks)
+        # self.apu.tick(clocks)
+
+    def process_inputs(self):
         # Capture inputs from keyboard using SDL
         while sdl.SDL_PollEvent(byref(self.event)) != 0:
             if self.event.type == sdl.SDL_QUIT:
-                return False
+                self.running = False
+                return
             elif self.event.type == sdl.SDL_KEYUP:
                 controller = self.controllers[0]
                 controller.pressed_keys.remove(self.event.key.keysym.sym)
@@ -84,7 +127,11 @@ class PySNES:
 
         self.video.impl.process_inputs()
 
-        self.draw_gui()
+    def tick(self):
+        """Process one frame"""
+        self.process_inputs()
+
+        self.create_gui()
 
         # To determine the exact length of any CPU instruction,
         # you must examine its behavior for each cycle,
@@ -106,13 +153,11 @@ class PySNES:
         # self.apu.tick(master_cycles)
 
         # Draw the vertices
-        self.video.draw_vertices(self.ppu.vertices)
+        vertices = np.array(self.ppu.vertices, dtype=np.float32)
+        self.video.draw_vertices(vertices, 0, 0, 256, 224)
 
-        # TODO clear when all vertices are drawn
-        #if len(self.ppu.vertices) > 100:
-        #    self.ppu.vertices = np.array([], dtype=np.float32)
-
-        self.video.update_screen() # Swap buffers
+        # Swap buffers
+        self.video.update_screen()
 
         # TODO Sleep to limit frequency on 60Hz
         # SDL_Delay(5)
@@ -184,8 +229,10 @@ def main():
     #         check_trace_line(line, pysnes.cpu)
     #         pysnes.tick()
 
-    while pysnes.tick():
-        pass
+    # while pysnes.tick():
+    #     pass
+
+    pysnes.main()
 
     pysnes.video.teardown_sdl()
 

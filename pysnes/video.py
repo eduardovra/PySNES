@@ -65,6 +65,8 @@ class Video:
         self.VAO = gl.glGenVertexArrays(1)
         self.VBO = gl.glGenBuffers(1)
 
+        self.y = -1.0
+
     def teardown_sdl(self) -> None:
         self.impl.shutdown()
         sdl.SDL_GL_DeleteContext(self.gl_context)
@@ -102,8 +104,16 @@ class Video:
 
         return program
 
-    def draw_vertices(self, vertices):
+    def draw_vertices(self, vertices, x, y, width, height):
         length = len(vertices) // 6  # assuming 6 floats per vertex: 3 for position, 3 for color
+
+        # Clear the screen
+        gl.glClear(gl.GL_COLOR_BUFFER_BIT)
+
+        # Set the viewport
+        # TODO couldn't figure this out yet - with the viewport the game window is drawn at the
+        # left bottom corner and without the game is drawn stretched over the whole window
+        gl.glViewport(x, y, width, height)
 
         # Bind VAO (stores the vertex attribute configuration)
         gl.glBindVertexArray(self.VAO)
@@ -143,12 +153,15 @@ class Video:
         vertices = []
         for i in range(window_width):
             # x, y, z, r, g, b
-            point = [i * point_spacing - 1.0, 0.0, 0.0, 0.0, 1.0, 0.0]
+            point = [i * point_spacing - 1.0, self.y, 0.0, 0.0, 1.0, 0.0]
             vertices.extend(point)
+        self.y += point_spacing
+        if self.y > 1.0:
+            self.y = -1.0
 
         return np.array(vertices, dtype=np.float32)
 
     def test_draw(self):
         # Define positions and colors for 1024 points
         vertices = self.generate_line()
-        self.draw_vertices(vertices)
+        self.draw_vertices(vertices, 0, 0, 1024, 1024)

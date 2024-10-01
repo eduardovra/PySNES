@@ -72,7 +72,8 @@ class Ppu:
         self.h_counter = 0  # current dot beign drawn
         self.v_counter = 0  # current scanline beign drawn
         self.frames = 0  # total frames rendered
-        self.vertices = np.array([], dtype=np.float32)
+        # self.vertices = np.array([], dtype=np.float32)
+        self.vertices = []
 
     def inidisp_set(self, data: int) -> None:
         # TODO reset OAM addr if writing while on first blank line
@@ -286,6 +287,9 @@ class Ppu:
         self.bg3.sub_screen_enable = bool(data >> 2 & 1)
         self.bg4.sub_screen_enable = bool(data >> 3 & 1)
         self.oam_sub_screen_enable = bool(data >> 4 & 1)
+
+    def draw_scanline(self, clock_cycles: int):
+        self.tick(clock_cycles)
 
     def tick(self, master_cycles: int = 2, renderer = None) -> None:
         """
@@ -680,8 +684,8 @@ class Ppu:
             g = g_8bit / 255
             b = b_8bit / 255
 
-        print(f"Drawing x={x_ndc}, y={y_ndc}, r={r}, g={g}, b={b}")
-        self.vertices = np.append(self.vertices, [x_ndc, y_ndc, 0.0, r, g, b])
+        # self.vertices = np.append(self.vertices, [x_ndc, y_ndc, 0.0, r, g, b])
+        self.vertices.extend([x_ndc, y_ndc, 0.0, r, g, b])
 
     def get_rbg_colors(self, renderer, bpp: int, palette: int, color: int) -> tuple:
         # 4 colors (2bpp palette) x 2 bytes each color

@@ -28,16 +28,17 @@ class PySNES:
         bus = Bus(rom, self.cpu, self.apu, self.ppu, self.controllers)
         self.cpu.attach(bus)
         self.video = Video()
-        self.frames = 0
 
         # Initialize video and create window
         self.video.initialize()
 
+        # Used to pool inputs
         self.event = sdl.SDL_Event()
 
         # Reset PC to the address in the cartridge reset vector
         self.cpu.PC.w = rom.hardware_vectors["emulation"]["RESET"]
 
+        # Emulator state variables
         self.running = True
         self.paused = False
 
@@ -58,7 +59,6 @@ class PySNES:
 
         is_open, is_visible = imgui.begin("CPU Registers", True)
         if is_open:
-            imgui.text(f"Frames: {self.frames}")
             imgui.text(f"PC: 0x{self.cpu.PC.value:06X}")
             imgui.text(f"A: 0x{self.cpu.A.value:04X}")
             imgui.text(f"X: 0x{self.cpu.X.value:04X}")
@@ -79,11 +79,14 @@ class PySNES:
         """Run a frame"""
         start = time.time()
 
-        # NTSC
-        SCREEN_WIDTH, SCREEN_HEIGHT = 256, 224
+        """
+        Visible scanlines (NTSC): 224 (or 239 in high-res mode).
+        Total scanlines (NTSC): 262.
+        Total scanlines (PAL): 312.
+        """
 
         scanline = 0
-        while scanline < SCREEN_HEIGHT:
+        while scanline < 262:
             self.run_scanline()
             scanline += 1
 
@@ -127,42 +130,6 @@ class PySNES:
             self.video.impl.process_event(self.event)
 
         self.video.impl.process_inputs()
-
-    def tick(self):
-        """Process one frame"""
-        self.process_inputs()
-
-        self.create_gui()
-
-        # To determine the exact length of any CPU instruction,
-        # you must examine its behavior for each cycle,
-        # and count 6, 8, or 12 master cycles as appropriate.
-        if not self.paused:
-            master_cycles = self.cpu.tick()
-
-        # Tick PPU with the number of master cycles used by the CPU
-        # as it runs on the same clock source
-
-        # Clear the screen
-        gl.glClear(gl.GL_COLOR_BUFFER_BIT)
-
-        self.ppu.tick(master_cycles)
-
-        # self.apu.tick(master_cycles)
-
-        # Draw the vertices
-        vertices = np.array(self.ppu.vertices, dtype=np.float32)
-        self.video.draw_vertices(vertices, 0, 0, 256, 224)
-
-        # Swap buffers
-        self.video.update_screen()
-
-        # TODO Sleep to limit frequency on 60Hz
-        # SDL_Delay(5)
-
-        self.frames += 1
-
-        return True  # keep running
 
 
 def main():

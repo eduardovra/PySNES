@@ -85,10 +85,8 @@ class PySNES:
         Total scanlines (PAL): 312.
         """
 
-        scanline = 0
-        while scanline < 262:
+        for scanline in range(262):
             self.run_scanline()
-            scanline += 1
 
         # Pool inputs
         self.process_inputs()
@@ -98,7 +96,7 @@ class PySNES:
 
         # Draw the vertices
         vertices = np.array(self.ppu.vertices, dtype=np.float32)
-        self.video.draw_vertices(vertices, 0, 0, 256, 224)
+        self.video.draw_vertices(vertices, 0, 1024 - 224, 256, 224)
         self.ppu.vertices.clear()
 
         # Swap buffers

@@ -84,7 +84,6 @@ class PySNES:
         Total scanlines (NTSC): 262.
         Total scanlines (PAL): 312.
         """
-
         for scanline in range(262):
             self.run_scanline()
 
@@ -103,8 +102,8 @@ class PySNES:
         self.video.update_screen()
 
         # Calculate frame time
-        end = time.time()
-        print(f"Frame time: {end - start}, FPS: {1 / (end - start)}")
+        end = time.time(); frame_time = end - start; fps = 1 / frame_time
+        print(f"Frame time: {frame_time:.4f}, FPS: {fps:.4f}")
 
     def run_scanline(self):
         """Run a scanline"""
@@ -269,7 +268,7 @@ if __name__ == "__main__":
                     # that might fail but I don't care
                     print(e)
 
-        pysnes.ppu.render(pysnes.renderer)
+        pysnes.ppu.render()
         SDL_Delay(5000)
     else:
         main()

@@ -291,7 +291,7 @@ class Ppu:
     def draw_scanline(self, clock_cycles: int):
         self.tick(clock_cycles)
 
-    def tick(self, master_cycles: int = 2, renderer = None) -> None:
+    def tick(self, master_cycles: int = 2) -> None:
         """
         https://wiki.superfamicom.org/timing
 
@@ -310,7 +310,7 @@ class Ppu:
 
         # Wrap H counter
         if self.h_counter > 339:
-            self.render_scanline(renderer)
+            self.render_scanline()
             # H counter range is 0-339, but visible part is 22-277
             self.line_clocks = 0
             self.h_counter = 0
@@ -318,7 +318,7 @@ class Ppu:
 
         # Wrap V counter
         if self.v_counter == 262:
-            self.update_screen(renderer)
+            self.update_screen()
             # V counter range is 0-261, but visible part is 1-224
             self.v_counter = 0
             # Flip even/odd frame
@@ -333,16 +333,10 @@ class Ppu:
         # NMI line
         self.cpu.status.nmi_line = self.cpu.status.v_blank_on
 
-    def update_screen(self, renderer):
+    def update_screen(self):
         """Update screen image with buffer"""
-        # self.vertices = []
-        # swap active buffer
-        # SDL_RenderPresent(renderer)
-        # set default background color
-        # self.set_color(renderer, 2, 0, 0)
-        # SDL_RenderClear(renderer)
 
-    def render_scanline(self, renderer):
+    def render_scanline(self):
         """Render current scanline in self.v_counter"""
         # Check F-Blank
         if self.display_disable:
@@ -374,15 +368,15 @@ class Ppu:
         BG4 tiles with priority 0
         """
         if self._bgmode == 0:
-            self.draw_background(renderer, self.bg4, 2, False)
-            self.draw_background(renderer, self.bg3, 2, False)
-            self.draw_background(renderer, self.bg4, 2, True)
-            self.draw_background(renderer, self.bg3, 2, True)
-            self.draw_background(renderer, self.bg2, 2, False)
-            self.draw_background(renderer, self.bg1, 2, False)
-            self.draw_background(renderer, self.bg2, 2, True)
-            self.draw_background(renderer, self.bg1, 2, True)
-            self.draw_objects(renderer)
+            self.draw_background(self.bg4, 2, False)
+            self.draw_background(self.bg3, 2, False)
+            self.draw_background(self.bg4, 2, True)
+            self.draw_background(self.bg3, 2, True)
+            self.draw_background(self.bg2, 2, False)
+            self.draw_background(self.bg1, 2, False)
+            self.draw_background(self.bg2, 2, True)
+            self.draw_background(self.bg1, 2, True)
+            self.draw_objects()
         elif self._bgmode == 1:
             """
             BG3 tiles with priority 1 if bit 3 of $2105 is set
@@ -397,9 +391,9 @@ class Ppu:
             Sprites with priority 0
             BG3 tiles with priority 0
             """
-            self.draw_background(renderer, self.bg3, 2, False)
+            self.draw_background(self.bg3, 2, False)
             if self._bgpriority == 0:
-                self.draw_background(renderer, self.bg3, 2, True)
+                self.draw_background(self.bg3, 2, True)
             # it seems only bg3 and the sprints are being drawn correctely
             # I suppose its related to bg1 and bg2 being 4bpp (bg3 is 2bpp in this mode)
 
@@ -410,18 +404,16 @@ class Ppu:
             # If I don't succeed, the next idea would be to implement support for
             # importing save state from bnes, so I could be sure the data in memory
             # is right and the problem is I'm interpreting it the wrong way...
-            self.draw_background(renderer, self.bg2, 4, False)
-            self.draw_background(renderer, self.bg1, 4, False)
-            self.draw_background(renderer, self.bg2, 4, True)
-            self.draw_background(renderer, self.bg1, 4, True)
-            self.draw_objects(renderer)
+            self.draw_background(self.bg2, 4, False)
+            self.draw_background(self.bg1, 4, False)
+            self.draw_background(self.bg2, 4, True)
+            self.draw_background(self.bg1, 4, True)
+            self.draw_objects()
             if self._bgpriority == 1:
-                self.draw_background(renderer, self.bg3, 2, True)
-
-        # SDL_RenderPresent(renderer)
+                self.draw_background(self.bg3, 2, True)
 
     def draw_background(
-        self, renderer, bg: Background, bpp: int, priority_selector: bool
+        self, bg: Background, bpp: int, priority_selector: bool
     ) -> None:
         """Draw all tiles from a background"""
         # each individual tile on a background is called a character
@@ -521,7 +513,6 @@ class Ppu:
                     yy_offset += 32 * tile_height
 
                 self.draw_tiles(
-                    renderer=renderer,
                     bpp=bpp,
                     x_offset=xx_offset,
                     y_offset=yy_offset,
@@ -534,7 +525,6 @@ class Ppu:
 
     def draw_tiles(
         self,
-        renderer,
         bpp: int,
         x_offset: int,
         y_offset: int,
@@ -587,7 +577,6 @@ class Ppu:
                         raise RuntimeError(f"Unsupported bpp {bpp}")
 
                 self.draw_tile(
-                    renderer=renderer,
                     tile=tile,
                     tile_data=self.vram[vram_index:],
                     bpp=bpp,
@@ -597,7 +586,6 @@ class Ppu:
 
     def draw_tile(
         self,
-        renderer,
         tile: Union[Tilemap, Object],
         tile_data: bytes,
         bpp: int,
@@ -629,11 +617,10 @@ class Ppu:
 
             # Each iteration will print a pixel from the line
             for pixel, x in zip(pixel_sequence, x_sequence):
-                self.draw_point(renderer, i, tile_data, bpp, tile.palette, pixel, x, y)
+                self.draw_point(i, tile_data, bpp, tile.palette, pixel, x, y)
 
     def draw_point(
         self,
-        renderer,
         i: int,
         tile_data: bytes,
         bpp: int,
@@ -677,16 +664,16 @@ class Ppu:
         The sub screen's backdrop color is known as the fixed color and is set via the 8-bit COLDATA port (2132h).[1][2]
         """
         # TODO this is incorrect. the backdrop color should only be used when all layers above are transparent
-        r, g, b = self.get_rbg_colors(renderer, bpp, 0, 0)
+        r, g, b = self.get_rbg_colors(bpp, 0, 0)
 
         # 00 is considered transparent in all palettes
         if color:
-            r, g, b = self.get_rbg_colors(renderer, bpp, palette, color)
+            r, g, b = self.get_rbg_colors(bpp, palette, color)
 
         # self.vertices = np.append(self.vertices, [x_ndc, y_ndc, 0.0, r, g, b])
         self.vertices.extend([x_ndc, y_ndc, 0.0, r, g, b])
 
-    def get_rbg_colors(self, renderer, bpp: int, palette: int, color: int) -> tuple:
+    def get_rbg_colors(self, bpp: int, palette: int, color: int) -> tuple:
         # 4 colors (2bpp palette) x 2 bytes each color
         palette_index = palette * (bpp ** 2) * 2
         color_index = palette_index + color * 2
@@ -707,7 +694,7 @@ class Ppu:
 
         return r, g, b
 
-    def draw_objects(self, renderer) -> None:
+    def draw_objects(self) -> None:
         # objects are the building blocks for sprites
         # they can move independently from the background and always use 4bpp
         # they can be 8x8, 16x16, 32x32 or 64x64 pixels in size
@@ -723,7 +710,6 @@ class Ppu:
                 tile_width, tile_height = self.get_obj_dimensions(obj.size)
 
                 self.draw_tiles(
-                    renderer=renderer,
                     bpp=4,  # Always 4bpp for objects
                     x_offset=obj.x,
                     y_offset=obj.y,
@@ -876,7 +862,7 @@ def main():
     ppu.tm_set(0x11)
     ppu.ts_set(0x11)
 
-    ppu.render(renderer)
+    ppu.render()
 
     SDL_Delay(5000)
 

@@ -96,6 +96,7 @@ class PySNES:
         # Draw the vertices
         vertices = np.array(self.ppu.vertices, dtype=np.float32)
         self.video.draw_vertices(vertices, 0, 0, 256, 224)
+        self.ppu.vertices.clear()
 
         # Swap buffers
         self.video.update_screen()
@@ -108,7 +109,7 @@ class PySNES:
         """Run a scanline"""
         clocks = self.cpu.run_scanline()
         self.ppu.draw_scanline(clocks)
-        # self.apu.tick(clocks)
+        self.apu.tick(clocks)
 
     def process_inputs(self):
         # Capture inputs from keyboard using SDL
@@ -144,9 +145,6 @@ class PySNES:
 
         # Clear the screen
         gl.glClear(gl.GL_COLOR_BUFFER_BIT)
-
-        # TEST DRAWING
-        self.video.test_draw()
 
         self.ppu.tick(master_cycles)
 

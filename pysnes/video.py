@@ -65,8 +65,6 @@ class Video:
         self.VAO = gl.glGenVertexArrays(1)
         self.VBO = gl.glGenBuffers(1)
 
-        self.y = -1.0
-
     def teardown_sdl(self) -> None:
         self.impl.shutdown()
         sdl.SDL_GL_DeleteContext(self.gl_context)
@@ -139,29 +137,3 @@ class Video:
 
         # Draw the points
         gl.glDrawArrays(gl.GL_POINTS, 0, length)
-
-    def generate_line(self):
-        # Window width in pixels
-        window_width = 1024
-
-        # OpenGL range is -1.0 to 1.0, total range = 2.0
-        opengl_range = 2.0
-
-        # Calculate the point spacing in OpenGL coordinates
-        point_spacing = opengl_range / window_width
-
-        vertices = []
-        for i in range(window_width):
-            # x, y, z, r, g, b
-            point = [i * point_spacing - 1.0, self.y, 0.0, 0.0, 1.0, 0.0]
-            vertices.extend(point)
-        self.y += point_spacing
-        if self.y > 1.0:
-            self.y = -1.0
-
-        return np.array(vertices, dtype=np.float32)
-
-    def test_draw(self):
-        # Define positions and colors for 1024 points
-        vertices = self.generate_line()
-        self.draw_vertices(vertices, 0, 0, 1024, 1024)

@@ -418,7 +418,7 @@ class Ppu:
             if self._bgpriority == 1:
                 self.draw_background(renderer, self.bg3, 2, True)
 
-        SDL_RenderPresent(renderer)
+        # SDL_RenderPresent(renderer)
 
     def draw_background(
         self, renderer, bg: Background, bpp: int, priority_selector: bool
@@ -625,9 +625,7 @@ class Ppu:
 
             # ugly hack to only draw the current scanline
             if y != self.v_counter:
-                #print(f"y={y} != self.v_counter={self.v_counter}")
                 continue
-            #print(f"rendering y={y}")
 
             # Each iteration will print a pixel from the line
             for pixel, x in zip(pixel_sequence, x_sequence):
@@ -669,20 +667,21 @@ class Ppu:
 
         x_ndc = 2.0 * (x / SCREEN_WIDTH) - 1.0
         y_ndc = 1.0 - 2.0 * (y / SCREEN_HEIGHT)
-        r, g, b = 0.0, 0.0, 0.0  # TODO default color to black for now
+
+        """
+        https://sneslab.net/wiki/Backdrop_Color
+        A Backdrop Color is one that appears behind all other layers. The SNES has two backdrop colors:
+        one for the Main Screen and one for the Sub Screen.
+
+        The main screen's backdrop color is known as color 0 and is the very first entry of CGRAM.
+        The sub screen's backdrop color is known as the fixed color and is set via the 8-bit COLDATA port (2132h).[1][2]
+        """
+        # TODO this is incorrect. the backdrop color should only be used when all layers above are transparent
+        r, g, b = self.get_rbg_colors(renderer, bpp, 0, 0)
 
         # 00 is considered transparent in all palettes
         if color:
-            r_5bit, g_5bit, b_5bit = self.get_rbg_colors(renderer, bpp, palette, color)
-
-            r_8bit = (r_5bit * 255) // 31
-            g_8bit = (g_5bit * 255) // 31
-            b_8bit = (b_5bit * 255) // 31
-
-            # normalize to [0, 1] for OpenGL
-            r = r_8bit / 255
-            g = g_8bit / 255
-            b = b_8bit / 255
+            r, g, b = self.get_rbg_colors(renderer, bpp, palette, color)
 
         # self.vertices = np.append(self.vertices, [x_ndc, y_ndc, 0.0, r, g, b])
         self.vertices.extend([x_ndc, y_ndc, 0.0, r, g, b])
@@ -692,27 +691,21 @@ class Ppu:
         palette_index = palette * (bpp ** 2) * 2
         color_index = palette_index + color * 2
         data = self.cgram[color_index] | self.cgram[color_index + 1] << 8
-        r = data >> 0 & 0x1F
-        g = data >> 5 & 0x1F
-        b = data >> 10 & 0x1F
+
+        r_5bit = data >> 0 & 0x1F
+        g_5bit = data >> 5 & 0x1F
+        b_5bit = data >> 10 & 0x1F
+
+        r_8bit = (r_5bit * 255) // 31
+        g_8bit = (g_5bit * 255) // 31
+        b_8bit = (b_5bit * 255) // 31
+
+        # normalize to [0, 1] for OpenGL
+        r = r_8bit / 255
+        g = g_8bit / 255
+        b = b_8bit / 255
+
         return r, g, b
-
-        # alpha = SDL_ALPHA_OPAQUE if color else SDL_ALPHA_TRANSPARENT
-        # TODO Try to enable again when all background are being rendered
-        alpha = SDL_ALPHA_OPAQUE
-        # Multiply the colors to make them more vibrant
-        brightness = self.display_brightness // 15
-        color_multiplier = 8 * brightness
-
-        # gl.glColor3f(1.0, 1.0, 1.0)
-        # gl.glColor3f(r * color_multiplier, g * color_multiplier, b * color_multiplier)
-        # SDL_SetRenderDrawColor(
-        #     renderer,
-        #     r * color_multiplier,
-        #     g * color_multiplier,
-        #     b * color_multiplier,
-        #     alpha,
-        # )
 
     def draw_objects(self, renderer) -> None:
         # objects are the building blocks for sprites

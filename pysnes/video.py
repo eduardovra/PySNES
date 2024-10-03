@@ -33,6 +33,10 @@ void main() {
 
 
 class Video:
+
+    WINDOW_WIDTH = 1024
+    WINDOW_HEIGHT = 1024
+
     def initialize(self) -> None:
         sdl.SDL_Init(sdl.SDL_INIT_VIDEO)
 
@@ -50,13 +54,21 @@ class Video:
         sdl.SDL_SetHint(sdl.SDL_HINT_MAC_CTRL_CLICK_EMULATE_RIGHT_CLICK, b"1")
         sdl.SDL_SetHint(sdl.SDL_HINT_VIDEO_HIGHDPI_DISABLED, b"1")
 
-        self.window = sdl.SDL_CreateWindow(b"PySNES", 0, 0, 1024, 1024, sdl.SDL_WINDOW_SHOWN | sdl.SDL_WINDOW_OPENGL)
+        self.window = sdl.SDL_CreateWindow(
+            b"PySNES",
+            0, 0, self.WINDOW_WIDTH, self.WINDOW_HEIGHT,
+            sdl.SDL_WINDOW_SHOWN | sdl.SDL_WINDOW_OPENGL,
+        )
 
         self.gl_context = sdl.SDL_GL_CreateContext(self.window)
         sdl.SDL_GL_MakeCurrent(self.window, self.gl_context)
-        assert sdl.SDL_GL_SetSwapInterval(1) == 0
+        assert sdl.SDL_GL_SetSwapInterval(1) == 0, sdl.SDL_GetError()
         self.imgui_context = imgui.create_context()
         self.impl = SDL2Renderer(self.window)
+
+        # This will unlock framerate since opengl won't wait until vsync each frame anymore
+        # 0 for immediate updates, 1 for updates synchronized with the vertical retrace, -1 for adaptive vsync.
+        assert sdl.SDL_GL_SetSwapInterval(0) == 0, sdl.SDL_GetError()
 
         self.shader_program = self.create_shader_program()
 

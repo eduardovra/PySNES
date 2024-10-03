@@ -71,9 +71,9 @@ class Tilemap_(LittleEndianStructure):
 class Tilemap:
     addr: int
     palette: int
-    priority: int
-    h_flip: int
-    v_flip: int
+    priority: bool
+    h_flip: bool
+    v_flip: bool
 
     @classmethod
     def from_buffer(cls, data: bytearray, addr: int) -> "Tilemap":
@@ -82,9 +82,9 @@ class Tilemap:
         return cls(
             addr=(high & 3) << 8 | low,
             palette=(high >> 2) & 7,
-            priority=(high >> 5) & 1,
-            h_flip=(high >> 6) & 1,
-            v_flip=(high >> 7) & 1,
+            priority=bool((high >> 5) & 1),
+            h_flip=bool((high >> 6) & 1),
+            v_flip=bool((high >> 7) & 1),
         )
 
 

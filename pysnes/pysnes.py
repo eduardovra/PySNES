@@ -1,10 +1,10 @@
 import argparse
 from ctypes import byref
 import time
+from enum import IntEnum
 
 import sdl2 as sdl
 import imgui
-import OpenGL.GL as gl
 import numpy as np
 from rich import print
 
@@ -16,6 +16,12 @@ from .ppu import Ppu
 from .controller import Controller
 from .video import Video
 from .trace_matcher import check_trace_line
+
+
+class States(IntEnum):
+    RESET = 0
+    RUNNING_SCANLINES = 1
+    RENDER_GAME_SCREEN = 2
 
 
 class PySNES:
@@ -41,6 +47,11 @@ class PySNES:
         # Emulator state variables
         self.running = True
         self.paused = False
+        self.state = States.RESET
+        self.loop_time = 0.0
+        self.loop_fps = 0.0
+        self.frame_time = 0.0
+        self.frame_fps = 0.0
 
     def create_gui(self) -> None:
         # possible way to render game to imgui window
@@ -59,6 +70,10 @@ class PySNES:
 
         is_open, is_visible = imgui.begin("CPU Registers", True)
         if is_open:
+            imgui.text(f"Loop time: {self.loop_time:.4f}")
+            imgui.text(f"Loops per sec: {self.loop_fps:.4f}")
+            imgui.text(f"Frame time: {self.frame_time:.4f}")
+            imgui.text(f"Frames per sec: {self.frame_fps:.4f}")
             imgui.text(f"PC: 0x{self.cpu.PC.value:06X}")
             imgui.text(f"A: 0x{self.cpu.A.value:04X}")
             imgui.text(f"X: 0x{self.cpu.X.value:04X}")
@@ -72,38 +87,57 @@ class PySNES:
 
     def main(self):
         """Main loop"""
+
+        # Main state machine
         while self.running:
-            self.run_frame()
+            loop_start = time.time()
 
-    def run_frame(self):
-        """Run a frame"""
-        start = time.time()
+            if self.state == States.RESET:
+                self.frame_start = time.time()
+                self.scanline = 0
+                self.ppu.vertices.clear()
+                self.state = States.RUNNING_SCANLINES
 
-        """
-        Visible scanlines (NTSC): 224 (or 239 in high-res mode).
-        Total scanlines (NTSC): 262.
-        Total scanlines (PAL): 312.
-        """
-        for scanline in range(262):
-            self.run_scanline()
+            elif self.state == States.RUNNING_SCANLINES and not self.paused:
+                # Run one scanline on the CPU, PPU and APU
+                self.run_scanline()
+                self.scanline += 1
 
-        # Pool inputs
-        self.process_inputs()
+                """
+                Visible scanlines (NTSC): 224 (or 239 in high-res mode).
+                Total scanlines (NTSC): 262.
+                Total scanlines (PAL): 312.
+                """
+                if self.scanline == 262:
+                    self.state = States.RENDER_GAME_SCREEN
 
-        # Create ImGUI components
-        self.create_gui()
+            elif self.state == States.RENDER_GAME_SCREEN and not self.paused:
+                # Draw the vertices
+                vertices = np.array(self.ppu.vertices, dtype=np.float32)
+                self.video.draw_vertices(vertices, 0, 1024 - 224, 256, 224)
+                self.state = States.RESET
 
-        # Draw the vertices
-        vertices = np.array(self.ppu.vertices, dtype=np.float32)
-        self.video.draw_vertices(vertices, 0, 1024 - 224, 256, 224)
-        self.ppu.vertices.clear()
+                # Calculate frame time
+                self.frame_end = time.time()
+                self.frame_time = self.frame_end - self.frame_start
+                self.frame_fps = 1 / self.frame_time
 
-        # Swap buffers
-        self.video.update_screen()
+            # Pool inputs
+            self.process_inputs()
 
-        # Calculate frame time
-        end = time.time(); frame_time = end - start; fps = 1 / frame_time
-        print(f"Frame time: {frame_time:.4f}, FPS: {fps:.4f}")
+            # Create ImGUI components
+            self.create_gui()
+
+            # Swap buffers
+            self.video.update_screen()
+
+            # Calculate loop time
+            loop_end = time.time()
+            self.loop_time = loop_end - loop_start
+            self.loop_fps = 1 / self.loop_time
+
+        # Broken out of main loop
+        self.video.teardown_sdl()
 
     def run_scanline(self):
         """Run a scanline"""

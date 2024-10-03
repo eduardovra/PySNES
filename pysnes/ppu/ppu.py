@@ -568,7 +568,8 @@ class Ppu:
 
                 self.draw_tile(
                     tile=tile,
-                    tile_data=self.vram[vram_index:],
+                    tile_data=self.vram,
+                    tile_data_index=vram_index,
                     bpp=bpp,
                     x_offset=x,
                     y_offset=y,
@@ -578,6 +579,7 @@ class Ppu:
         self,
         tile: Union[Tilemap, Object],
         tile_data: bytes,
+        tile_data_index: int,
         bpp: int,
         x_offset: int,
         y_offset: int,
@@ -607,12 +609,13 @@ class Ppu:
 
             # Each iteration will print a pixel from the line
             for pixel, x in zip(pixel_sequence, x_sequence):
-                self.draw_point(i, tile_data, bpp, tile.palette, pixel, x, y)
+                self.draw_point(i, tile_data, tile_data_index, bpp, tile.palette, pixel, x, y)
 
     def draw_point(
         self,
         i: int,
         tile_data: bytes,
+        tile_data_index: int,
         bpp: int,
         palette: int,
         pixel: int,
@@ -626,6 +629,9 @@ class Ppu:
         # 8 most significant bits
         mask = 1 << pixel
         assert bpp in (2, 4), bpp
+
+        # offset to the correct vram byte
+        i += tile_data_index
 
         # 2bpp
         l, h = tile_data[i + 0], tile_data[i + 1]

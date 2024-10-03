@@ -412,9 +412,7 @@ class Ppu:
             if self._bgpriority == 1:
                 self.draw_background(self.bg3, 2, True)
 
-    def draw_background(
-        self, bg: Background, bpp: int, priority_selector: bool
-    ) -> None:
+    def draw_background(self, bg: Background, bpp: int, priority_selector: bool) -> None:
         """Draw all tiles from a background"""
         # each individual tile on a background is called a character
         # they can be 8x8, 16x16 or 16x8 pixels

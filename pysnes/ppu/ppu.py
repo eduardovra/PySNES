@@ -288,9 +288,6 @@ class Ppu:
         self.bg4.sub_screen_enable = bool(data >> 3 & 1)
         self.oam_sub_screen_enable = bool(data >> 4 & 1)
 
-    def draw_scanline(self, clock_cycles: int):
-        self.tick(clock_cycles)
-
     def tick(self, master_cycles: int = 2) -> None:
         """
         https://wiki.superfamicom.org/timing
@@ -304,7 +301,6 @@ class Ppu:
         Each frame should be drawn every 16.6ms
         Each scanline should be drawn every 63.5us
         """
-        # self.ticks += 1
         self.line_clocks += master_cycles
         self.h_counter = self.line_clocks // 4  # Each dot takes ~4 master cycles
 
@@ -318,7 +314,6 @@ class Ppu:
 
         # Wrap V counter
         if self.v_counter == 262:
-            self.update_screen()
             # V counter range is 0-261, but visible part is 1-224
             self.v_counter = 0
             # Flip even/odd frame
@@ -332,9 +327,6 @@ class Ppu:
         self.cpu.status.v_blank_on = not (1 <= self.v_counter <= 224)
         # NMI line
         self.cpu.status.nmi_line = self.cpu.status.v_blank_on
-
-    def update_screen(self):
-        """Update screen image with buffer"""
 
     def render_scanline(self):
         """Render current scanline in self.v_counter"""

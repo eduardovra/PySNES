@@ -93,7 +93,7 @@ class PySNES:
             loop_start = time.time()
 
             if self.state == States.RESET:
-                self.frame_start = time.time()
+                frame_start = time.time()
                 self.scanline = 0
                 self.ppu.vertices.clear()
                 self.state = States.RUNNING_SCANLINES
@@ -118,8 +118,7 @@ class PySNES:
                 self.state = States.RESET
 
                 # Calculate frame time
-                self.frame_end = time.time()
-                self.frame_time = self.frame_end - self.frame_start
+                self.frame_time = time.time() - frame_start
                 self.frame_fps = 1 / self.frame_time
 
             # Pool inputs
@@ -132,8 +131,7 @@ class PySNES:
             self.video.update_screen()
 
             # Calculate loop time
-            loop_end = time.time()
-            self.loop_time = loop_end - loop_start
+            self.loop_time = time.time() - loop_start
             self.loop_fps = 1 / self.loop_time
 
         # Broken out of main loop
@@ -142,7 +140,7 @@ class PySNES:
     def run_scanline(self):
         """Run a scanline"""
         clocks = self.cpu.run_scanline()
-        self.ppu.draw_scanline(clocks)
+        self.ppu.tick(clocks)
         self.apu.tick(clocks)
 
     def process_inputs(self):

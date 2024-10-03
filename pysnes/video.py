@@ -33,7 +33,6 @@ void main() {
 
 
 class Video:
-
     def initialize(self) -> None:
         sdl.SDL_Init(sdl.SDL_INIT_VIDEO)
 

@@ -432,17 +432,18 @@ class Ppu:
             offset += (scrx // 256) * 0x400
             offset += (bg_size_w // 64) * ((scry // 256) * 0x800)
 
-            screen_addr = (bg.screen_addr * 2) & 0xFFFF
+            screen_addr = bg.screen_addr & 0xFFFF
+            tilemap_addr = (screen_addr + offset) * 2 & 0xFFFF
 
-            tilemap = Tilemap.from_buffer(self.vram, (screen_addr + offset * 2) & 0xffff)
+            tilemap = Tilemap.from_buffer(self.vram, tilemap_addr)
             if tilemap.priority == priority_selector:
                 i = scry % 8
                 j = scrx % 8
                 v_shift = i + (-i + 7 - i) * tilemap.v_flip
                 h_shift = (7 - j) + (2 * j - 7) * tilemap.h_flip
-                tile_address = tilemap.addr * 8 + (bg.tiledata_addr * 1) + v_shift
-                b_hi = self.vram[tile_address * 2] >> 8
-                b_lo = self.vram[tile_address * 2] & 0xff
+                tile_address = (tilemap.addr * 8 + (bg.tiledata_addr * 2) + v_shift) * 2
+                b_lo = self.vram[tile_address]
+                b_hi = self.vram[tile_address + 1]
                 v = ((b_lo >> h_shift) & 1) + (2 * ((b_hi >> h_shift) & 1))
 
                 # writeToFB(BG, orgx, orgy, texture_width, getRGBAFromCGRAM(v, b_palette_nr, 2, palette_offset))

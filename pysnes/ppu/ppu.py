@@ -360,14 +360,14 @@ class Ppu:
         BG4 tiles with priority 0
         """
         if self._bgmode == 0:
-            self.draw_background(self.bg4, 2, False)
-            self.draw_background(self.bg3, 2, False)
-            self.draw_background(self.bg4, 2, True)
-            self.draw_background(self.bg3, 2, True)
-            self.draw_background(self.bg2, 2, False)
-            self.draw_background(self.bg1, 2, False)
-            self.draw_background(self.bg2, 2, True)
-            self.draw_background(self.bg1, 2, True)
+            self.draw_background_scanline(self.bg4, 2, False)
+            self.draw_background_scanline(self.bg3, 2, False)
+            self.draw_background_scanline(self.bg4, 2, True)
+            self.draw_background_scanline(self.bg3, 2, True)
+            self.draw_background_scanline(self.bg2, 2, False)
+            self.draw_background_scanline(self.bg1, 2, False)
+            self.draw_background_scanline(self.bg2, 2, True)
+            self.draw_background_scanline(self.bg1, 2, True)
             self.draw_objects()
         elif self._bgmode == 1:
             """
@@ -404,6 +404,70 @@ class Ppu:
             if self._bgpriority == 1:
                 self.draw_background(self.bg3, 2, True)
 
+    def draw_background_scanline(self, bg: Background, bpp: int, priority_selector: bool) -> None:
+        scanline = self.v_counter  # TODO move to method argument
+
+        assert bpp == 2, "Only 2bpp supported"
+        assert bg.sub_screen_enable is False, "Sub screen not implemented"
+
+        if not bg.main_screen_enable:
+            return
+
+        # Find the tilemap entry for the requested screen position
+
+        # Assuming 256 dots per scanline
+        for dot in range(256):
+            # Calculate the tilemap entry address in VRAM
+            scrx, scry = dot, scanline
+
+            # To find the tilemap word address for a particular tile (X and Y), you'd use a
+            # formula something like this:
+            # (Addr<<9) + ((Y&0x1f)<<5) + (X&0x1f) +
+            #     (SY ? ((Y&0x20)<<(SX ? 6 : 5)) : 0) + (SX ? ((X&0x20)<<5) : 0)
+
+            bg_size_w = 32 << (bg.screen_size & 1)
+
+            offset = ((scry % 256 if bg_size_w == 64 else scry) // 8) * 32
+            offset += ((scrx % 256) // 8)
+            offset += (scrx // 256) * 0x400
+            offset += (bg_size_w // 64) * ((scry // 256) * 0x800)
+
+            screen_addr = (bg.screen_addr * 2) & 0xFFFF
+
+            tilemap = Tilemap.from_buffer(self.vram, (screen_addr + offset * 2) & 0xffff)
+            if tilemap.priority == priority_selector:
+                i = scry % 8
+                j = scrx % 8
+                v_shift = i + (-i + 7 - i) * tilemap.v_flip
+                h_shift = (7 - j) + (2 * j - 7) * tilemap.h_flip
+                tile_address = tilemap.addr * 8 + (bg.tiledata_addr * 1) + v_shift
+                b_hi = self.vram[tile_address * 2] >> 8
+                b_lo = self.vram[tile_address * 2] & 0xff
+                v = ((b_lo >> h_shift) & 1) + (2 * ((b_hi >> h_shift) & 1))
+
+                # writeToFB(BG, orgx, orgy, texture_width, getRGBAFromCGRAM(v, b_palette_nr, 2, palette_offset))
+                # r = FIVEBIT_TO_EIGHTBIT_LUT[(v >> 1) & 0b11111];
+                # g = FIVEBIT_TO_EIGHTBIT_LUT[(v >> 6) & 0b11111];
+                # b = FIVEBIT_TO_EIGHTBIT_LUT[(v >> 11) & 0b11111];
+                # a = ALPHA_LUT[(v & 1)];
+                # BG[y * width + x] = r | (g << 8) | (b << 16) | (a << 24);
+
+                # SNES default resolution (NTSC)
+                SCREEN_WIDTH = 256
+                SCREEN_HEIGHT = 224
+                # For PAL mode:
+                # SCREEN_HEIGHT = 240
+
+                x_ndc = 2.0 * (scrx / SCREEN_WIDTH) - 1.0
+                y_ndc = 1.0 - 2.0 * (scry / SCREEN_HEIGHT)
+
+                if v:
+                    r, g, b = self.get_rbg_colors(bpp, tilemap.palette, v)
+                else:
+                    r, g, b = self.get_rbg_colors(bpp, 0, 0)
+
+                self.vertices.extend([x_ndc, y_ndc, 0.0, r, g, b])
+
     def draw_background(self, bg: Background, bpp: int, priority_selector: bool) -> None:
         """Draw all tiles from a background"""
         # each individual tile on a background is called a character
@@ -415,9 +479,9 @@ class Ppu:
         # are part of the bg and also how they should be displayed. it's stored in vram
         # All tilemaps are 32x32 tiles
 
-        # TODO leaving this commented as background 2 is not enabled for some reason...
-        #if not bg.main_screen_enable:
-        #    return
+        # TODO only the main screen is being drawn at the moment
+        if not bg.main_screen_enable:
+            return
 
         # I came to the conclusion that voffset was a 9 bit
         # number stored in two's complement format (can be negative)
@@ -436,13 +500,16 @@ class Ppu:
 
         # ok so it seems the section bellow iterates over the tilemaps
         # which have fixed data lengths, hence the hardcoded sizes make sense
-        line_start = (
-            bg.screen_addr * 2
-        ) & 0xFFFF  # Each addr corresponds to 2 bytes in VRAM
+        line_start = (bg.screen_addr * 2) & 0xFFFF  # Each addr corresponds to 2 bytes in VRAM
 
-        tile_width, tile_height = 8 << bg.tile_size, 8 << bg.tile_size  # 8 or 16 when tile_size bit set
+        # Tile width and height in pixels (8 or 16 pixels)
+        tile_width, tile_height = 8 << bg.tile_size, 8 << bg.tile_size
 
+        # I think this is the total number of characters in the background
+        # and it could be 32 or 64 in width or height, according to bg.screen_size
         x_y_positions = [(x, y) for x in range(32) for y in range(32)]
+
+        # List of tiles that will be sent for drawing
         tiles: List[Tile] = []
 
         if bg.screen_size == 0:

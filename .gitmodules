@@ -4,3 +4,6 @@
 [submodule "submodules/SNES"]
 	path = submodules/SNES
 	url = git@github.com:PeterLemon/SNES.git
+[submodule "submodules/snes-test-roms"]
+	path = submodules/snes-test-roms
+	url = https://gitlab.com/higan/snes-test-roms.git

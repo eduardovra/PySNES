@@ -169,10 +169,10 @@ def main():
     # rom = "roms/snes_adc_sbc/test_adc.smc"
     rom = "roms/SNES Test Program .smc"  # Lots of ppu tests
     rom = "roms/SNES Test Program.sfc"
-    # rom = "/home/eduardovra/workspace/snes-test-roms/jonasquinn-test-roms/test_oam/test_oam.smc"
-    # rom = "/home/eduardovra/workspace/snes-test-roms/jonasquinn-test-roms/snes_adc_sbc/test_adc.smc"
-    # rom = "/home/eduardovra/workspace/snes-test-roms/jonasquinn-test-roms/test_hdma/test_hdmasync.smc"
-    # rom = "/home/eduardovra/workspace/snes-test-roms/jonasquinn-test-roms/test_dmatiming/demo.smc"
+    # rom = "submodules/snes-test-roms/jonasquinn-test-roms/test_oam/test_oam.smc"
+    # rom = "submodules/snes-test-roms/jonasquinn-test-roms/snes_adc_sbc/test_adc.smc"
+    # rom = "submodules/snes-test-roms/jonasquinn-test-roms/test_hdma/test_hdmasync.smc"
+    # rom = "submodules/snes-test-roms/jonasquinn-test-roms/test_dmatiming/demo.smc"
 
     rom = "submodules/SNES/CPUTest/CPU/ADC/CPUADC.sfc"
     # rom = "submodules/SNES/CPUTest/CPU/AND/CPUAND.sfc"
@@ -223,7 +223,7 @@ def main():
     pysnes = PySNES(rom)
 
     # add trace crosscheck
-    # trace_file = "/home/eduardovra/workspace/snes-test-roms/PeterLemon/SNES-CPUTest-CPU/ADC/CPUADC-trace.log"
+    # trace_file = "submodules/snes-test-roms/PeterLemon/SNES-CPUTest-CPU/ADC/CPUADC-trace.log"
     # with open(trace_file, "r") as f:
     #     while line := f.readline():
     #         check_trace_line(line, pysnes.cpu)

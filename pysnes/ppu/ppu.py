@@ -7,6 +7,12 @@ import numpy as np
 
 from .data_structures import *
 
+# SNES default resolution (NTSC)
+SCREEN_WIDTH = 256
+SCREEN_HEIGHT = 224
+# For PAL mode:
+# SCREEN_HEIGHT = 240
+
 
 class Ppu:
     """
@@ -56,10 +62,10 @@ class Ppu:
 
         # Background
         self._bgmode = 0x00
-        self.bg1 = Background()
-        self.bg2 = Background()
-        self.bg3 = Background()
-        self.bg4 = Background()
+        self.bg1 = Background(color_offset_mode_0=0x00)
+        self.bg2 = Background(color_offset_mode_0=0x20)
+        self.bg3 = Background(color_offset_mode_0=0x40)
+        self.bg4 = Background(color_offset_mode_0=0x60)
 
         self.latch_bgofs_ppu1 = 0
         self.latch_bgofs_ppu2 = 0
@@ -360,6 +366,7 @@ class Ppu:
         BG4 tiles with priority 0
         """
         if self._bgmode == 0:
+            self.draw_scanline_backdrop()
             self.draw_background_scanline(self.bg4, 2, False)
             self.draw_background_scanline(self.bg3, 2, False)
             self.draw_background_scanline(self.bg4, 2, True)
@@ -403,6 +410,20 @@ class Ppu:
             self.draw_objects()
             if self._bgpriority == 1:
                 self.draw_background(self.bg3, 2, True)
+
+    def draw_scanline_backdrop(self) -> None:
+        """Draw the backdrop color for the current scanline"""
+        r, g, b = self.get_rbg_backdrop_color()
+
+        x_ndc = 2.0 * (0 / SCREEN_WIDTH) - 1.0
+        y_ndc = 1.0 - 2.0 * (self.v_counter / SCREEN_HEIGHT)
+
+        # Assuming 256 dots per scanline
+        for scrx in range(SCREEN_WIDTH):
+            x_ndc = 2.0 * (scrx / SCREEN_WIDTH) - 1.0
+            y_ndc = 1.0 - 2.0 * (self.v_counter / SCREEN_HEIGHT)
+
+            self.vertices.extend([x_ndc, y_ndc, 0.0, r, g, b])
 
     def draw_background_scanline(self, bg: Background, bpp: int, priority_selector: bool) -> None:
         scanline = self.v_counter  # TODO move to method argument
@@ -453,21 +474,15 @@ class Ppu:
                 # a = ALPHA_LUT[(v & 1)];
                 # BG[y * width + x] = r | (g << 8) | (b << 16) | (a << 24);
 
-                # SNES default resolution (NTSC)
-                SCREEN_WIDTH = 256
-                SCREEN_HEIGHT = 224
-                # For PAL mode:
-                # SCREEN_HEIGHT = 240
-
-                x_ndc = 2.0 * (scrx / SCREEN_WIDTH) - 1.0
-                y_ndc = 1.0 - 2.0 * (scry / SCREEN_HEIGHT)
-
                 if v:
-                    r, g, b = self.get_rbg_colors(bpp, tilemap.palette, v)
-                else:
-                    r, g, b = self.get_rbg_colors(bpp, 0, 0)
+                    # Special case for BG2-BG4 in Mode 0
+                    color_offset = bg.color_offset_mode_0 if self._bgmode == 0 else 0
+                    r, g, b = self.get_rbg_colors(bpp, tilemap.palette, v, color_offset)
 
-                self.vertices.extend([x_ndc, y_ndc, 0.0, r, g, b])
+                    x_ndc = 2.0 * (scrx / SCREEN_WIDTH) - 1.0
+                    y_ndc = 1.0 - 2.0 * (scry / SCREEN_HEIGHT)
+
+                    self.vertices.extend([x_ndc, y_ndc, 0.0, r, g, b])
 
     def draw_background(self, bg: Background, bpp: int, priority_selector: bool) -> None:
         """Draw all tiles from a background"""
@@ -710,12 +725,6 @@ class Ppu:
 
         # NOTE: I guess this is GL_RGB5?
 
-        # SNES default resolution (NTSC)
-        SCREEN_WIDTH = 256
-        SCREEN_HEIGHT = 224
-        # For PAL mode:
-        # SCREEN_HEIGHT = 240
-
         x_ndc = 2.0 * (x / SCREEN_WIDTH) - 1.0
         y_ndc = 1.0 - 2.0 * (y / SCREEN_HEIGHT)
 
@@ -737,12 +746,32 @@ class Ppu:
         # self.vertices = np.append(self.vertices, [x_ndc, y_ndc, 0.0, r, g, b])
         self.vertices.extend([x_ndc, y_ndc, 0.0, r, g, b])
 
-    def get_rbg_colors(self, bpp: int, palette: int, color: int) -> tuple:
+    def get_rbg_colors(self, bpp: int, palette: int, color: int, color_offset: int = 0) -> tuple:
         # 4 colors (2bpp palette) x 2 bytes each color
-        palette_index = palette * (bpp ** 2) * 2
-        color_index = palette_index + color * 2
+        palette_index = palette * (bpp ** 2)
+        color_index = palette_index + color
+        color_index += color_offset  # CGRAM offset for BG2, BG3, BG4 in mode 0
+        color_index *= 2  # 2 bytes per color
         data = self.cgram[color_index] | self.cgram[color_index + 1] << 8
 
+        r_5bit = data >> 0 & 0x1F
+        g_5bit = data >> 5 & 0x1F
+        b_5bit = data >> 10 & 0x1F
+
+        r_8bit = (r_5bit * 255) // 31
+        g_8bit = (g_5bit * 255) // 31
+        b_8bit = (b_5bit * 255) // 31
+
+        # normalize to [0, 1] for OpenGL
+        r = r_8bit / 255
+        g = g_8bit / 255
+        b = b_8bit / 255
+
+        return r, g, b
+
+    def get_rbg_backdrop_color(self) -> tuple:
+        """Return backdrop color for the main screen. It is always the first color in CGRAM"""
+        data = self.cgram[0] | self.cgram[1] << 8
         r_5bit = data >> 0 & 0x1F
         g_5bit = data >> 5 & 0x1F
         b_5bit = data >> 10 & 0x1F

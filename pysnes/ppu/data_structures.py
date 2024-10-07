@@ -34,6 +34,27 @@ class Background:
     hoffset = 0
     voffset = 0
 
+    color_offset_mode_0: int = 0
+    """
+    CGRAM Palette Entries
+        15    Not used (should be zero) (read: PPU2 Open Bus)
+        14-10 Blue
+        9-5   Green
+        4-0   Red
+
+    CGRAM Palette Indices
+        00h      Main Backdrop color (used when all BG/OBJ pixels are transparent)
+        01h-FFh  256-color BG palette (when not using direct-color mode)
+        01h-7Fh  128-color BG palette (BG2 in Mode 7)
+        01h-7Fh  Eight 16-color BG palettes
+        01h-1Fh  Eight 4-color BG palettes (except BG2-4 in Mode 0)
+        21h-3Fh  Eight 4-color BG palettes (BG2 in Mode 0 only)
+        41h-5Fh  Eight 4-color BG palettes (BG3 in Mode 0 only)
+        61h-7Fh  Eight 4-color BG palettes (BG4 in Mode 0 only)
+        81h-FFh  Eight 16-color OBJ palettes (half of them with color-math disabled)
+        N/A      Sub Backdrop color (not in CGRAM, set via COLDATA, Port 2132h)
+    """
+
 
 @dataclass
 class Object:

@@ -1,3 +1,6 @@
 [submodule "ProcessorTests"]
-	path = ProcessorTests
+	path = submodules/ProcessorTests
 	url = git@github.com:TomHarte/ProcessorTests.git
+[submodule "submodules/SNES"]
+	path = submodules/SNES
+	url = git@github.com:PeterLemon/SNES.git

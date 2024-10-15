@@ -62,10 +62,10 @@ class Ppu:
 
         # Background
         self._bgmode = 0x00
-        self.bg1 = Background(color_offset_mode_0=0x00)
-        self.bg2 = Background(color_offset_mode_0=0x20)
-        self.bg3 = Background(color_offset_mode_0=0x40)
-        self.bg4 = Background(color_offset_mode_0=0x60)
+        self.bg1 = Background(number=1, color_offset_mode_0=0x00)
+        self.bg2 = Background(number=2, color_offset_mode_0=0x20)
+        self.bg3 = Background(number=3, color_offset_mode_0=0x40)
+        self.bg4 = Background(number=4, color_offset_mode_0=0x60)
 
         self.latch_bgofs_ppu1 = 0
         self.latch_bgofs_ppu2 = 0
@@ -80,6 +80,8 @@ class Ppu:
         self.frames = 0  # total frames rendered
         # self.vertices = np.array([], dtype=np.float32)
         self.vertices = []
+        self.main_bgs = [[0x00] * 256 * 262, [0x00] * 256 * 262, [0x00] * 256 * 262, [0x00] * 256 * 262]
+        self.main_backdrop = [0x00] * 256 * 262  # 262 was 239 before
 
     def inidisp_set(self, data: int) -> None:
         # TODO reset OAM addr if writing while on first blank line
@@ -414,16 +416,20 @@ class Ppu:
     def draw_scanline_backdrop(self) -> None:
         """Draw the backdrop color for the current scanline"""
         r, g, b = self.get_rbg_backdrop_color()
+        u32_color = self.get_u32_backdrop_color()
 
-        x_ndc = 2.0 * (0 / SCREEN_WIDTH) - 1.0
+        # x_ndc = 2.0 * (0 / SCREEN_WIDTH) - 1.0
         y_ndc = 1.0 - 2.0 * (self.v_counter / SCREEN_HEIGHT)
 
         # Assuming 256 dots per scanline
         for scrx in range(SCREEN_WIDTH):
             x_ndc = 2.0 * (scrx / SCREEN_WIDTH) - 1.0
-            y_ndc = 1.0 - 2.0 * (self.v_counter / SCREEN_HEIGHT)
+            # y_ndc = 1.0 - 2.0 * (self.v_counter / SCREEN_HEIGHT)
 
             self.vertices.extend([x_ndc, y_ndc, 0.0, r, g, b])
+
+            x, y, width = scrx, self.v_counter, SCREEN_WIDTH
+            self.main_backdrop[y * width + x] = u32_color
 
     def draw_background_scanline(self, bg: Background, bpp: int, priority_selector: bool) -> None:
         scanline = self.v_counter  # TODO move to method argument
@@ -483,6 +489,12 @@ class Ppu:
                     y_ndc = 1.0 - 2.0 * (scry / SCREEN_HEIGHT)
 
                     self.vertices.extend([x_ndc, y_ndc, 0.0, r, g, b])
+
+                color_offset = bg.color_offset_mode_0 if self._bgmode == 0 else 0
+                u32_color = self.get_u32_color(bpp, tilemap.palette, v, color_offset)
+                x, y, width = scrx, scry, SCREEN_WIDTH
+                main_bg = self.main_bgs[bg.number - 1]
+                main_bg[y * width + x] = u32_color
 
     def draw_background(self, bg: Background, bpp: int, priority_selector: bool) -> None:
         """Draw all tiles from a background"""
@@ -769,6 +781,24 @@ class Ppu:
 
         return r, g, b
 
+    def get_u32_color(self, bpp: int, palette: int, color: int, color_offset: int = 0) -> int:
+        palette_index = palette * (bpp ** 2)
+        color_index = palette_index + color
+        color_index += color_offset  # CGRAM offset for BG2, BG3, BG4 in mode 0
+        color_index *= 2  # 2 bytes per color
+        data = self.cgram[color_index] | self.cgram[color_index + 1] << 8
+
+        r_5bit = data >> 0 & 0x1F
+        g_5bit = data >> 5 & 0x1F
+        b_5bit = data >> 10 & 0x1F
+
+        r_8bit = (r_5bit * 255) // 31
+        g_8bit = (g_5bit * 255) // 31
+        b_8bit = (b_5bit * 255) // 31
+        a_8bit = 255 if color else 0
+
+        return r_8bit | (g_8bit << 8) | (b_8bit << 16) | (a_8bit << 24)
+
     def get_rbg_backdrop_color(self) -> tuple:
         """Return backdrop color for the main screen. It is always the first color in CGRAM"""
         data = self.cgram[0] | self.cgram[1] << 8
@@ -786,6 +816,18 @@ class Ppu:
         b = b_8bit / 255
 
         return r, g, b
+
+    def get_u32_backdrop_color(self) -> int:
+        data = self.cgram[0] | self.cgram[1] << 8
+        r_5bit = data >> 0 & 0x1F
+        g_5bit = data >> 5 & 0x1F
+        b_5bit = data >> 10 & 0x1F
+
+        r_8bit = (r_5bit * 255) // 31
+        g_8bit = (g_5bit * 255) // 31
+        b_8bit = (b_5bit * 255) // 31
+
+        return r_8bit | (g_8bit << 8) | (b_8bit << 16) | (255 << 24)
 
     def draw_objects(self) -> None:
         # objects are the building blocks for sprites

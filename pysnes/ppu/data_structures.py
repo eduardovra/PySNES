@@ -7,6 +7,9 @@ from dataclasses import dataclass
 
 @dataclass
 class Background:
+    number: int
+    """Background number 1-4"""
+
     screen_size = 0
     """
     All tilemaps are 32x32 tiles. This controls the number of tilemaps in memory

@@ -59,12 +59,50 @@ class Video:
             0, 0, self.WINDOW_WIDTH, self.WINDOW_HEIGHT,
             sdl.SDL_WINDOW_SHOWN | sdl.SDL_WINDOW_OPENGL,
         )
+        # self.renderer = sdl.SDL_CreateRenderer(self.window, -1, sdl.SDL_RENDERER_TARGETTEXTURE)
+        # assert self.renderer, sdl.SDL_GetError()
 
         self.gl_context = sdl.SDL_GL_CreateContext(self.window)
         sdl.SDL_GL_MakeCurrent(self.window, self.gl_context)
         assert sdl.SDL_GL_SetSwapInterval(1) == 0, sdl.SDL_GetError()
         self.imgui_context = imgui.create_context()
         self.impl = SDL2Renderer(self.window)
+
+        # Create textures for offscreen rendering
+        # import ctypes
+        # info = sdl.SDL_RendererInfo()
+        # assert sdl.SDL_GetRendererInfo(self.renderer, ctypes.byref(info)) == 0, sdl.SDL_GetError()
+        # self.renderer = sdl.SDL_GetRenderer(self.window)
+        # self.surface = sdl.SDL_CreateRGBSurface(0, 256, 239, 32, 0, 0, 0, 0)
+        # assert self.surface, sdl.SDL_GetError()
+        # self.renderer = sdl.SDL_CreateSoftwareRenderer(self.surface)
+
+        self.textures = []
+        for _ in range(4):
+            # texture = sdl.SDL_CreateTexture(self.renderer, sdl.SDL_PIXELFORMAT_RGBA32, sdl.SDL_TEXTUREACCESS_STREAMING, 256, 239)
+            # assert texture, sdl.SDL_GetError()
+            # assert sdl.SDL_SetTextureBlendMode(texture, sdl.SDL_BLENDMODE_BLEND) == 0, sdl.SDL_GetError()
+            # self.textures.append(texture)
+            texture = gl.glGenTextures(1)
+            gl.glBindTexture(gl.GL_TEXTURE_2D, texture)
+            gl.glTexParameteri(gl.GL_TEXTURE_2D, gl.GL_TEXTURE_WRAP_S, gl.GL_CLAMP_TO_EDGE)
+            gl.glTexParameteri(gl.GL_TEXTURE_2D, gl.GL_TEXTURE_WRAP_T, gl.GL_CLAMP_TO_EDGE)
+            gl.glTexParameteri(gl.GL_TEXTURE_2D, gl.GL_TEXTURE_MIN_FILTER, gl.GL_NEAREST)  # GL_LINEAR
+            gl.glTexParameteri(gl.GL_TEXTURE_2D, gl.GL_TEXTURE_MAG_FILTER, gl.GL_NEAREST)  # GL_LINEAR
+            gl.glBindTexture(gl.GL_TEXTURE_2D, 0)
+            self.textures.append(texture)
+
+        # self.backdrop_texture = sdl.SDL_CreateTexture(self.renderer, sdl.SDL_PIXELFORMAT_RGBA32, sdl.SDL_TEXTUREACCESS_STREAMING, 256, 239)
+        # sdl.SDL_SetTextureBlendMode(self.backdrop_texture, sdl.SDL_BLENDMODE_BLEND)
+        self.backdrop_texture = gl.glGenTextures(1)
+        gl.glBindTexture(gl.GL_TEXTURE_2D, self.backdrop_texture)
+        gl.glTexParameteri(gl.GL_TEXTURE_2D, gl.GL_TEXTURE_WRAP_S, gl.GL_CLAMP_TO_EDGE)
+        gl.glTexParameteri(gl.GL_TEXTURE_2D, gl.GL_TEXTURE_WRAP_T, gl.GL_CLAMP_TO_EDGE)
+        gl.glTexParameteri(gl.GL_TEXTURE_2D, gl.GL_TEXTURE_MIN_FILTER, gl.GL_NEAREST)
+        gl.glTexParameteri(gl.GL_TEXTURE_2D, gl.GL_TEXTURE_MAG_FILTER, gl.GL_NEAREST)
+        gl.glBindTexture(gl.GL_TEXTURE_2D, 0)
+
+        # sdl.SDL_SetRenderDrawBlendMode(self.renderer, sdl.SDL_BLENDMODE_BLEND)
 
         # This will unlock framerate since opengl won't wait until vsync each frame anymore
         # 0 for immediate updates, 1 for updates synchronized with the vertical retrace, -1 for adaptive vsync.
@@ -148,3 +186,36 @@ class Video:
 
         # Draw the points
         gl.glDrawArrays(gl.GL_POINTS, 0, length)
+
+    def draw_textures(self, main_bgs, main_backdrop):
+        """Draw the main background and backdrop textures."""
+        import ctypes
+
+        # pic = bytearray([0xff]*256*256*3)
+        # pointer = (c_char*len(pic)).from_buffer(pic)
+        # sdl.SDL_UpdateTexture(texture, None, pointer, 3*256)
+
+        for i in range(4):
+            texture = self.textures[i]
+            array = np.array(main_bgs[i], dtype=np.uint32)
+            # p = array.ctypes.data_as(ctypes.POINTER(ctypes.c_void_p))
+            gl.glBindTexture(gl.GL_TEXTURE_2D, texture)
+            gl.glTexImage2D(
+                gl.GL_TEXTURE_2D, 0, gl.GL_RGBA, 256, 224,
+                0, gl.GL_RGBA, gl.GL_UNSIGNED_INT_8_8_8_8, array
+            )
+            gl.glBindTexture(gl.GL_TEXTURE_2D, 0)
+            # assert sdl.SDL_UpdateTexture(texture, None, p, 256 * array.itemsize) == 0, sdl.SDL_GetError()
+
+        backdrop_texture = self.backdrop_texture
+        array = np.array(main_backdrop, dtype=np.uint32)
+        # p = array.ctypes.data_as(ctypes.POINTER(ctypes.c_void_p))
+        # assert sdl.SDL_UpdateTexture(backdrop_texture, None, p, 256 * array.itemsize) == 0, sdl.SDL_GetError()
+
+        # assert sdl.SDL_RenderCopy(self.renderer, self.backdrop_texture, None, None) == 0, sdl.SDL_GetError()
+        # assert sdl.SDL_RenderCopy(self.renderer, self.textures[3], None, None) == 0, sdl.SDL_GetError()
+        # assert sdl.SDL_RenderCopy(self.renderer, self.textures[2], None, None) == 0, sdl.SDL_GetError()
+        # assert sdl.SDL_RenderCopy(self.renderer, self.textures[1], None, None) == 0, sdl.SDL_GetError()
+        # assert sdl.SDL_RenderCopy(self.renderer, self.textures[0], None, None) == 0, sdl.SDL_GetError()
+
+        # sdl.SDL_RenderPresent(self.renderer)

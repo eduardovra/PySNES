@@ -4,6 +4,7 @@ import time
 from enum import IntEnum
 
 import sdl2 as sdl
+import OpenGL.GL as gl
 import imgui
 import numpy as np
 from rich import print
@@ -53,6 +54,8 @@ class PySNES:
         self.frame_time = 0.0
         self.frame_fps = 0.0
 
+        self.drawn = False
+
     def create_gui(self) -> None:
         # possible way to render game to imgui window
         # https://www.codingwiththomas.com/blog/rendering-an-opengl-framebuffer-into-a-dear-imgui-window
@@ -85,6 +88,46 @@ class PySNES:
                 self.paused = not self.paused
         imgui.end()
 
+        # add textures images
+        is_open, is_visible = imgui.begin("PPU", True)
+        if is_open and self.drawn:
+            # ret = sdl.SDL_GL_BindTexture(self.video.textures[0], None, None)
+            # error = sdl.SDL_GetError()
+            # surface = sdl.SDL_CreateRGBSurfaceWithFormat(0, 256, 239, 32, sdl.SDL_PIXELFORMAT_RGBA32)
+            # sdl.SDL_RenderReadPixels(self.video.renderer, None, surface.format.format, surface.pixels, surface.pitch)
+
+            # Generate a new texture ID
+            # GLuint textureID
+            # GLenum texture_format
+            # GLint nOfColors
+            # gl.glGenTextures(1, textureID)
+            # gl.glBindTexture(GL_TEXTURE_2D, textureID)
+
+            # Set texture parameters
+            # glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR)
+            # glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
+            # glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE)
+            # glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE)
+
+            # Upload the surface's pixel data to the GPU
+            # glTexImage2D(GL_TEXTURE_2D, 0, texture_format, surface->w, surface->h, 0,
+            #             texture_format, GL_UNSIGNED_BYTE, surface->pixels)
+
+            # Unbind the texture
+            # glBindTexture(GL_TEXTURE_2D, 0)
+
+            # sdl.SDL_Texture
+            # from ctypes import c_uint, POINTER, cast, addressof, pointer
+
+            # sdl_texture = self.video.textures[0]
+            # texture_id = cast(sdl_texture, POINTER(c_uint))
+            # texture_id = texture_id.contents
+            # assert sdl.SDL_GL_BindTexture(sdl_texture, None, None) == 0, sdl.SDL_GetError()
+
+            scale = 2
+            imgui.image(self.video.textures[0], 256 * scale, 239 * scale)
+        imgui.end()
+
     def main(self):
         """Main loop"""
 
@@ -96,6 +139,8 @@ class PySNES:
                 frame_start = time.time()
                 self.scanline = 0
                 self.ppu.vertices.clear()
+                self.main_bgs = [[0x00] * 256 for _ in range(239)]
+                self.main_backdrop = [0x00] * 256 * 239
                 self.state = States.RUNNING_SCANLINES
 
             elif self.state == States.RUNNING_SCANLINES and not self.paused:
@@ -116,6 +161,10 @@ class PySNES:
                 vertices = np.array(self.ppu.vertices, dtype=np.float32)
                 self.video.draw_vertices(vertices, 0, 1024 - 224, 256, 224)
                 self.state = States.RESET
+
+                # Draw textures
+                self.video.draw_textures(self.ppu.main_bgs, self.ppu.main_backdrop)
+                self.drawn = True
 
                 # Calculate frame time
                 self.frame_time = time.time() - frame_start
@@ -208,9 +257,10 @@ def main():
 
     # PeterLemon PPU tests
     rom = "submodules/SNES/PPU/BGMAP/8x8/2BPP/8x8BG1Map2BPP32x328PAL/8x8BG1Map2BPP32x328PAL.sfc"
-    rom = "submodules/SNES/PPU/BGMAP/8x8/2BPP/8x8BG2Map2BPP32x328PAL/8x8BG2Map2BPP32x328PAL.sfc"
-    rom = "submodules/SNES/PPU/BGMAP/8x8/2BPP/8x8BG3Map2BPP32x328PAL/8x8BG3Map2BPP32x328PAL.sfc"
-    rom = "submodules/SNES/PPU/BGMAP/8x8/2BPP/8x8BG4Map2BPP32x328PAL/8x8BG4Map2BPP32x328PAL.sfc"
+    # rom = "submodules/SNES/PPU/BGMAP/8x8/2BPP/8x8BG2Map2BPP32x328PAL/8x8BG2Map2BPP32x328PAL.sfc"
+    # rom = "submodules/SNES/PPU/BGMAP/8x8/2BPP/8x8BG3Map2BPP32x328PAL/8x8BG3Map2BPP32x328PAL.sfc"
+    # rom = "submodules/SNES/PPU/BGMAP/8x8/2BPP/8x8BG4Map2BPP32x328PAL/8x8BG4Map2BPP32x328PAL.sfc"
+    # rom = "submodules/SNES/PPU/BGMAP/8x8/4BPP/8x8BGMap4BPP32x328PAL/8x8BGMap4BPP32x328PAL.sfc"
 
     # rom = "roms/Super Mario World (U) [!].smc"
     # rom = "roms/Donkey Kong Country (U) (V1.2) [!].smc"

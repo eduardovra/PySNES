@@ -1,3 +1,5 @@
+import pathlib
+
 from rich import print
 
 # Scripts to convert SNES ROMs to SNES Classic (.sfrom) format and to read .sfrom headers
@@ -9,6 +11,7 @@ class Rom:
 
     def __init__(self, rom_file_path: str) -> None:
         self.rom_file_path = rom_file_path
+        self.rom_file_name = pathlib.Path(rom_file_path).name
         self.load_rom_file()
 
     def __getitem__(self, addr: int) -> int:
@@ -22,7 +25,7 @@ class Rom:
         """
         self.rom = bytearray(0x400000)  # https://en.wikibooks.org/wiki/Super_NES_Programming/SNES_memory_map
 
-        print(f"Loading ROM file: {self.rom_file_path}")
+        print(f"Loading ROM file: {self.rom_file_path!r}")
         with open(self.rom_file_path, "rb") as f:
             self.rom_file_contents = f.read()
             for i, b in enumerate(self.rom_file_contents):

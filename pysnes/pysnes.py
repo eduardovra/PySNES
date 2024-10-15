@@ -38,6 +38,7 @@ class PySNES:
 
         # Initialize video and create window
         self.video.initialize()
+        self.video.set_window_title(f"PySNES - {rom.rom_file_name}")
 
         # Used to pool inputs
         self.event = sdl.SDL_Event()
@@ -91,8 +92,8 @@ class PySNES:
         # add textures images
         is_open, is_visible = imgui.begin("PPU", True)
         if is_open and self.drawn:
-            scale = 2
-            imgui.image(self.video.textures[0], 256 * scale, 239 * scale)
+            scale = 4
+            imgui.image(self.video.texture, 256 * scale, 239 * scale)
         imgui.end()
 
     def main(self):
@@ -106,8 +107,6 @@ class PySNES:
                 frame_start = time.time()
                 self.scanline = 0
                 self.ppu.vertices.clear()
-                self.main_bgs = [[0x00] * 256 for _ in range(239)]
-                self.main_backdrop = [0x00] * 256 * 239
                 self.state = States.RUNNING_SCANLINES
 
             elif self.state == States.RUNNING_SCANLINES and not self.paused:
@@ -125,17 +124,18 @@ class PySNES:
 
             elif self.state == States.RENDER_GAME_SCREEN and not self.paused:
                 # Draw the vertices
-                vertices = np.array(self.ppu.vertices, dtype=np.float32)
-                self.video.draw_vertices(vertices, 0, 1024 - 224, 256, 224)
-                self.state = States.RESET
+                # vertices = np.array(self.ppu.vertices, dtype=np.float32)
+                # self.video.draw_vertices(vertices, 0, self.video.WINDOW_WIDTH - 224, 256, 224)
 
                 # Draw textures
-                self.video.draw_textures(self.ppu.main_bgs, self.ppu.main_backdrop)
+                self.video.draw_textures(self.ppu.main_bgs)
                 self.drawn = True
 
                 # Calculate frame time
                 self.frame_time = time.time() - frame_start
                 self.frame_fps = 1 / self.frame_time
+
+                self.state = States.RESET
 
             # Pool inputs
             self.process_inputs()
@@ -224,9 +224,9 @@ def main():
 
     # PeterLemon PPU tests
     rom = "submodules/SNES/PPU/BGMAP/8x8/2BPP/8x8BG1Map2BPP32x328PAL/8x8BG1Map2BPP32x328PAL.sfc"
-    # rom = "submodules/SNES/PPU/BGMAP/8x8/2BPP/8x8BG2Map2BPP32x328PAL/8x8BG2Map2BPP32x328PAL.sfc"
-    # rom = "submodules/SNES/PPU/BGMAP/8x8/2BPP/8x8BG3Map2BPP32x328PAL/8x8BG3Map2BPP32x328PAL.sfc"
-    # rom = "submodules/SNES/PPU/BGMAP/8x8/2BPP/8x8BG4Map2BPP32x328PAL/8x8BG4Map2BPP32x328PAL.sfc"
+    rom = "submodules/SNES/PPU/BGMAP/8x8/2BPP/8x8BG2Map2BPP32x328PAL/8x8BG2Map2BPP32x328PAL.sfc"
+    rom = "submodules/SNES/PPU/BGMAP/8x8/2BPP/8x8BG3Map2BPP32x328PAL/8x8BG3Map2BPP32x328PAL.sfc"
+    rom = "submodules/SNES/PPU/BGMAP/8x8/2BPP/8x8BG4Map2BPP32x328PAL/8x8BG4Map2BPP32x328PAL.sfc"
     # rom = "submodules/SNES/PPU/BGMAP/8x8/4BPP/8x8BGMap4BPP32x328PAL/8x8BGMap4BPP32x328PAL.sfc"
 
     # rom = "roms/Super Mario World (U) [!].smc"

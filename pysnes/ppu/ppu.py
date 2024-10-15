@@ -78,10 +78,9 @@ class Ppu:
         self.h_counter = 0  # current dot beign drawn
         self.v_counter = 0  # current scanline beign drawn
         self.frames = 0  # total frames rendered
-        # self.vertices = np.array([], dtype=np.float32)
+
         self.vertices = []
-        self.main_bgs = [[0x00] * 256 * 262, [0x00] * 256 * 262, [0x00] * 256 * 262, [0x00] * 256 * 262]
-        self.main_backdrop = [0x00] * 256 * 262  # 262 was 239 before
+        self.main_bgs = [0x00] * 256 * 262  # 262 was 239 before
 
     def inidisp_set(self, data: int) -> None:
         # TODO reset OAM addr if writing while on first blank line
@@ -429,7 +428,7 @@ class Ppu:
             self.vertices.extend([x_ndc, y_ndc, 0.0, r, g, b])
 
             x, y, width = scrx, self.v_counter, SCREEN_WIDTH
-            self.main_backdrop[y * width + x] = u32_color
+            self.main_bgs[y * width + x] = u32_color
 
     def draw_background_scanline(self, bg: Background, bpp: int, priority_selector: bool) -> None:
         scanline = self.v_counter  # TODO move to method argument
@@ -490,11 +489,11 @@ class Ppu:
 
                     self.vertices.extend([x_ndc, y_ndc, 0.0, r, g, b])
 
-                color_offset = bg.color_offset_mode_0 if self._bgmode == 0 else 0
-                u32_color = self.get_u32_color(bpp, tilemap.palette, v, color_offset)
-                x, y, width = scrx, scry, SCREEN_WIDTH
-                main_bg = self.main_bgs[bg.number - 1]
-                main_bg[y * width + x] = u32_color
+                    color_offset = bg.color_offset_mode_0 if self._bgmode == 0 else 0
+                    u32_color = self.get_u32_color(bpp, tilemap.palette, v, color_offset)
+                    x, y, width = scrx, scry, SCREEN_WIDTH
+                    # main_bg = self.main_bgs[bg.number - 1]
+                    self.main_bgs[y * width + x] = u32_color
 
     def draw_background(self, bg: Background, bpp: int, priority_selector: bool) -> None:
         """Draw all tiles from a background"""

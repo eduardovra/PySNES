@@ -795,9 +795,9 @@ class Ppu:
         r_8bit = (r_5bit * 255) // 31
         g_8bit = (g_5bit * 255) // 31
         b_8bit = (b_5bit * 255) // 31
-        a_8bit = 255 if color else 0
+        a_8bit = 255 if color else 0  # 255 no transparency, 0 full transparency
 
-        return r_8bit | (g_8bit << 8) | (b_8bit << 16) | (a_8bit << 24)
+        return (r_8bit << 24) | (g_8bit << 16) | (b_8bit << 8) | a_8bit
 
     def get_rbg_backdrop_color(self) -> tuple:
         """Return backdrop color for the main screen. It is always the first color in CGRAM"""
@@ -826,8 +826,9 @@ class Ppu:
         r_8bit = (r_5bit * 255) // 31
         g_8bit = (g_5bit * 255) // 31
         b_8bit = (b_5bit * 255) // 31
+        a_8bit = 255  # 255 no transparency, 0 full transparency
 
-        return r_8bit | (g_8bit << 8) | (b_8bit << 16) | (255 << 24)
+        return (r_8bit << 24) | (g_8bit << 16) | (b_8bit << 8) | a_8bit
 
     def draw_objects(self) -> None:
         # objects are the building blocks for sprites

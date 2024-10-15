@@ -189,16 +189,9 @@ class Video:
 
     def draw_textures(self, main_bgs, main_backdrop):
         """Draw the main background and backdrop textures."""
-        import ctypes
-
-        # pic = bytearray([0xff]*256*256*3)
-        # pointer = (c_char*len(pic)).from_buffer(pic)
-        # sdl.SDL_UpdateTexture(texture, None, pointer, 3*256)
-
         for i in range(4):
             texture = self.textures[i]
             array = np.array(main_bgs[i], dtype=np.uint32)
-            # p = array.ctypes.data_as(ctypes.POINTER(ctypes.c_void_p))
             gl.glBindTexture(gl.GL_TEXTURE_2D, texture)
             gl.glTexImage2D(
                 gl.GL_TEXTURE_2D, 0, gl.GL_RGBA, 256, 224,

@@ -91,39 +91,6 @@ class PySNES:
         # add textures images
         is_open, is_visible = imgui.begin("PPU", True)
         if is_open and self.drawn:
-            # ret = sdl.SDL_GL_BindTexture(self.video.textures[0], None, None)
-            # error = sdl.SDL_GetError()
-            # surface = sdl.SDL_CreateRGBSurfaceWithFormat(0, 256, 239, 32, sdl.SDL_PIXELFORMAT_RGBA32)
-            # sdl.SDL_RenderReadPixels(self.video.renderer, None, surface.format.format, surface.pixels, surface.pitch)
-
-            # Generate a new texture ID
-            # GLuint textureID
-            # GLenum texture_format
-            # GLint nOfColors
-            # gl.glGenTextures(1, textureID)
-            # gl.glBindTexture(GL_TEXTURE_2D, textureID)
-
-            # Set texture parameters
-            # glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR)
-            # glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
-            # glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE)
-            # glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE)
-
-            # Upload the surface's pixel data to the GPU
-            # glTexImage2D(GL_TEXTURE_2D, 0, texture_format, surface->w, surface->h, 0,
-            #             texture_format, GL_UNSIGNED_BYTE, surface->pixels)
-
-            # Unbind the texture
-            # glBindTexture(GL_TEXTURE_2D, 0)
-
-            # sdl.SDL_Texture
-            # from ctypes import c_uint, POINTER, cast, addressof, pointer
-
-            # sdl_texture = self.video.textures[0]
-            # texture_id = cast(sdl_texture, POINTER(c_uint))
-            # texture_id = texture_id.contents
-            # assert sdl.SDL_GL_BindTexture(sdl_texture, None, None) == 0, sdl.SDL_GetError()
-
             scale = 2
             imgui.image(self.video.textures[0], 256 * scale, 239 * scale)
         imgui.end()

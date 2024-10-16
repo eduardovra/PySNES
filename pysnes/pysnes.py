@@ -227,7 +227,7 @@ def main():
     rom = "submodules/SNES/PPU/BGMAP/8x8/2BPP/8x8BG2Map2BPP32x328PAL/8x8BG2Map2BPP32x328PAL.sfc"
     rom = "submodules/SNES/PPU/BGMAP/8x8/2BPP/8x8BG3Map2BPP32x328PAL/8x8BG3Map2BPP32x328PAL.sfc"
     rom = "submodules/SNES/PPU/BGMAP/8x8/2BPP/8x8BG4Map2BPP32x328PAL/8x8BG4Map2BPP32x328PAL.sfc"
-    # rom = "submodules/SNES/PPU/BGMAP/8x8/4BPP/8x8BGMap4BPP32x328PAL/8x8BGMap4BPP32x328PAL.sfc"
+    rom = "submodules/SNES/PPU/BGMAP/8x8/4BPP/8x8BGMap4BPP32x328PAL/8x8BGMap4BPP32x328PAL.sfc"
 
     # rom = "roms/Super Mario World (U) [!].smc"
     # rom = "roms/Donkey Kong Country (U) (V1.2) [!].smc"

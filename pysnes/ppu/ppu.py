@@ -336,37 +336,35 @@ class Ppu:
         self.cpu.status.nmi_line = self.cpu.status.v_blank_on
 
     def render_scanline(self):
-        """Render current scanline in self.v_counter"""
+        """
+        Render current scanline in self.v_counter
+        https://bin.smwcentral.net/u/4842/regs.txt
+        """
         # Check F-Blank
         if self.display_disable:
             return
 
         # Draw picture
-        assert self._bgmode in (0, 1), hex(self._bgmode)
-        """
-        https://bin.smwcentral.net/u/4842/regs.txt
-        Mode 0
-        ------
-
-        In Mode 0, you have 4 BGs of 4 colors each. To calculate the starting palette
-        entry for a particular tile, you calculate:
-        ppp*4 + (BG#-1)*32
-
-        The background priority is (from 'front' to 'back'):
-        Sprites with priority 3
-        BG1 tiles with priority 1
-        BG2 tiles with priority 1
-        Sprites with priority 2
-        BG1 tiles with priority 0
-        BG2 tiles with priority 0
-        Sprites with priority 1
-        BG3 tiles with priority 1
-        BG4 tiles with priority 1
-        Sprites with priority 0
-        BG3 tiles with priority 0
-        BG4 tiles with priority 0
-        """
         if self._bgmode == 0:
+            """
+            In Mode 0, you have 4 BGs of 4 colors each. To calculate the starting palette
+            entry for a particular tile, you calculate:
+            ppp*4 + (BG#-1)*32
+
+            The background priority is (from 'front' to 'back'):
+            Sprites with priority 3
+            BG1 tiles with priority 1
+            BG2 tiles with priority 1
+            Sprites with priority 2
+            BG1 tiles with priority 0
+            BG2 tiles with priority 0
+            Sprites with priority 1
+            BG3 tiles with priority 1
+            BG4 tiles with priority 1
+            Sprites with priority 0
+            BG3 tiles with priority 0
+            BG4 tiles with priority 0
+            """
             self.draw_scanline_backdrop()
             self.draw_background_scanline(self.bg4, 2, False)
             self.draw_background_scanline(self.bg3, 2, False)
@@ -379,6 +377,10 @@ class Ppu:
             self.draw_objects()
         elif self._bgmode == 1:
             """
+            In Mode 1, you have 2 BGs of 16 colors and 1 BG of 4 colors. To calculate the
+            starting palette entry, calculate:
+            ppp*ncolors
+
             BG3 tiles with priority 1 if bit 3 of $2105 is set
             Sprites with priority 3
             BG1 tiles with priority 1
@@ -391,26 +393,43 @@ class Ppu:
             Sprites with priority 0
             BG3 tiles with priority 0
             """
-            self.draw_background(self.bg3, 2, False)
+            self.draw_scanline_backdrop()
+            self.draw_background_scanline(self.bg3, 2, False)
             if self._bgpriority == 0:
-                self.draw_background(self.bg3, 2, True)
-            # it seems only bg3 and the sprints are being drawn correctely
-            # I suppose its related to bg1 and bg2 being 4bpp (bg3 is 2bpp in this mode)
-
-            # 18/06/2022
-            # decided I'm gonna try fixing the bitplane parsing
-            # the problem is I'm not sure the data is being copied to vram as it should
-            # and that might be the problem as well
-            # If I don't succeed, the next idea would be to implement support for
-            # importing save state from bnes, so I could be sure the data in memory
-            # is right and the problem is I'm interpreting it the wrong way...
-            self.draw_background(self.bg2, 4, False)
-            self.draw_background(self.bg1, 4, False)
-            self.draw_background(self.bg2, 4, True)
-            self.draw_background(self.bg1, 4, True)
+                self.draw_background_scanline(self.bg3, 2, True)
+            self.draw_background_scanline(self.bg2, 4, False)
+            self.draw_background_scanline(self.bg1, 4, False)
+            self.draw_background_scanline(self.bg2, 4, True)
+            self.draw_background_scanline(self.bg1, 4, True)
             self.draw_objects()
             if self._bgpriority == 1:
-                self.draw_background(self.bg3, 2, True)
+                self.draw_background_scanline(self.bg3, 2, True)
+        elif self._bgmode == 3:
+            """
+            In Mode 3, you have one 256-color BG and one 16-color BG. To calculate the
+            starting palette index, calculate:
+            BG1: 0
+            BG2: ppp*16
+
+            The priority is (from 'front' to 'back'):
+            Sprites with priority 3
+            BG1 tiles with priority 1
+            Sprites with priority 2
+            BG2 tiles with priority 1
+            Sprites with priority 1
+            BG1 tiles with priority 0
+            Sprites with priority 0
+            BG2 tiles with priority 0
+
+            Note that register $2130 may enable Direct Color Mode on BG1.
+            """
+            self.draw_scanline_backdrop()
+            self.draw_background_scanline(self.bg2, 4, False)
+            self.draw_background_scanline(self.bg1, 8, False)
+            self.draw_background_scanline(self.bg2, 4, True)
+            self.draw_background_scanline(self.bg1, 8, True)
+        else:
+            raise NotImplementedError(f"BG Mode {self._bgmode} not implemented")
 
     def draw_scanline_backdrop(self) -> None:
         """Draw the backdrop color for the current scanline"""
@@ -433,7 +452,6 @@ class Ppu:
     def draw_background_scanline(self, bg: Background, bpp: int, priority_selector: bool) -> None:
         scanline = self.v_counter  # TODO move to method argument
 
-        assert bpp == 2, "Only 2bpp supported"
         assert bg.sub_screen_enable is False, "Sub screen not implemented"
 
         if not bg.main_screen_enable:
@@ -467,17 +485,21 @@ class Ppu:
                 j = scrx % 8
                 v_shift = i + (-i + 7 - i) * tilemap.v_flip
                 h_shift = (7 - j) + (2 * j - 7) * tilemap.h_flip
-                tile_address = (tilemap.addr * 8 + (bg.tiledata_addr * 2) + v_shift) * 2
-                b_lo = self.vram[tile_address]
-                b_hi = self.vram[tile_address + 1]
-                v = ((b_lo >> h_shift) & 1) + (2 * ((b_hi >> h_shift) & 1))
-
-                # writeToFB(BG, orgx, orgy, texture_width, getRGBAFromCGRAM(v, b_palette_nr, 2, palette_offset))
-                # r = FIVEBIT_TO_EIGHTBIT_LUT[(v >> 1) & 0b11111];
-                # g = FIVEBIT_TO_EIGHTBIT_LUT[(v >> 6) & 0b11111];
-                # b = FIVEBIT_TO_EIGHTBIT_LUT[(v >> 11) & 0b11111];
-                # a = ALPHA_LUT[(v & 1)];
-                # BG[y * width + x] = r | (g << 8) | (b << 16) | (a << 24);
+                if bpp == 2:
+                    tile_address = (tilemap.addr * 8 + (bg.tiledata_addr * 2) + v_shift) * 2
+                    b_lo = self.vram[tile_address]
+                    b_hi = self.vram[tile_address + 1]
+                    v = ((b_lo >> h_shift) & 1) + (2 * ((b_hi >> h_shift) & 1))
+                elif bpp == 4:
+                    tile_address = (tilemap.addr * 16 + (bg.tiledata_addr * 2) + v_shift) * 2
+                    b_1 = self.vram[tile_address]
+                    b_2 = self.vram[tile_address + 1]
+                    b_3 = self.vram[tile_address + 16]
+                    b_4 = self.vram[tile_address + 17]
+                    v = ((b_1 >> h_shift) & 1) + (2 * ((b_2 >> h_shift) & 1)) + \
+                        (4 * ((b_3 >> h_shift) & 1)) + (8 * ((b_4 >> h_shift) & 1))
+                else:
+                    raise NotImplementedError(f"bpp {bpp} not implemented")
 
                 if v:
                     # Special case for BG2-BG4 in Mode 0
@@ -489,10 +511,8 @@ class Ppu:
 
                     self.vertices.extend([x_ndc, y_ndc, 0.0, r, g, b])
 
-                    color_offset = bg.color_offset_mode_0 if self._bgmode == 0 else 0
                     u32_color = self.get_u32_color(bpp, tilemap.palette, v, color_offset)
                     x, y, width = scrx, scry, SCREEN_WIDTH
-                    # main_bg = self.main_bgs[bg.number - 1]
                     self.main_bgs[y * width + x] = u32_color
 
     def draw_background(self, bg: Background, bpp: int, priority_selector: bool) -> None:

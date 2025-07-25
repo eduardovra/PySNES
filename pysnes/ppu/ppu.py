@@ -1,3 +1,5 @@
+from typing import TYPE_CHECKING
+
 from ctypes import c_uint8
 from typing import List, Optional, Union, Tuple
 
@@ -6,6 +8,9 @@ import OpenGL.GL as gl
 import numpy as np
 
 from .data_structures import *
+
+if TYPE_CHECKING:
+    from ..cpu import Cpu
 
 # SNES default resolution (NTSC)
 SCREEN_WIDTH = 256
@@ -21,7 +26,7 @@ class Ppu:
 
     def __init__(
         self,
-        cpu,
+        cpu: "Cpu",
         *,
         vram_dump: Optional[bytes] = None,
         cgram_dump: Optional[bytes] = None,
@@ -470,11 +475,26 @@ class Ppu:
             #     (SY ? ((Y&0x20)<<(SX ? 6 : 5)) : 0) + (SX ? ((X&0x20)<<5) : 0)
 
             bg_size_w = 32 << (bg.screen_size & 1)
+            bg_size_h = 32 << (bg.screen_size >> 1)
+            scroll_x = bg.hoffset
+            scroll_y = bg.voffset
+
+            orgx = scrx
+            orgy = scry
+            scry = (scry + scroll_y) % (8 * bg_size_h)
+            scrx = (scrx + scroll_x) % (8 * bg_size_w)
 
             offset = ((scry % 256 if bg_size_w == 64 else scry) // 8) * 32
             offset += ((scrx % 256) // 8)
             offset += (scrx // 256) * 0x400
             offset += (bg_size_w // 64) * ((scry // 256) * 0x800)
+
+            # if self.cpu.PC.value == 0x821a:
+            #     breakpoint()
+            # if self.cpu.PC.value == 0x8215 or self.cpu.PC.value == 0x8218:
+            #     self.rendered = True
+            # if scrx == 0 and scry == 0 and getattr(self, "rendered", False):
+            #     breakpoint()
 
             screen_addr = bg.screen_addr & 0xFFFF
             tilemap_addr = (screen_addr + offset) * 2 & 0xFFFF
@@ -498,6 +518,24 @@ class Ppu:
                     b_4 = self.vram[tile_address + 17]
                     v = ((b_1 >> h_shift) & 1) + (2 * ((b_2 >> h_shift) & 1)) + \
                         (4 * ((b_3 >> h_shift) & 1)) + (8 * ((b_4 >> h_shift) & 1))
+                elif bpp == 8:
+                    tile_address = (tilemap.addr * 32 + (bg.tiledata_addr * 1) + v_shift) * 2
+                    b_1 = self.vram[tile_address]
+                    b_2 = self.vram[tile_address + 1]
+                    b_3 = self.vram[tile_address + 16]
+                    b_4 = self.vram[tile_address + 17]
+                    b_5 = self.vram[tile_address + 32]
+                    b_6 = self.vram[tile_address + 33]
+                    b_7 = self.vram[tile_address + 48]
+                    b_8 = self.vram[tile_address + 49]
+                    v = ((b_1 >> h_shift) & 1) + \
+                        (2 * ((b_2 >> h_shift) & 1)) + \
+                        (4 * ((b_3 >> h_shift) & 1)) + \
+                        (8 * ((b_4 >> h_shift) & 1)) + \
+                        (16 * ((b_5 >> h_shift) & 1)) + \
+                        (32 * ((b_6 >> h_shift) & 1)) + \
+                        (64 * ((b_7 >> h_shift) & 1)) + \
+                        (128 * ((b_8 >> h_shift) & 1))
                 else:
                     raise NotImplementedError(f"bpp {bpp} not implemented")
 
@@ -512,7 +550,7 @@ class Ppu:
                     self.vertices.extend([x_ndc, y_ndc, 0.0, r, g, b])
 
                     u32_color = self.get_u32_color(bpp, tilemap.palette, v, color_offset)
-                    x, y, width = scrx, scry, SCREEN_WIDTH
+                    x, y, width = orgx, orgy, SCREEN_WIDTH
                     self.main_bgs[y * width + x] = u32_color
 
     def draw_background(self, bg: Background, bpp: int, priority_selector: bool) -> None:

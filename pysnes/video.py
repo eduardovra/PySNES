@@ -6,7 +6,7 @@ import numpy as np
 from rich import print
 
 
-# Define the vertex shader and fragment shader
+# Define the vertex shader and fragment shader (OpenGL 3.3 compatible)
 VERTEX_SHADER_SOURCE = """
 #version 330 core
 layout (location = 0) in vec3 aPos;  // Vertex position
@@ -38,7 +38,9 @@ class Video:
     WINDOW_HEIGHT = 1400
 
     def initialize(self) -> None:
-        sdl.SDL_Init(sdl.SDL_INIT_VIDEO)
+        result = sdl.SDL_Init(sdl.SDL_INIT_VIDEO)
+        if result != 0:
+            raise RuntimeError(f"Failed to initialize SDL: {sdl.SDL_GetError().decode()}")
 
         sdl.SDL_GL_SetAttribute(sdl.SDL_GL_DOUBLEBUFFER, 1)
         sdl.SDL_GL_SetAttribute(sdl.SDL_GL_DEPTH_SIZE, 24)
@@ -47,8 +49,10 @@ class Video:
         sdl.SDL_GL_SetAttribute(sdl.SDL_GL_MULTISAMPLEBUFFERS, 1)
         sdl.SDL_GL_SetAttribute(sdl.SDL_GL_MULTISAMPLESAMPLES, 8)
         sdl.SDL_GL_SetAttribute(sdl.SDL_GL_CONTEXT_FLAGS, sdl.SDL_GL_CONTEXT_FORWARD_COMPATIBLE_FLAG)
-        sdl.SDL_GL_SetAttribute(sdl.SDL_GL_CONTEXT_MAJOR_VERSION, 4)
-        sdl.SDL_GL_SetAttribute(sdl.SDL_GL_CONTEXT_MINOR_VERSION, 1)
+
+        # Try OpenGL 3.3 Core first (more compatible than 4.1)
+        sdl.SDL_GL_SetAttribute(sdl.SDL_GL_CONTEXT_MAJOR_VERSION, 3)
+        sdl.SDL_GL_SetAttribute(sdl.SDL_GL_CONTEXT_MINOR_VERSION, 3)
         sdl.SDL_GL_SetAttribute(sdl.SDL_GL_CONTEXT_PROFILE_MASK, sdl.SDL_GL_CONTEXT_PROFILE_CORE)
 
         sdl.SDL_SetHint(sdl.SDL_HINT_MAC_CTRL_CLICK_EMULATE_RIGHT_CLICK, b"1")
@@ -60,34 +64,101 @@ class Video:
             sdl.SDL_WINDOW_SHOWN | sdl.SDL_WINDOW_OPENGL,
         )
 
+        if not self.window:
+            raise RuntimeError(f"Failed to create SDL window: {sdl.SDL_GetError().decode()}")
+
         self.gl_context = sdl.SDL_GL_CreateContext(self.window)
-        sdl.SDL_GL_MakeCurrent(self.window, self.gl_context)
+        if not self.gl_context:
+            raise RuntimeError(f"Failed to create OpenGL context: {sdl.SDL_GetError().decode()}")
+
+        result = sdl.SDL_GL_MakeCurrent(self.window, self.gl_context)
+        if result != 0:
+            raise RuntimeError(f"Failed to make OpenGL context current: {sdl.SDL_GetError().decode()}")
+
+        # Verify OpenGL context is working
+        try:
+            version = gl.glGetString(gl.GL_VERSION)
+            vendor = gl.glGetString(gl.GL_VENDOR)
+            renderer = gl.glGetString(gl.GL_RENDERER)
+            print(f"OpenGL Version: {version.decode() if version else 'Unknown'}")
+            print(f"OpenGL Vendor: {vendor.decode() if vendor else 'Unknown'}")
+            print(f"OpenGL Renderer: {renderer.decode() if renderer else 'Unknown'}")
+
+            # Test basic OpenGL functionality
+            gl.glClearColor(0.0, 0.0, 0.0, 1.0)
+            gl.glClear(gl.GL_COLOR_BUFFER_BIT)
+
+        except Exception as e:
+            raise RuntimeError(f"OpenGL context validation failed: {e}")
+
         assert sdl.SDL_GL_SetSwapInterval(1) == 0, sdl.SDL_GetError()
-        self.imgui_context = imgui.create_context()
-        self.impl = SDL2Renderer(self.window)
+
+        # Initialize ImGui after OpenGL context is fully established and tested
+        try:
+            print("Creating ImGui context...")
+            # Create ImGui context using the correct API for version 2.0.0
+            self.imgui_context = imgui.create_context()
+
+            print("Making OpenGL context current...")
+            result = sdl.SDL_GL_MakeCurrent(self.window, self.gl_context)
+            if result != 0:
+                raise RuntimeError(f"Failed to make context current for ImGui: {sdl.SDL_GetError().decode()}")
+
+            print("Creating SDL2Renderer...")
+            # Initialize the SDL2 renderer for ImGui
+            self.impl = SDL2Renderer(self.window)
+            print("SDL2Renderer created successfully")
+
+        except Exception as e:
+            print(f"ImGui initialization failed: {e}")
+            print(f"Exception type: {type(e)}")
+            import traceback
+            traceback.print_exc()
+            print("Continuing without ImGui...")
+            # Fall back to no ImGui
+            self.imgui_context = None
+            self.impl = None
 
         # Create texture for game screen rendering
-        texture = gl.glGenTextures(1)
-        gl.glBindTexture(gl.GL_TEXTURE_2D, texture)
-        gl.glTexParameteri(gl.GL_TEXTURE_2D, gl.GL_TEXTURE_WRAP_S, gl.GL_CLAMP_TO_EDGE)
-        gl.glTexParameteri(gl.GL_TEXTURE_2D, gl.GL_TEXTURE_WRAP_T, gl.GL_CLAMP_TO_EDGE)
-        gl.glTexParameteri(gl.GL_TEXTURE_2D, gl.GL_TEXTURE_MIN_FILTER, gl.GL_NEAREST)  # GL_LINEAR
-        gl.glTexParameteri(gl.GL_TEXTURE_2D, gl.GL_TEXTURE_MAG_FILTER, gl.GL_NEAREST)  # GL_LINEAR
-        gl.glBindTexture(gl.GL_TEXTURE_2D, 0)
-        self.texture = texture
+        try:
+            texture = gl.glGenTextures(1)
+            if texture == 0:
+                raise RuntimeError("Failed to generate OpenGL texture")
+
+            gl.glBindTexture(gl.GL_TEXTURE_2D, texture)
+            gl.glTexParameteri(gl.GL_TEXTURE_2D, gl.GL_TEXTURE_WRAP_S, gl.GL_CLAMP_TO_EDGE)
+            gl.glTexParameteri(gl.GL_TEXTURE_2D, gl.GL_TEXTURE_WRAP_T, gl.GL_CLAMP_TO_EDGE)
+            gl.glTexParameteri(gl.GL_TEXTURE_2D, gl.GL_TEXTURE_MIN_FILTER, gl.GL_NEAREST)  # GL_LINEAR
+            gl.glTexParameteri(gl.GL_TEXTURE_2D, gl.GL_TEXTURE_MAG_FILTER, gl.GL_NEAREST)  # GL_LINEAR
+            gl.glBindTexture(gl.GL_TEXTURE_2D, 0)
+            self.texture = texture
+        except Exception as e:
+            raise RuntimeError(f"Failed to create OpenGL texture: {e}")
 
         # This will unlock framerate since opengl won't wait until vsync each frame anymore
         # 0 for immediate updates, 1 for updates synchronized with the vertical retrace, -1 for adaptive vsync.
         assert sdl.SDL_GL_SetSwapInterval(0) == 0, sdl.SDL_GetError()
 
-        self.shader_program = self.create_shader_program()
+        try:
+            self.shader_program = self.create_shader_program()
+        except Exception as e:
+            raise RuntimeError(f"Failed to create shader program: {e}")
 
         # Generate VAO and VBO
-        self.VAO = gl.glGenVertexArrays(1)
-        self.VBO = gl.glGenBuffers(1)
+        try:
+            self.VAO = gl.glGenVertexArrays(1)
+            if self.VAO == 0:
+                raise RuntimeError("Failed to generate VAO")
+
+            self.VBO = gl.glGenBuffers(1)
+            if self.VBO == 0:
+                raise RuntimeError("Failed to generate VBO")
+        except Exception as e:
+            raise RuntimeError(f"Failed to create OpenGL buffers: {e}")
 
     def teardown_sdl(self) -> None:
-        self.impl.shutdown()
+        if self.impl:
+            self.impl.shutdown()
         sdl.SDL_GL_DeleteContext(self.gl_context)
         sdl.SDL_DestroyWindow(self.window)
         sdl.SDL_Quit()
@@ -96,8 +167,11 @@ class Video:
         # Clear the screen
         gl.glClear(gl.GL_COLOR_BUFFER_BIT)
 
-        imgui.render()
-        self.impl.render(imgui.get_draw_data())
+        # Only render ImGui if it's initialized
+        if self.impl:
+            imgui.render()
+            self.impl.render(imgui.get_draw_data())
+
         sdl.SDL_GL_SwapWindow(self.window)
 
     def set_window_title(self, title: str) -> None:
@@ -105,10 +179,18 @@ class Video:
 
     def compile_shader(self, source, shader_type):
         shader = gl.glCreateShader(shader_type)
+        if shader == 0:
+            raise RuntimeError("Failed to create shader object")
+
         gl.glShaderSource(shader, source)
         gl.glCompileShader(shader)
+
         if not gl.glGetShaderiv(shader, gl.GL_COMPILE_STATUS):
-            raise RuntimeError(gl.glGetShaderInfoLog(shader))
+            log = gl.glGetShaderInfoLog(shader)
+            gl.glDeleteShader(shader)
+            shader_type_name = "vertex" if shader_type == gl.GL_VERTEX_SHADER else "fragment"
+            raise RuntimeError(f"Failed to compile {shader_type_name} shader: {log}")
+
         return shader
 
     def create_shader_program(self):
@@ -116,12 +198,19 @@ class Video:
         fragment_shader = self.compile_shader(FRAGMENT_SHADER_SOURCE, gl.GL_FRAGMENT_SHADER)
 
         program = gl.glCreateProgram()
+        if program == 0:
+            raise RuntimeError("Failed to create shader program")
+
         gl.glAttachShader(program, vertex_shader)
         gl.glAttachShader(program, fragment_shader)
         gl.glLinkProgram(program)
 
         if not gl.glGetProgramiv(program, gl.GL_LINK_STATUS):
-            raise RuntimeError(gl.glGetProgramInfoLog(program))
+            log = gl.glGetProgramInfoLog(program)
+            gl.glDeleteProgram(program)
+            gl.glDeleteShader(vertex_shader)
+            gl.glDeleteShader(fragment_shader)
+            raise RuntimeError(f"Failed to link shader program: {log}")
 
         # Clean up shaders since they are now linked into the program
         gl.glDeleteShader(vertex_shader)

@@ -55,21 +55,24 @@ class PySNES:
         self.frame_time = 0.0
         self.frame_fps = 0.0
 
-        self.drawn = False
-
     def create_gui(self) -> None:
+        # Skip GUI creation if ImGui is not initialized
+        if not self.video.impl:
+            return
+
         # possible way to render game to imgui window
         # https://www.codingwiththomas.com/blog/rendering-an-opengl-framebuffer-into-a-dear-imgui-window
         imgui.new_frame()
 
         # is_open is set when the window is expanded, is_visible is set when the x button is clicked
-        is_open, is_visible = imgui.begin("Current instruction", True)
+        is_open, is_visible = imgui.begin("Trace log", True)
         if is_open:
-            debug_str = self.cpu.disassembler.disassemble(self.cpu.PC.w)
-            debug_str += f" V:{self.ppu.v_counter:03} H:{self.ppu.h_counter:03} F:{self.ppu.frames}"
+            # debug_str = self.cpu.disassembler.disassemble(self.cpu.PC.w)
+            # debug_str += f" V:{self.ppu.v_counter:03} H:{self.ppu.h_counter:03} F:{self.ppu.frames}"
             # if not self.paused:
             #     print(f"[green]{debug_str}[/green]")  # trace log
-            imgui.text_colored(debug_str, 0, 255, 0)
+            for log in self.cpu.trace_log:
+                imgui.text_colored(log, 0, 255, 0)
         imgui.end()
 
         is_open, is_visible = imgui.begin("CPU Registers", True)
@@ -91,14 +94,13 @@ class PySNES:
 
         # add textures images
         is_open, is_visible = imgui.begin("PPU", True)
-        if is_open and self.drawn:
+        if is_open:
             scale = 4
             imgui.image(self.video.texture, 256 * scale, 239 * scale)
         imgui.end()
 
     def main(self):
         """Main loop"""
-
         # Main state machine
         while self.running:
             loop_start = time.time()
@@ -129,7 +131,6 @@ class PySNES:
 
                 # Draw textures
                 self.video.draw_textures(self.ppu.main_bgs)
-                self.drawn = True
 
                 # Calculate frame time
                 self.frame_time = time.time() - frame_start
@@ -172,9 +173,13 @@ class PySNES:
                 controller = self.controllers[0]
                 controller.pressed_keys.add(self.event.key.keysym.sym)
 
-            self.video.impl.process_event(self.event)
+            # Only process ImGui events if ImGui is initialized
+            if self.video.impl:
+                self.video.impl.process_event(self.event)
 
-        self.video.impl.process_inputs()
+        # Only process ImGui inputs if ImGui is initialized
+        if self.video.impl:
+            self.video.impl.process_inputs()
 
 
 def main():
@@ -193,7 +198,7 @@ def main():
     rom = "submodules/SNES/CPUTest/CPU/ADC/CPUADC.sfc"
     # rom = "submodules/SNES/CPUTest/CPU/AND/CPUAND.sfc"
     # rom = "submodules/SNES/CPUTest/CPU/ASL/CPUASL.sfc"
-    # rom = "submodules/SNES/CPUTest/CPU/BIT/CPUBIT.sfc"
+    rom = "submodules/SNES/CPUTest/CPU/BIT/CPUBIT.sfc"
     # rom = "submodules/SNES/CPUTest/CPU/BRA/CPUBRA.sfc"
     # rom = "submodules/SNES/CPUTest/CPU/CMP/CPUCMP.sfc"
     # rom = "submodules/SNES/CPUTest/CPU/DEC/CPUDEC.sfc"
@@ -223,11 +228,16 @@ def main():
     # rom = "submodules/SNES/CPUTest/SPC700/SBC/SPC700SBC.sfc"
 
     # PeterLemon PPU tests
-    rom = "submodules/SNES/PPU/BGMAP/8x8/2BPP/8x8BG1Map2BPP32x328PAL/8x8BG1Map2BPP32x328PAL.sfc"
-    rom = "submodules/SNES/PPU/BGMAP/8x8/2BPP/8x8BG2Map2BPP32x328PAL/8x8BG2Map2BPP32x328PAL.sfc"
-    rom = "submodules/SNES/PPU/BGMAP/8x8/2BPP/8x8BG3Map2BPP32x328PAL/8x8BG3Map2BPP32x328PAL.sfc"
-    rom = "submodules/SNES/PPU/BGMAP/8x8/2BPP/8x8BG4Map2BPP32x328PAL/8x8BG4Map2BPP32x328PAL.sfc"
-    rom = "submodules/SNES/PPU/BGMAP/8x8/4BPP/8x8BGMap4BPP32x328PAL/8x8BGMap4BPP32x328PAL.sfc"
+    # rom = "submodules/SNES/PPU/BGMAP/8x8/2BPP/8x8BG1Map2BPP32x328PAL/8x8BG1Map2BPP32x328PAL.sfc"
+    # rom = "submodules/SNES/PPU/BGMAP/8x8/2BPP/8x8BG2Map2BPP32x328PAL/8x8BG2Map2BPP32x328PAL.sfc"
+    # rom = "submodules/SNES/PPU/BGMAP/8x8/2BPP/8x8BG3Map2BPP32x328PAL/8x8BG3Map2BPP32x328PAL.sfc"
+    # rom = "submodules/SNES/PPU/BGMAP/8x8/2BPP/8x8BG4Map2BPP32x328PAL/8x8BG4Map2BPP32x328PAL.sfc"
+    # rom = "submodules/SNES/PPU/BGMAP/8x8/4BPP/8x8BGMap4BPP32x328PAL/8x8BGMap4BPP32x328PAL.sfc"
+    rom = "submodules/SNES/PPU/BGMAP/8x8/8BPP/32x32/8x8BGMap8BPP32x32.sfc"
+    # rom = "submodules/SNES/PPU/BGMAP/8x8/8BPP/32x64/8x8BGMap8BPP32x64.sfc"
+    # rom = "submodules/SNES/PPU/BGMAP/8x8/8BPP/64x32/8x8BGMap8BPP64x32.sfc"
+    # rom = "submodules/SNES/PPU/BGMAP/8x8/8BPP/64x64/8x8BGMap8BPP64x64.sfc"
+    # rom = "submodules/SNES/PPU/BGMAP/8x8/8BPP/TileFlip/8x8BGMapTileFlip.sfc"
 
     # rom = "roms/Super Mario World (U) [!].smc"
     # rom = "roms/Donkey Kong Country (U) (V1.2) [!].smc"

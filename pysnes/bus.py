@@ -99,9 +99,16 @@ class Bus:
                         | 1 << 6  # This bit is open bus, I'm setting it to satisfy the PLP test program
                         | 0x02  # 5A22 chip version number [0-3]
                     )
+                    # if self.cpu.status.nmi_line:
+                    # if self.cpu.PC.value == 0x8218 and self.cpu.status.nmi_line:
+                    #     breakpoint()
                     # if not self.cpu.status.nmi_hold: # (bsnes)
-                    if True:
-                        self.cpu.status.nmi_line = False  # Reading clears the line
+
+                    if self.cpu.status.nmi_line:
+                        print(f"Clearing NMI line due to read from 0x{addr:04X}")
+
+                    self.cpu.status.nmi_line = False  # Reading clears the line
+
                     return data
                 if addr == 0x4212:  # HVBJOY - PPU Status
                     # H-Blank hcounter <= 2 or hcounter >= 1096

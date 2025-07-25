@@ -56,10 +56,6 @@ class PySNES:
         self.frame_fps = 0.0
 
     def create_gui(self) -> None:
-        # Skip GUI creation if ImGui is not initialized
-        if not self.video.impl:
-            return
-
         # possible way to render game to imgui window
         # https://www.codingwiththomas.com/blog/rendering-an-opengl-framebuffer-into-a-dear-imgui-window
         imgui.new_frame()
@@ -173,13 +169,9 @@ class PySNES:
                 controller = self.controllers[0]
                 controller.pressed_keys.add(self.event.key.keysym.sym)
 
-            # Only process ImGui events if ImGui is initialized
-            if self.video.impl:
-                self.video.impl.process_event(self.event)
+            self.video.impl.process_event(self.event)
 
-        # Only process ImGui inputs if ImGui is initialized
-        if self.video.impl:
-            self.video.impl.process_inputs()
+        self.video.impl.process_inputs()
 
 
 def main():

@@ -104,8 +104,8 @@ class Bus:
                     #     breakpoint()
                     # if not self.cpu.status.nmi_hold: # (bsnes)
 
-                    if self.cpu.status.nmi_line:
-                        print(f"Clearing NMI line due to read from 0x{addr:04X}")
+                    # if self.cpu.status.nmi_line:
+                    #     print(f"Clearing NMI line due to read from 0x{addr:04X}")
 
                     self.cpu.status.nmi_line = False  # Reading clears the line
 

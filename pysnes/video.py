@@ -93,31 +93,33 @@ class Video:
 
         assert sdl.SDL_GL_SetSwapInterval(1) == 0, sdl.SDL_GetError()
 
+        # IMGUI_CHECKVERSION
+
         # Initialize ImGui after OpenGL context is fully established and tested
-        try:
-            print("Creating ImGui context...")
-            # Create ImGui context using the correct API for version 2.0.0
-            self.imgui_context = imgui.create_context()
+        print("Creating ImGui context...")
+        # Create ImGui context using the correct API for version 2.0.0
+        self.imgui_context = imgui.create_context()
 
-            print("Making OpenGL context current...")
-            result = sdl.SDL_GL_MakeCurrent(self.window, self.gl_context)
-            if result != 0:
-                raise RuntimeError(f"Failed to make context current for ImGui: {sdl.SDL_GetError().decode()}")
+        """
+        IMGUI_CHECKVERSION();
+        ImGui::CreateContext();
+        ImGuiIO& io = ImGui::GetIO(); (void)io;
+        io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+        ImGui::StyleColorsDark();
+        ImGui_ImplSDL2_InitForOpenGL(window, gl_context);
+        ImGui_ImplOpenGL3_Init("#version 100");
+        """
 
-            print("Creating SDL2Renderer...")
-            # Initialize the SDL2 renderer for ImGui
-            self.impl = SDL2Renderer(self.window)
-            print("SDL2Renderer created successfully")
+        from rich import inspect
+        # inspect(imgui, methods=True)
 
-        except Exception as e:
-            print(f"ImGui initialization failed: {e}")
-            print(f"Exception type: {type(e)}")
-            import traceback
-            traceback.print_exc()
-            print("Continuing without ImGui...")
-            # Fall back to no ImGui
-            self.imgui_context = None
-            self.impl = None
+        # imgui.ImGui_ImplSDL2_InitForOpenGL(self.window, self.gl_context)
+        # imgui.ImGui_ImplOpenGL3_Init("#version 100")
+
+        print("Creating SDL2Renderer...")
+        # Initialize the SDL2 renderer for ImGui
+        self.impl = SDL2Renderer(self.window)
+        print("SDL2Renderer created successfully")
 
         # Create texture for game screen rendering
         try:
@@ -157,8 +159,7 @@ class Video:
             raise RuntimeError(f"Failed to create OpenGL buffers: {e}")
 
     def teardown_sdl(self) -> None:
-        if self.impl:
-            self.impl.shutdown()
+        self.impl.shutdown()
         sdl.SDL_GL_DeleteContext(self.gl_context)
         sdl.SDL_DestroyWindow(self.window)
         sdl.SDL_Quit()
@@ -167,10 +168,8 @@ class Video:
         # Clear the screen
         gl.glClear(gl.GL_COLOR_BUFFER_BIT)
 
-        # Only render ImGui if it's initialized
-        if self.impl:
-            imgui.render()
-            self.impl.render(imgui.get_draw_data())
+        imgui.render()
+        self.impl.render(imgui.get_draw_data())
 
         sdl.SDL_GL_SwapWindow(self.window)
 

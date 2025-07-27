@@ -4,7 +4,7 @@ import ctypes
 import numpy as np
 from OpenGL.GL import *
 
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QMouseEvent, QWheelEvent, QKeyEvent, QSurfaceFormat
 from PyQt6.QtOpenGL import QOpenGLBuffer, QOpenGLShader, QOpenGLShaderProgram
 from PyQt6.QtOpenGLWidgets import QOpenGLWidget
@@ -28,9 +28,15 @@ class Window(QMainWindow):
         widget.setLayout(layout)
         self.setCentralWidget(widget)
 
+        timer = QTimer(self)
+        timer.setInterval(20)   # period, in milliseconds
+        timer.timeout.connect(box2.update)
+        timer.start()
+
 
 class OpenGLCanvas(QOpenGLWidget):
     def initializeGL(self) -> None:
+        """Called once to set up the OpenGL rendering context before resize or paint are ever called"""
         vertices = np.array([
             -0.75, -0.75, 1, 0, 0,
             0.75, -0.75, 0, 1, 0,
@@ -77,9 +83,11 @@ class OpenGLCanvas(QOpenGLWidget):
         self.shader.bind()
 
     def resizeGL(self, w: int, h: int) -> None:
+        """Called once when the window is created and whenever the window is resized to set up the OpenGL viewport and projection"""
         return super().resizeGL(w, h)
 
     def paintGL(self) -> None:
+        """Called when the widget is updated in order to render the scene"""
         glClear(GL_COLOR_BUFFER_BIT)
         self.shader.bind()
         glBindVertexArray(self.VAO)

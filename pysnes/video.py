@@ -3,7 +3,7 @@ import imgui
 from imgui.integrations.sdl2 import SDL2Renderer
 import OpenGL.GL as gl
 import numpy as np
-from rich import print
+from rich import print, inspect
 
 
 # Define the vertex shader and fragment shader (OpenGL 3.3 compatible)
@@ -99,6 +99,7 @@ class Video:
         print("Creating ImGui context...")
         # Create ImGui context using the correct API for version 2.0.0
         self.imgui_context = imgui.create_context()
+        imgui.set_current_context(self.imgui_context)  # Doesn't seem to make a difference
 
         """
         IMGUI_CHECKVERSION();
@@ -110,7 +111,6 @@ class Video:
         ImGui_ImplOpenGL3_Init("#version 100");
         """
 
-        from rich import inspect
         # inspect(imgui, methods=True)
 
         # imgui.ImGui_ImplSDL2_InitForOpenGL(self.window, self.gl_context)

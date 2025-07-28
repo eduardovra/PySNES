@@ -22,6 +22,11 @@ https://doc.pypy.org/en/latest/install.html
 python -m pysnes.pysnes
 ```
 
+### With uv
+
+```
+uv run --python pypy3.10 -m pysnes.pysnes
+```
 
 ## Overall architecture
 

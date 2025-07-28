@@ -1,3 +1,4 @@
+import os
 import sdl2 as sdl
 import imgui
 from imgui.integrations.sdl2 import SDL2Renderer
@@ -5,6 +6,8 @@ import OpenGL.GL as gl
 import numpy as np
 from rich import print, inspect
 
+# https://github.com/pygame/pygame/issues/3110#issuecomment-1997404749
+os.environ["SDL_VIDEO_X11_FORCE_EGL"] = "1"
 
 # Define the vertex shader and fragment shader (OpenGL 3.3 compatible)
 VERTEX_SHADER_SOURCE = """
@@ -38,7 +41,7 @@ class Video:
     WINDOW_HEIGHT = 1400
 
     def initialize(self) -> None:
-        result = sdl.SDL_Init(sdl.SDL_INIT_VIDEO)
+        result = sdl.SDL_Init(sdl.SDL_INIT_EVERYTHING)
         if result != 0:
             raise RuntimeError(f"Failed to initialize SDL: {sdl.SDL_GetError().decode()}")
 
@@ -49,12 +52,9 @@ class Video:
         sdl.SDL_GL_SetAttribute(sdl.SDL_GL_MULTISAMPLEBUFFERS, 1)
         sdl.SDL_GL_SetAttribute(sdl.SDL_GL_MULTISAMPLESAMPLES, 8)
         sdl.SDL_GL_SetAttribute(sdl.SDL_GL_CONTEXT_FLAGS, sdl.SDL_GL_CONTEXT_FORWARD_COMPATIBLE_FLAG)
-
-        # Try OpenGL 3.3 Core first (more compatible than 4.1)
         sdl.SDL_GL_SetAttribute(sdl.SDL_GL_CONTEXT_MAJOR_VERSION, 3)
         sdl.SDL_GL_SetAttribute(sdl.SDL_GL_CONTEXT_MINOR_VERSION, 3)
         sdl.SDL_GL_SetAttribute(sdl.SDL_GL_CONTEXT_PROFILE_MASK, sdl.SDL_GL_CONTEXT_PROFILE_CORE)
-
         sdl.SDL_SetHint(sdl.SDL_HINT_MAC_CTRL_CLICK_EMULATE_RIGHT_CLICK, b"1")
         sdl.SDL_SetHint(sdl.SDL_HINT_VIDEO_HIGHDPI_DISABLED, b"1")
 
@@ -99,7 +99,7 @@ class Video:
         print("Creating ImGui context...")
         # Create ImGui context using the correct API for version 2.0.0
         self.imgui_context = imgui.create_context()
-        imgui.set_current_context(self.imgui_context)  # Doesn't seem to make a difference
+        # imgui.set_current_context(self.imgui_context)  # Doesn't seem to make a difference
 
         """
         IMGUI_CHECKVERSION();

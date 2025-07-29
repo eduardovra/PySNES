@@ -2,6 +2,8 @@ import argparse
 from ctypes import byref
 import time
 from enum import IntEnum
+import sys
+import platform
 
 import sdl2 as sdl
 import OpenGL.GL as gl
@@ -174,7 +176,22 @@ class PySNES:
         self.video.impl.process_inputs()
 
 
+def print_python_info():
+    """Print information about the Python interpreter being used"""
+    print(f"[blue]Python Information:[/blue]")
+    print(f"  Version: {sys.version}")
+    print(f"  Executable: {sys.executable}")
+    print(f"  Implementation: {platform.python_implementation()}")
+    print(f"  Compiler: {platform.python_compiler()}")
+    print(f"  Build: {platform.python_build()}")
+    print(f"  Platform: {platform.platform()}")
+    print()
+
+
 def main():
+    # Print Python interpreter information
+    print_python_info()
+
     rom = "roms/test_oam.smc"
     # rom = "roms/snes_oam_test/1-random.smc"
     # rom = "roms/snes_oam_test/2-low.smc"

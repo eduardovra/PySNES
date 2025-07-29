@@ -95,31 +95,10 @@ class Video:
 
         # IMGUI_CHECKVERSION
 
-        # Initialize ImGui after OpenGL context is fully established and tested
-        print("Creating ImGui context...")
-        # Create ImGui context using the correct API for version 2.0.0
         self.imgui_context = imgui.create_context()
-        # imgui.set_current_context(self.imgui_context)  # Doesn't seem to make a difference
 
-        """
-        IMGUI_CHECKVERSION();
-        ImGui::CreateContext();
-        ImGuiIO& io = ImGui::GetIO(); (void)io;
-        io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
-        ImGui::StyleColorsDark();
-        ImGui_ImplSDL2_InitForOpenGL(window, gl_context);
-        ImGui_ImplOpenGL3_Init("#version 100");
-        """
-
-        # inspect(imgui, methods=True)
-
-        # imgui.ImGui_ImplSDL2_InitForOpenGL(self.window, self.gl_context)
-        # imgui.ImGui_ImplOpenGL3_Init("#version 100")
-
-        print("Creating SDL2Renderer...")
         # Initialize the SDL2 renderer for ImGui
         self.impl = SDL2Renderer(self.window)
-        print("SDL2Renderer created successfully")
 
         # Create texture for game screen rendering
         try:

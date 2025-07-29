@@ -105,7 +105,7 @@ class Bus:
                     # if not self.cpu.status.nmi_hold: # (bsnes)
 
                     # if self.cpu.status.nmi_line:
-                    #     print(f"Clearing NMI line due to read from 0x{addr:04X}")
+                    #     print(f"Clearing NMI line due to read from 0x{addr:04X} {data:04X}")
 
                     self.cpu.status.nmi_line = False  # Reading clears the line
 
@@ -224,27 +224,41 @@ class Bus:
                     return
 
                 if addr == 0x210D:  # BG1HOFS
-                    return  # TODO
+                    self.ppu.bg1.hoffset = data << 8 | (self.ppu.latch_bgofs_ppu1 & ~7) | (self.ppu.latch_bgofs_ppu2 & 7)
+                    self.ppu.latch_bgofs_ppu1 = data
+                    self.ppu.latch_bgofs_ppu2 = data
+                    return
                 if addr == 0x210E:  # BG1VOFS
-                    return  # TODO
+                    self.ppu.bg1.voffset = data << 8 | self.ppu.latch_bgofs_ppu1
+                    self.ppu.latch_bgofs_ppu1 = data
+                    return
                 if addr == 0x210F:  # BG2HOFS
                     self.ppu.bg2.hoffset = data << 8 | (self.ppu.latch_bgofs_ppu1 & ~7) | (self.ppu.latch_bgofs_ppu2 & 7)
                     self.ppu.latch_bgofs_ppu1 = data
                     self.ppu.latch_bgofs_ppu2 = data
-                    #print(f"self.ppu.bg2.hoffset {self.ppu.bg2.hoffset}")
                     return
                 if addr == 0x2110:  # BG2VOFS
                     self.ppu.bg2.voffset = data << 8 | self.ppu.latch_bgofs_ppu1
                     self.ppu.latch_bgofs_ppu1 = data
                     return
                 if addr == 0x2111:  # BG3HOFS
-                    return  # TODO
+                    self.ppu.bg3.hoffset = data << 8 | (self.ppu.latch_bgofs_ppu1 & ~7) | (self.ppu.latch_bgofs_ppu2 & 7)
+                    self.ppu.latch_bgofs_ppu1 = data
+                    self.ppu.latch_bgofs_ppu2 = data
+                    return
                 if addr == 0x2112:  # BG3VOFS
-                    return  # TODO
+                    self.ppu.bg3.voffset = data << 8 | self.ppu.latch_bgofs_ppu1
+                    self.ppu.latch_bgofs_ppu1 = data
+                    return
                 if addr == 0x2113:  # BG4HOFS
-                    return  # TODO
+                    self.ppu.bg4.hoffset = data << 8 | (self.ppu.latch_bgofs_ppu1 & ~7) | (self.ppu.latch_bgofs_ppu2 & 7)
+                    self.ppu.latch_bgofs_ppu1 = data
+                    self.ppu.latch_bgofs_ppu2 = data
+                    return
                 if addr == 0x2114:  # BG4VOFS
-                    return  # TODO
+                    self.ppu.bg4.voffset = data << 8 | self.ppu.latch_bgofs_ppu1
+                    self.ppu.latch_bgofs_ppu1 = data
+                    return
 
                 # VRAM registers
                 if addr == 0x2115:  # VMAIN

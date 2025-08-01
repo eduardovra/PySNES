@@ -119,10 +119,6 @@ class Cpu:
         self.cycles: int = 182
         self.prev_cycles = self.cycles
 
-        # Debug stuff
-        self.breakpoint = None
-        self.print_debug = False
-
     def load_instructions(self):
         from .wdc65816.instructions import INSTRUCTIONS
 
@@ -253,7 +249,6 @@ class Cpu:
         self.prev_cycles = self.cycles
 
         disassembled = self.disassembler.disassemble(self.PC.w)
-        # debug_str += f" V:{self.ppu.v_counter:03} H:{self.ppu.h_counter:03} F:{self.ppu.frames}"
         self.trace_log.append(disassembled)
         self.trace_log = self.trace_log[-10:]  # only the last instructions
 
@@ -405,6 +400,19 @@ class Cpu:
 
         return cycles
 
+    def update_controller_autojoypad_read(self) -> None:
+        self.bus.controller_port1.latch(0)
+        self.bus.controller_port1.latch(1)
+
+        self.bus.controller_port1.joy_h = 0  # JOY1H
+        for bit in reversed(range(8)):
+            if self.bus.controller_port1.data() & 1:
+                self.bus.controller_port1.joy_h |= 1 << bit
+        self.bus.controller_port1.joy_l = 0  # JOY1L
+        for bit in reversed(range(8)):
+            if self.bus.controller_port1.data() & 1:
+                self.bus.controller_port1.joy_l |= 1 << bit
+
     def tick(self):
         """Advances the CPU by one step"""
         # NOTE this is for compatibility with cpu v1
@@ -412,6 +420,10 @@ class Cpu:
 
         # Read NMI line
         if self.status.nmi_line and not self.status.nmi_line_last:
+            # Read controllers status during V-Blank if autojoypad is ON
+            if self.status.auto_joypad_read_enable:
+                self.update_controller_autojoypad_read()
+
             # Transition to high
             if self.status.nmi_enable:
                 self.status.nmi_transition = True
@@ -423,10 +435,6 @@ class Cpu:
         if self.status.nmi_transition:
             self.status.nmi_transition = False
             self.status.nmi_pending = True
-
-            # Read controllers status during V-Blank if autojoypad is ON
-            if self.status.auto_joypad_read_enable:
-                self.update_controller_autojoypad_read()
 
         # If there's no interrupt pending keep normal execution flow
         # if not self.status.interrupt_pending:

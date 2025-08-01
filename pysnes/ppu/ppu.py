@@ -1,11 +1,9 @@
 from typing import TYPE_CHECKING
 
 from ctypes import c_uint8
-from typing import List, Optional, Union, Tuple
+from typing import Optional, Union, Tuple
 
 from sdl2 import *
-import OpenGL.GL as gl
-import numpy as np
 
 from .data_structures import *
 
@@ -74,6 +72,10 @@ class Ppu:
 
         self.latch_bgofs_ppu1 = 0
         self.latch_bgofs_ppu2 = 0
+
+        # Mosaic
+        self.mosaic_enabled = [False, False, False, False]
+        self.mosaic_size = 0
 
         # Clock
         self.ticks = 0
@@ -489,13 +491,6 @@ class Ppu:
             offset += (scrx // 256) * 0x400
             offset += (bg_size_w // 64) * ((scry // 256) * 0x800)
 
-            # if self.cpu.PC.value == 0x821a:
-            #     breakpoint()
-            # if self.cpu.PC.value == 0x8215 or self.cpu.PC.value == 0x8218:
-            #     self.rendered = True
-            # if scrx == 0 and scry == 0 and getattr(self, "rendered", False):
-            #     breakpoint()
-
             screen_addr = bg.screen_addr & 0xFFFF
             tilemap_addr = (screen_addr + offset) * 2 & 0xFFFF
 
@@ -537,7 +532,7 @@ class Ppu:
                         (64 * ((b_7 >> h_shift) & 1)) + \
                         (128 * ((b_8 >> h_shift) & 1))
                 else:
-                    raise NotImplementedError(f"bpp {bpp} not implemented")
+                    raise NotImplementedError(f"Invalid bpp {bpp}")
 
                 if v:
                     # Special case for BG2-BG4 in Mode 0
@@ -553,117 +548,29 @@ class Ppu:
                     x, y, width = orgx, orgy, SCREEN_WIDTH
                     self.main_bgs[y * width + x] = u32_color
 
-    def draw_background(self, bg: Background, bpp: int, priority_selector: bool) -> None:
-        """Draw all tiles from a background"""
-        # each individual tile on a background is called a character
-        # they can be 8x8, 16x16 or 16x8 pixels
-        # the background can be 32 or 64 characters in width or heigth,
-        # so it ranges from 256x256 up to 1024x1024 pixels
-
-        # the tile map is a 16 bit chunk of memory configuring which characters
-        # are part of the bg and also how they should be displayed. it's stored in vram
-        # All tilemaps are 32x32 tiles
-
-        # TODO only the main screen is being drawn at the moment
-        if not bg.main_screen_enable:
-            return
-
-        # I came to the conclusion that voffset was a 9 bit
-        # number stored in two's complement format (can be negative)
-        # Posivite values mean scrolling upwards, so the sign
-        # needs to be inverted to work with SDL screen coordinates
-        # This was tested in BG mode 0, not sure if it will work with other modes
-        screen_height = 448  # TODO 224 when non interlaced
-        bg_voffset = bg.voffset
-        if (bg_voffset & (1 << (9 - 1))) != 0:  # if sign bit is set e.g., 8bit: 128-255
-            bg_voffset = bg_voffset - (1 << 9)  # compute negative value
-            bg_voffset *= -1
-        else:
-            bg_voffset = screen_height - bg_voffset
-
-        x_offset, y_offset = bg.hoffset, bg_voffset
-
-        # ok so it seems the section bellow iterates over the tilemaps
-        # which have fixed data lengths, hence the hardcoded sizes make sense
-        line_start = (bg.screen_addr * 2) & 0xFFFF  # Each addr corresponds to 2 bytes in VRAM
-
-        # Tile width and height in pixels (8 or 16 pixels)
-        tile_width, tile_height = 8 << bg.tile_size, 8 << bg.tile_size
-
-        # I think this is the total number of characters in the background
-        # and it could be 32 or 64 in width or height, according to bg.screen_size
-        x_y_positions = [(x, y) for x in range(32) for y in range(32)]
-
-        # List of tiles that will be sent for drawing
-        tiles: List[Tile] = []
-
-        if bg.screen_size == 0:
-            # TODO do the same as screen_size 3
-            for mem_index, (x_pos, y_pos) in enumerate(x_y_positions):
-                entry_addr = line_start + mem_index * 2
-                tile_map = Tilemap.from_buffer(self.vram, entry_addr)
-                tile = Tile(
-                    tile_map=tile_map,
-                    map_num=0,
-                    map_position_x=x_pos,
-                    map_position_y=y_pos,
-                )
-                tiles.append(tile)
-
-        elif bg.screen_size == 1:
-            # TODO do the same as screen_size 3
-            for map_num in range(2):
-                map_offset = map_num * 0x800  # 0x800 is the size for a tilemap block
-                for mem_index, (x_pos, y_pos) in enumerate(x_y_positions):
-                    entry_addr = line_start + map_offset + mem_index * 2
-                    tile_map = Tilemap.from_buffer(self.vram, entry_addr)
-                    tile = Tile(
-                        tile_map=tile_map,
-                        map_num=map_num,
-                        map_position_x=x_pos,
-                        map_position_y=y_pos,
-                    )
-                    tiles.append(tile)
-
-        elif bg.screen_size == 2:
-            assert False, "Not sure if the second tilemap should be numbered 1 or 2"
-        else:
-            for map_num in range(4):
-                map_offset = map_num * 0x800  # 0x800 is the size for a tilemap block
-                for mem_index, (x_pos, y_pos) in enumerate(x_y_positions):
-                    entry_addr = line_start + map_offset + mem_index * 2
-                    tile_map = Tilemap.from_buffer(self.vram, entry_addr)
-                    tile = Tile(
-                        tile_map=tile_map,
-                        map_num=map_num,
-                        map_position_x=x_pos,
-                        map_position_y=y_pos,
-                    )
-                    tiles.append(tile)
-
-        tile_width, tile_height = 8 << bg.tile_size, 8 << bg.tile_size  # 8 or 16 when tile_size bit set
-
-        for tile in tiles:
-            if tile.tile_map.priority == priority_selector:
-                # had to swap x with y for this to work. it's weird but all
-                # I know is bnes do the same in the debugger view...
-                xx_offset = x_offset + tile.map_position_y * tile_width
-                yy_offset = y_offset + tile.map_position_x * tile_height
-                if tile.map_num in (1, 3):
-                    xx_offset += 32 * tile_width
-                if tile.map_num in (2, 3):
-                    yy_offset += 32 * tile_height
-
-                self.draw_tiles(
-                    bpp=bpp,
-                    x_offset=xx_offset,
-                    y_offset=yy_offset,
-                    tile=tile.tile_map,
-                    tile_base_addr=bg.tiledata_addr * 2,
-                    tile_width=tile_width,
-                    tile_height=tile_height,
-                    tile_addr=tile.tile_map.addr,
-                )
+                    if self.mosaic_enabled[bg.number - 1] and False:  # TODO implement mosaic
+                        # for x in range(0, 256, size):
+                        #     for y in range(0, 256, size):
+                        #         pos = y * 256 + x
+                        #         col = BG[pos]
+                        #         for a in range(size):
+                        #             for b in range(size):
+                        #                 if x + a < 256 and y + b < 256:
+                        #                     BG[min(y + b, 255) * 256 + min(x + a, 255)] = col
+                        mosaic_size_pixels = self.mosaic_size
+                        # pick color from the first pixel in the top left corner of the mosaic square size
+                        if scrx % mosaic_size_pixels == 0 and scry % mosaic_size_pixels == 0:
+                            # get the color of the first pixel in the mosaic square
+                            bg.mosaic_start_x = scrx
+                            bg.mosaic_start_y = scry
+                            color_map = getattr(bg, "mosaic_color_map", {})
+                            color_map[scrx] = u32_color
+                            setattr(bg, "mosaic_color_map", color_map)
+                            #print(f"{bg.number=} Setting mosaic color {u32_color} at ({scrx}, {scry}), {mosaic_size_pixels=}")
+                        # replace the color of the current pixel with the color of the first pixel in the mosaic square
+                        elif (scrx < (bg.mosaic_start_x + mosaic_size_pixels) and
+                              scry < (bg.mosaic_start_y + mosaic_size_pixels)):
+                            self.main_bgs[scry * SCREEN_WIDTH + scrx] = bg.mosaic_color_map[bg.mosaic_start_x]
 
     def draw_tiles(
         self,

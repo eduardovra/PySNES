@@ -197,7 +197,9 @@ class Bus:
                     return
 
                 if addr == 0x2106:  # MOSAIC
-                    return  # TODO
+                    self.ppu.mosaic_enabled = [bool(data & (1 << i)) for i in range(4)]
+                    self.ppu.mosaic_size = (data >> 4) + 1  # Not sure if I should add 1 here - (0=Smallest/1x1, 0Fh=Largest/16x16)
+                    return
 
                 if addr == 0x2105:  # BGMODE
                     # Mode 0 == 2bpp in all BGs
@@ -277,8 +279,11 @@ class Bus:
                     self.ppu.vmdatah = data
                     return
 
-                if 0x211A <= addr <= 0x2120:  # M7SEL
-                    return  # TODO
+                if addr == 0x211A:  # M7SEL
+                    raise NotImplementedError("M7SEL register not implemented")
+
+                # if 0x211B <= addr <= 0x2120:  # M7A to M7Y
+                #     raise NotImplementedError(f"{addr:<#04x} register not implemented")
 
                 # CGRAM registers
                 if addr == 0x2121:  # CGADD
@@ -288,8 +293,8 @@ class Bus:
                     self.ppu.cgdata = data
                     return
 
-                if 0x2123 <= addr <= 0x212B:
-                    return  # TODO
+                # if 0x2123 <= addr <= 0x212B:
+                #     raise NotImplementedError(f"{addr:<#04x} register not implemented")
 
                 if addr == 0x212C:  # TM
                     self.ppu.tm_set(data)
@@ -299,8 +304,8 @@ class Bus:
                     self.ppu.ts_set(data)
                     return
 
-                if 0x212E <= addr <= 0x2132:
-                    return  # TODO
+                # if 0x212E <= addr <= 0x2132:
+                #     raise NotImplementedError(f"{addr:<#04x} register not implemented")
 
                 if addr == 0x2133:  # SETINI
                     # TODO 4 is overscan mode bit - display 239 lines instead of normal 224

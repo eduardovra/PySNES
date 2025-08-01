@@ -1,3 +1,6 @@
+[build-system]
+requires = ["setuptools", "Cython"]
+
 [project]
 name = "pysnes"
 version = "0.1.0"

@@ -6,19 +6,23 @@ import sys
 import platform
 
 import sdl2 as sdl
-import OpenGL.GL as gl
 import imgui
-import numpy as np
+import cython
 from rich import print
 
-from .rom import Rom
-from .bus import Bus
-from .cpu import Cpu
-from .apu import Apu
-from .ppu import Ppu
-from .controller import Controller
-from .video import Video
-from .trace_matcher import check_trace_line
+from pysnes.rom import Rom
+from pysnes.bus import Bus
+from pysnes.cpu import Cpu
+from pysnes.apu import Apu
+from pysnes.ppu import Ppu
+from pysnes.controller import Controller
+from pysnes.video import Video
+from pysnes.trace_matcher import check_trace_line
+
+if cython.compiled:
+    print("[blue]Cython is enabled, using compiled modules.[/blue]")
+else:
+    print("[blue]Cython is not enabled, using pure Python modules.[/blue]")
 
 
 class States(IntEnum):
@@ -344,6 +348,6 @@ if __name__ == "__main__":
                     print(e)
 
         pysnes.ppu.render()
-        SDL_Delay(5000)
+        sdl.SDL_Delay(5000)
     else:
         main()

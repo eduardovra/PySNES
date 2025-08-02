@@ -1,6 +1,7 @@
 from functools import partial
 from typing import Any, TYPE_CHECKING
 
+import cython
 
 if TYPE_CHECKING:
     from ...bus import Bus
@@ -171,15 +172,15 @@ class Cpu:
         # I changed to True to make test for opcode 0xCB (WAI) pass
         return True
 
-    def write(self, addr, data):
+    def write(self, addr: cython.uint, data: cython.uchar) -> None:
         self.cycles += self.get_clock_cycles(addr)
         self.bus[addr] = data
 
-    def read(self, addr):
+    def read(self, addr: cython.uint) -> cython.uchar:
         self.cycles += self.get_clock_cycles(addr)
         return self.bus[addr]
 
-    def readDirect(self, address):
+    def readDirect(self, address: cython.uint) -> cython.uchar:
         # this is not part of bsnes implementation but it seems
         # tests expect the page to wrap around when in emulation mode
         # even if self.D.l is not zero
@@ -191,61 +192,61 @@ class Cpu:
             return self.read(self.D.w | address & 0xff)
         return self.read(self.D.w + address & 0xffff)
 
-    def writeDirect(self, address, data):
+    def writeDirect(self, address: cython.uint, data: cython.uchar) -> None:
         if self.EF and self.D.l == 0:
             return self.write(self.D.w | address & 0xff, data)
         return self.write(self.D.w + address & 0xffff, data)
 
-    def readDirectN(self, address):
+    def readDirectN(self, address: cython.uint) -> cython.uchar:
         return self.read(self.D.w + address & 0xffff)
 
-    def readBank(self, address):
+    def readBank(self, address: cython.uint) -> cython.uchar:
         return self.read((self.DB.l << 16) + address & 0xffffff)
 
-    def writeBank(self, address, data):
-        self.write((self.DB.l << 16) + address & 0xffffff, data);
+    def writeBank(self, address: cython.uint, data: cython.uchar) -> None:
+        self.write((self.DB.l << 16) + address & 0xffffff, data)
 
-    def readLong(self, address):
+    def readLong(self, address: cython.uint) -> cython.uchar:
         return self.read(address & 0xffffff)
 
-    def writeLong(self, address, data):
+    def writeLong(self, address: cython.uint, data: cython.uchar) -> None:
         self.write(address & 0xffffff, data)
 
-    def readStack(self, address):
+    def readStack(self, address: cython.uint) -> cython.uchar:
         return self.read(self.S.w + address & 0xffff)
 
-    def writeStack(self, address, data):
+    def writeStack(self, address: cython.uint, data: cython.uchar) -> None:
         self.write(self.S.w + address & 0xffff, data)
 
-    def fetch(self):
+    def fetch(self) -> cython.uchar:
         # data = self.read(self.PB.l << 16 | self.PC.w)
         data = self.read(self.PC.d)
         self.PC.w += 1
         return data
 
-    def pull(self):
+    def pull(self) -> cython.uchar:
         if self.EF:
             self.S.l += 1
         else:
             self.S.w += 1
         return self.read(self.S.w)
 
-    def push(self, data):
+    def push(self, data: cython.uchar) -> None:
         self.write(self.S.w, data)
         if self.EF:
             self.S.l -= 1
         else:
             self.S.w -= 1
 
-    def pullN(self):
+    def pullN(self) -> cython.uchar:
         self.S.w += 1
-        return self.read(self.S.w);
+        return self.read(self.S.w)
 
-    def pushN(self, data):
+    def pushN(self, data: cython.uchar) -> None:
         self.write(self.S.w, data)
         self.S.w -= 1
 
-    def fetch_and_execute(self):
+    def fetch_and_execute(self) -> cython.uint:
         self.prev_cycles = self.cycles
 
         disassembled = self.disassembler.disassemble(self.PC.w)
@@ -347,7 +348,7 @@ class Cpu:
             if 0xC0 <= bank <= 0xFF:
                 self.clock_cycles_table[full_addr] = fast  # TODO check bit 1 of CPU register $420D
 
-    def get_clock_cycles(self, addr: int) -> int:
+    def get_clock_cycles(self, addr: cython.uint) -> cython.uint:
         """Returns the number of clock cycles to perform IO on a given address"""
 
         """
@@ -413,7 +414,7 @@ class Cpu:
             if self.bus.controller_port1.data() & 1:
                 self.bus.controller_port1.joy_l |= 1 << bit
 
-    def tick(self):
+    def tick(self) -> cython.uint:
         """Advances the CPU by one step"""
         # NOTE this is for compatibility with cpu v1
         # not sure I'm keeping this standard

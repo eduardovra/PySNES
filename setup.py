@@ -2,8 +2,8 @@ from setuptools import setup, Extension
 from Cython.Build import cythonize
 import glob
 
-# Find all .py files in pysnes directory (excluding __init__.py for now)
-py_files = glob.glob("pysnes/*.py")
+# Find all .py files in pysnes directory recursively (excluding __init__.py for now)
+py_files = glob.glob("pysnes/**/*.py", recursive=True)
 py_files = [f for f in py_files if not f.endswith("__init__.py")]  # Exclude __init__.py
 
 extensions = []
@@ -17,6 +17,9 @@ for py_file in py_files:
     ))
 
 setup(
-    ext_modules=cythonize(extensions),
+    ext_modules=cythonize(
+        extensions,
+        annotate=False,  # enables generation of the html annotation file
+    ),
     packages=["pysnes"],
 )

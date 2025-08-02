@@ -970,7 +970,7 @@ def main():
 
 
 if __name__ == "__main__":
-    import cProfile
+    # import cProfile
 
     # cProfile.run("main()", sort="cumulative")
     main()

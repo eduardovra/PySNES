@@ -10,14 +10,14 @@ import imgui
 import cython
 from rich import print
 
-from pysnes.rom import Rom
-from pysnes.bus import Bus
-from pysnes.cpu import Cpu
-from pysnes.apu import Apu
-from pysnes.ppu import Ppu
-from pysnes.controller import Controller
-from pysnes.video import Video
-from pysnes.trace_matcher import check_trace_line
+from .rom import Rom
+from .bus import Bus
+from .cpu import Cpu
+from .apu import Apu
+from .ppu import Ppu
+from .controller import Controller
+from .video import Video
+from .trace_matcher import check_trace_line
 
 if cython.compiled:
     print("[green]Cython is enabled, using compiled modules.[/green]")
@@ -294,60 +294,3 @@ def main():
                 pysnes.apu.fetch_and_execute(trace_line=line)
             else:
                 pysnes.cpu.fetch_and_execute(trace_line=line)
-
-
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Python SNES emulator.")
-    parser.add_argument('-p', '--profile', action='store_true', help='Enable profiler mode')
-    parser.add_argument('-l', '--load', action='store_true', help='Load memory dumps from bsnes to test rendering')
-    args = parser.parse_args()
-
-    if args.profile:
-        import cProfile
-        # from line_profiler import LineProfiler
-
-        # lp = LineProfiler()
-        # lp_wrapper = lp(main)
-        # lp_wrapper()
-        # lp.print_stats()
-
-        cProfile.run("main()", sort="cumulative")
-    elif args.load:
-        rom = "roms/Super Mario World (U) [!].smc"
-        #rom = "roms/test_oam.smc"
-
-        pysnes = PySNES(rom)
-
-        rom_file_name, rom_extension = rom.split(".")
-
-        with open(f"{rom_file_name}-vram.bin", "rb") as f:
-            vram_dump = f.read()
-            for i, b in enumerate(vram_dump):
-                pysnes.ppu.vram[i] = b
-        with open(f"{rom_file_name}-cgram.bin", "rb") as f:
-            cgram_dump = f.read()
-            for i, b in enumerate(cgram_dump):
-                pysnes.ppu.cgram[i] = b
-        with open(f"{rom_file_name}-oam.bin", "rb") as f:
-            oam_dump = f.read()
-            for i, b in enumerate(oam_dump):
-                pysnes.ppu.oam.oam[i] = b
-
-        # TODO load -apuram.bin -sram.bin -wram.bin
-        # apuram is SPC700
-        # sram is static ram, for save games. located in the cartridge
-
-        with open(f"{rom_file_name}-wram.bin", "rb") as f:
-            wram_dump = f.read()
-            for i, b in enumerate(wram_dump):
-                try:
-                    pysnes.cpu.bus[i] = b
-                except Exception as e:
-                    # writing to some addresses will trigger operations
-                    # that might fail but I don't care
-                    print(e)
-
-        pysnes.ppu.render()
-        sdl.SDL_Delay(5000)
-    else:
-        main()

@@ -1,5 +1,10 @@
+# cython: profile=True
+
 from typing import List
 
+import cython
+# from cython.cimports.cpython import array
+# import array
 from rich import print
 
 from .rom import Rom
@@ -9,7 +14,10 @@ from .ppu import Ppu
 from .controller import Controller
 
 
+@cython.cclass
 class Bus:
+    # low_ram: cython.uchar[:]
+
     def __init__(
         self, rom: Rom, cpu: Cpu, apu: Apu, ppu: Ppu, controllers: List[Controller]
     ) -> None:
@@ -17,6 +25,9 @@ class Bus:
         self.cpu = cpu
         self.apu = apu  # Sound system [0x2140-0x217F]
         self.ppu = ppu
+        # low_ram = cython.declare(array.array, array.array('B', bytearray(0x2000)))
+        # low_ram_mv = cython.declare(cython.uchar[:], low_ram)
+        # self.low_ram = low_ram_mv
         self.low_ram = bytearray(0x2000)
         self.high_ram = bytearray(0xE000)
         self.dma_ppu2_hw_registers = bytearray(0x44FF - 0x4200 + 1)
@@ -27,7 +38,7 @@ class Bus:
         # does and are not necessarily mapped on real hardware
         self.unmapped = bytearray(2**24)  # 24 bits -> 16Mb
 
-    def __getitem__(self, abs_addr: int) -> int:
+    def __getitem__(self, abs_addr: cython.uint) -> cython.uchar:
         assert 0x000000 <= abs_addr <= 0xFFFFFF, "Address outside 24 bit range"
 
         bank = abs_addr >> 16 & 0xFF
@@ -136,16 +147,10 @@ class Bus:
                     print("READ DMA REGISTER: {}" % hex(addr))
                 return self.dma_ppu2_hw_registers[addr - 0x4200]
 
-        # TODO Just for testing the ROM
-        print(f"[yellow]Reading unmamped memory region: 0x{abs_addr:06X}[/yellow]")
-        #assert 0
+        print(f"[yellow]Reading unmapped memory region: 0x{abs_addr:06X}[/yellow]")
         return self.unmapped[abs_addr]
 
-        raise RuntimeError(
-            "Error reading unmamped memory region: 0x{:06X}".format(abs_addr)
-        )
-
-    def __setitem__(self, abs_addr: int, data: int) -> None:
+    def __setitem__(self, abs_addr: cython.uint, data: cython.uchar):
         assert 0x000000 <= abs_addr <= 0xFFFFFF, "Address outside 24 bit range"
         assert 0x00 <= data <= 0xFF, "Data outside 8 bit range"
 
@@ -375,11 +380,5 @@ class Bus:
             self.extended_ram[abs_addr - 0x7E8000] = data
             return
 
-        # TODO Just for testing the ROM
-        print(f"[yellow]Writting unmamped memory region: 0x{abs_addr:06X} = 0x{data:02X}[/yellow]")
+        print(f"[yellow]Writting unmapped memory region: 0x{abs_addr:06X} = 0x{data:02X}[/yellow]")
         self.unmapped[abs_addr] = data
-        return
-
-        raise RuntimeError(
-            "Error writting unmamped memory region: 0x{:06X}".format(abs_addr)
-        )

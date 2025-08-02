@@ -20,7 +20,7 @@ from pysnes.video import Video
 from pysnes.trace_matcher import check_trace_line
 
 if cython.compiled:
-    print("[blue]Cython is enabled, using compiled modules.[/blue]")
+    print("[green]Cython is enabled, using compiled modules.[/green]")
 else:
     print("[blue]Cython is not enabled, using pure Python modules.[/blue]")
 

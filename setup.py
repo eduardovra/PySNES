@@ -1,24 +1,22 @@
 from setuptools import setup, Extension
 from Cython.Build import cythonize
+import glob
+
+# Find all .py files in pysnes directory (excluding __init__.py for now)
+py_files = glob.glob("pysnes/*.py")
+py_files = [f for f in py_files if not f.endswith("__init__.py")]  # Exclude __init__.py
+
+extensions = []
+for py_file in py_files:
+    module_name = py_file.replace("/", ".").replace(".py", "")
+    extensions.append(Extension(
+        name=module_name,
+        sources=[py_file],
+        libraries=["SDL2"],
+        include_dirs=["/usr/include/SDL2/"],
+    ))
 
 setup(
-    # ext_modules = cythonize("pysnes/**.py"),
-    # ext_modules=[Extension("", [""])],  # Added to trigger a binary wheel
-    ext_modules=[
-        Extension(
-            name="pysnes.pysnes",  # This will create pysnes/pysnes.so
-            sources=["pysnes/pysnes.py"],
-            libraries=["SDL2"],  # Link against SDL2 library
-            # Add include_dirs if SDL2 headers are not in standard locations
-            include_dirs=["/usr/include/SDL2/"],
-            # Add library_dirs if SDL2 libraries are not in standard locations
-            # library_dirs=["/path/to/SDL2/lib"],
-        ),
-        # Add more extensions for other modules if needed
-        # Extension(
-        #     name="pysnes.cpu.cpu",
-        #     sources=["pysnes/cpu/cpu.py"],
-        # ),
-    ],
+    ext_modules=cythonize(extensions),
     packages=["pysnes"],
 )

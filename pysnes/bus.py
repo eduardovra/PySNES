@@ -3,8 +3,6 @@
 from typing import List
 
 import cython
-# from cython.cimports.cpython import array
-# import array
 from rich import print
 
 from .rom import Rom
@@ -16,8 +14,6 @@ from .controller import Controller
 
 @cython.cclass
 class Bus:
-    # low_ram: cython.uchar[:]
-
     def __init__(
         self, rom: Rom, cpu: Cpu, apu: Apu, ppu: Ppu, controllers: List[Controller]
     ) -> None:
@@ -25,9 +21,6 @@ class Bus:
         self.cpu = cpu
         self.apu = apu  # Sound system [0x2140-0x217F]
         self.ppu = ppu
-        # low_ram = cython.declare(array.array, array.array('B', bytearray(0x2000)))
-        # low_ram_mv = cython.declare(cython.uchar[:], low_ram)
-        # self.low_ram = low_ram_mv
         self.low_ram = bytearray(0x2000)
         self.high_ram = bytearray(0xE000)
         self.dma_ppu2_hw_registers = bytearray(0x44FF - 0x4200 + 1)

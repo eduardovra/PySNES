@@ -1,10 +1,14 @@
 from functools import partial
 from typing import Any, TYPE_CHECKING
 
+from rich import print
 import cython
 
 if TYPE_CHECKING:
     from ...bus import Bus
+
+if cython.compiled:
+    print(f"[blue]{__name__} compiled with Cython[/blue]")
 
 
 class Reg:
@@ -67,7 +71,17 @@ class Reg:
         self.value = value & 0xFFFFFF
 
 
+@cython.cclass
 class Cpu:
+    #CF: cython.bint
+    #ZF: cython.bint
+    #IF: cython.bint
+    #DF: cython.bint
+    #XF: cython.bint
+    #MF: cython.bint
+    #VF: cython.bint
+    #NF: cython.bint
+
     def __init__(self, hardware_vectors: dict) -> None:
         self.reset_registers()
         self.load_instructions()
@@ -172,14 +186,17 @@ class Cpu:
         # I changed to True to make test for opcode 0xCB (WAI) pass
         return True
 
-    def write(self, addr: cython.uint, data: cython.uchar) -> None:
+    #@cython.ccall
+    def write(self, addr: cython.uint, data: cython.uchar):
         self.cycles += self.get_clock_cycles(addr)
         self.bus[addr] = data
 
+    #@cython.ccall
     def read(self, addr: cython.uint) -> cython.uchar:
         self.cycles += self.get_clock_cycles(addr)
         return self.bus[addr]
 
+    #@cython.cfunc
     def readDirect(self, address: cython.uint) -> cython.uchar:
         # this is not part of bsnes implementation but it seems
         # tests expect the page to wrap around when in emulation mode
@@ -192,10 +209,12 @@ class Cpu:
             return self.read(self.D.w | address & 0xff)
         return self.read(self.D.w + address & 0xffff)
 
-    def writeDirect(self, address: cython.uint, data: cython.uchar) -> None:
+    #@cython.cfunc
+    def writeDirect(self, address: cython.uint, data: cython.uchar):
         if self.EF and self.D.l == 0:
-            return self.write(self.D.w | address & 0xff, data)
-        return self.write(self.D.w + address & 0xffff, data)
+            self.write(self.D.w | address & 0xff, data)
+        else:
+            self.write(self.D.w + address & 0xffff, data)
 
     def readDirectN(self, address: cython.uint) -> cython.uchar:
         return self.read(self.D.w + address & 0xffff)

@@ -1,16 +1,6 @@
 from ..cpu import Cpu
 
 
-# TODO remove once all opcodes are implemented
-def __getattr__(name: str):
-    def not_implemented(*args, **kwargs):
-        raise NotImplementedError(name)
-    try:
-        return globals()[name]
-    except KeyError:
-        return not_implemented
-
-
 def ADC(cpu: Cpu, mode_8bit: bool, data: int):
     if mode_8bit:
         if not cpu.DF:

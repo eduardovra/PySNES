@@ -31,3 +31,7 @@ clean:
 run: build
 	@echo "Running PySNES..."
 	${PY} run_pysnes.py
+
+profile: build
+	@echo "Profiling PySNES..."
+	${PY} run_pysnes.py --profile

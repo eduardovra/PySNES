@@ -40,7 +40,7 @@ if __name__ == "__main__":
 
         from pysnes import pysnes
 
-        cProfile.runctx("pysnes.main()", globals(), locals(), "Profile.prof")
+        cProfile.runctx("main()", globals(), locals(), "Profile.prof")
         # cProfile.run("pysnes.main()", "Profile.prof")
 
         s = pstats.Stats("Profile.prof")

@@ -276,21 +276,3 @@ def main():
     pysnes.main()
 
     pysnes.video.teardown_sdl()
-
-    return
-
-    trace = "roms/Super Mario World (U) [!]-trace.log"
-    with open(trace, "r") as f:
-        line_number = 0
-        error_count_apu = 0
-        error_count_cpu = 0
-
-        while True:
-            line_number += 1
-            line = f.readline()
-            print(line.rstrip())
-
-            if line[0] == ".":
-                pysnes.apu.fetch_and_execute(trace_line=line)
-            else:
-                pysnes.cpu.fetch_and_execute(trace_line=line)

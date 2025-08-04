@@ -9,11 +9,11 @@ from .decorator import decorator_mode_8bit
 def BitImmediate(cpu: Cpu, mode_8bit: bool):
     if mode_8bit:
         cpu.U.l = cpu.fetch()
-        cpu.ZF = (cpu.U.l & cpu.A.l) == 0
+        cpu.ZFlag = (cpu.U.l & cpu.A.l) == 0
     else:
         cpu.U.l = cpu.fetch()
         cpu.U.h = cpu.fetch()
-        cpu.ZF = (cpu.U.w & cpu.A.w) == 0
+        cpu.ZFlag = (cpu.U.w & cpu.A.w) == 0
 
 
 def NoOperation(cpu: Cpu):
@@ -28,8 +28,8 @@ def ExchangeBA(cpu: Cpu):
   cpu.idle()
   cpu.idle()
   cpu.A.w = cpu.A.w >> 8 | cpu.A.w << 8
-  cpu.ZF = cpu.A.l == 0
-  cpu.NF = bool(cpu.A.l & 0x80)
+  cpu.ZFlag = cpu.A.l == 0
+  cpu.NFlag = bool(cpu.A.l & 0x80)
 
 
 @decorator_mode_8bit
@@ -70,8 +70,8 @@ def Interrupt(cpu: Cpu, get_vector: Callable):
     cpu.push(cpu.PC.h)
     cpu.push(cpu.PC.l)
     cpu.push(cpu.P)
-    cpu.IF = True
-    cpu.DF = False
+    cpu.IFlag = True
+    cpu.DFlag = False
     cpu.PC.l = cpu.read(vector.w + 0)
     cpu.PC.h = cpu.read(vector.w + 1)
     cpu.PC.b = 0x00
@@ -92,10 +92,10 @@ def Wait(cpu: Cpu):
 
 def ExchangeCE(cpu: Cpu):
     cpu.idleIRQ()
-    cpu.CF, cpu.EF = cpu.EF, cpu.CF
+    cpu.CFlag, cpu.EF = cpu.EF, cpu.CFlag
     if cpu.EF:
-        cpu.XF = True
-        cpu.MF = True
+        cpu.XFlag = True
+        cpu.MFlag = True
         cpu.X.h = 0x00
         cpu.Y.h = 0x00
         cpu.S.h = 0x01
@@ -116,9 +116,9 @@ def ResetP(cpu: Cpu):
     cpu.idle()
     cpu.P = cpu.P & ~cpu.W.l
     if cpu.EF:
-        cpu.XF = True
-        cpu.MF = True
-    if cpu.XF:
+        cpu.XFlag = True
+        cpu.MFlag = True
+    if cpu.XFlag:
         cpu.X.h = 0x00
         cpu.Y.h = 0x00
 
@@ -128,9 +128,9 @@ def SetP(cpu: Cpu):
     cpu.idle()
     cpu.P = cpu.P | cpu.W.l
     if cpu.EF:
-        cpu.XF = True
-        cpu.MF = True
-    if cpu.XF:
+        cpu.XFlag = True
+        cpu.MFlag = True
+    if cpu.XFlag:
         cpu.X.h = 0x00
         cpu.Y.h = 0x00
 
@@ -142,13 +142,13 @@ def Transfer(cpu: Cpu, mode_8bit: bool, f: str, t: str):
     if mode_8bit:
         cpu.idleIRQ()
         T.l = F.l
-        cpu.ZF = T.l == 0
-        cpu.NF = bool(T.l & 0x80)
+        cpu.ZFlag = T.l == 0
+        cpu.NFlag = bool(T.l & 0x80)
     else:
         cpu.idleIRQ()
         T.w = F.w
-        cpu.ZF = T.w == 0
-        cpu.NF = bool(T.w & 0x8000)
+        cpu.ZFlag = T.w == 0
+        cpu.NFlag = bool(T.w & 0x8000)
 
 
 def Transfer16(cpu: Cpu, f: str, t: str):
@@ -167,13 +167,13 @@ def TransferSX(cpu: Cpu, mode_8bit: bool):
     if mode_8bit:
         cpu.idleIRQ()
         cpu.X.l = cpu.S.l
-        cpu.ZF = cpu.X.l == 0
-        cpu.NF = bool(cpu.X.l & 0x80)
+        cpu.ZFlag = cpu.X.l == 0
+        cpu.NFlag = bool(cpu.X.l & 0x80)
     else:
         cpu.idleIRQ()
         cpu.X.w = cpu.S.w
-        cpu.ZF = cpu.X.w == 0
-        cpu.NF = bool(cpu.X.w & 0x8000)
+        cpu.ZFlag = cpu.X.w == 0
+        cpu.NFlag = bool(cpu.X.w & 0x8000)
 
 
 def TransferXS(cpu: Cpu):
@@ -224,15 +224,15 @@ def Pull(cpu: Cpu, mode_8bit: bool, t: str):
         cpu.idle()
         cpu.idle()
         T.l = cpu.pull()
-        cpu.ZF = T.l == 0
-        cpu.NF = bool(T.l & 0x80)
+        cpu.ZFlag = T.l == 0
+        cpu.NFlag = bool(T.l & 0x80)
     else:
         cpu.idle()
         cpu.idle()
         T.l = cpu.pull()
         T.h = cpu.pull()
-        cpu.ZF = T.w == 0
-        cpu.NF = bool(T.w & 0x8000)
+        cpu.ZFlag = T.w == 0
+        cpu.NFlag = bool(T.w & 0x8000)
 
 
 def PullD(cpu: Cpu):
@@ -240,8 +240,8 @@ def PullD(cpu: Cpu):
     cpu.idle()
     cpu.D.l = cpu.pullN()
     cpu.D.h = cpu.pullN()
-    cpu.ZF = cpu.D.w == 0
-    cpu.NF = bool(cpu.D.w & 0x8000)
+    cpu.ZFlag = cpu.D.w == 0
+    cpu.NFlag = bool(cpu.D.w & 0x8000)
     if cpu.EF:
         cpu.S.h = 0x01
 
@@ -250,8 +250,8 @@ def PullB(cpu: Cpu):
     cpu.idle()
     cpu.idle()
     cpu.DB.l = cpu.pull()
-    cpu.ZF = cpu.DB.l == 0
-    cpu.NF = bool(cpu.DB.l & 0x80)
+    cpu.ZFlag = cpu.DB.l == 0
+    cpu.NFlag = bool(cpu.DB.l & 0x80)
 
 
 def PullP(cpu: Cpu):
@@ -259,9 +259,9 @@ def PullP(cpu: Cpu):
     cpu.idle()
     cpu.P = cpu.pull()
     if cpu.EF:
-        cpu.XF = True
-        cpu.MF = True
-    if cpu.XF:
+        cpu.XFlag = True
+        cpu.MFlag = True
+    if cpu.XFlag:
         cpu.X.h = 0x00
         cpu.Y.h = 0x00
 

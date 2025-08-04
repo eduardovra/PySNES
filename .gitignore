@@ -141,3 +141,4 @@ imgui.ini
 # auto-generated Cython files
 *.so
 *.c
+*.html

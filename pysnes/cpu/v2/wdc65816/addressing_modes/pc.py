@@ -117,9 +117,9 @@ def ReturnInterrupt(cpu: Cpu):
     cpu.idle()
     cpu.P = cpu.pull()
     if cpu.EF:
-        cpu.XF = True
-        cpu.MF = True
-    if cpu.XF:
+        cpu.XFlag = True
+        cpu.MFlag = True
+    if cpu.XFlag:
         cpu.X.h = 0x00
         cpu.Y.h = 0x00
     cpu.PC.l = cpu.pull()

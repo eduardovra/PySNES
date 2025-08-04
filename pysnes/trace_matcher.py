@@ -23,15 +23,15 @@ def check_trace_line(line: str, cpu: Cpu):
     assert S == cpu.S.value, "{:04X} != {:04X}".format(S, cpu.S.value)
 
     NF = line[72] == "N"
-    assert NF == cpu.NF, f"{NF} != {cpu.NF} {line=} {disassembled=}"
+    assert NF == cpu.NFlag, f"{NF} != {cpu.NFlag} {line=} {disassembled=}"
     VF = line[73] == "V"
-    assert VF == cpu.VF, f"{VF} != {cpu.VF} {line=} {disassembled=}"
+    assert VF == cpu.VFlag, f"{VF} != {cpu.VFlag} {line=} {disassembled=}"
     IF = line[77] == "I"
-    assert IF == cpu.IF, f"{IF} != {cpu.IF} {line=} {disassembled=}"
+    assert IF == cpu.IFlag, f"{IF} != {cpu.IFlag} {line=} {disassembled=}"
     ZF = line[78] == "Z"
-    assert ZF == cpu.ZF, f"{ZF} != {cpu.ZF} {line=} {disassembled=}"
+    assert ZF == cpu.ZFlag, f"{ZF} != {cpu.ZFlag} {line=} {disassembled=}"
     CF = line[79] == "C"
-    assert CF == cpu.CF, f"{CF} != {cpu.CF} {line=} {disassembled=}"
+    assert CF == cpu.CFlag, f"{CF} != {cpu.CFlag} {line=} {disassembled=}"
 
     EF = line[74] == "1"
     assert EF == cpu.EF, f"{EF} != {cpu.EF}"
@@ -42,6 +42,6 @@ def check_trace_line(line: str, cpu: Cpu):
         # assert BF == bool(cpu.status.), f"{BF} != {cpu.P.B}"
     else:
         MF = line[74] == "M"
-        assert MF == cpu.MF, f"{MF} != {cpu.MF}"
+        assert MF == cpu.MFlag, f"{MF} != {cpu.MFlag}"
         XF = line[75] == "X"
-        assert XF == cpu.XF, f"{XF} != {cpu.XF}"
+        assert XF == cpu.XFlag, f"{XF} != {cpu.XFlag}"

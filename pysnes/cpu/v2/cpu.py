@@ -73,14 +73,17 @@ class Reg:
 
 @cython.cclass
 class Cpu:
-    #CF: cython.bint
-    #ZF: cython.bint
-    #IF: cython.bint
-    #DF: cython.bint
-    #XF: cython.bint
-    #MF: cython.bint
-    #VF: cython.bint
-    #NF: cython.bint
+    CFlag = cython.declare(cython.bint, visibility="public")
+    ZFlag = cython.declare(cython.bint, visibility="public")
+    IFlag = cython.declare(cython.bint, visibility="public")
+    DFlag = cython.declare(cython.bint, visibility="public")
+    XFlag = cython.declare(cython.bint, visibility="public")
+    MFlag = cython.declare(cython.bint, visibility="public")
+    VFlag = cython.declare(cython.bint, visibility="public")
+    NFlag = cython.declare(cython.bint, visibility="public")
+
+    cycles = cython.declare(cython.uint, visibility="public")
+    prev_cycles = cython.declare(cython.uint, visibility="public")
 
     def __init__(self, hardware_vectors: dict) -> None:
         self.reset_registers()
@@ -386,20 +389,20 @@ class Cpu:
         return self.clock_cycles_table[addr]
 
     @property
-    def P(self) -> int:
-        return self.CF << 0 | self.ZF << 1 | self.IF << 2 | self.DF << 3 | self.XF << 4 | self.MF << 5 | self.VF << 6 | self.NF << 7
+    def P(self) -> cython.uchar:
+        return self.CFlag << 0 | self.ZFlag << 1 | self.IFlag << 2 | self.DFlag << 3 | self.XFlag << 4 | self.MFlag << 5 | self.VFlag << 6 | self.NFlag << 7
 
     @P.setter
-    def P(self, data: int):
-        assert 0 <= data <= 0xFF, f"Invalid value for P register: {hex(data)}"
-        self.CF = bool(data & 0x01)
-        self.ZF = bool(data & 0x02)
-        self.IF = bool(data & 0x04)
-        self.DF = bool(data & 0x08)
-        self.XF = bool(data & 0x10)
-        self.MF = bool(data & 0x20)
-        self.VF = bool(data & 0x40)
-        self.NF = bool(data & 0x80)
+    def P(self, data: cython.uchar):
+        # assert 0 <= data <= 0xFF, f"Invalid value for P register: {hex(data)}"
+        self.CFlag = data & 0x01 > 0
+        self.ZFlag = data & 0x02 > 0
+        self.IFlag = data & 0x04 > 0
+        self.DFlag = data & 0x08 > 0
+        self.XFlag = data & 0x10 > 0
+        self.MFlag = data & 0x20 > 0
+        self.VFlag = data & 0x40 > 0
+        self.NFlag = data & 0x80 > 0
 
     def run_scanline(self) -> int:
         """
@@ -489,8 +492,8 @@ class Cpu:
         self.bus[self.S.w] = p & ~0x10 if self.EF else p
         self.S.w -= 1
 
-        self.IF = True
-        self.DF = False
+        self.IFlag = True
+        self.DFlag = False
 
         addr = self.bus[vector] | self.bus[vector + 1] << 8
         self.PC.w = addr

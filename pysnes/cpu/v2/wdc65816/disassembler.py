@@ -50,23 +50,23 @@ class Disassembler:
         s += f"A:{self.cpu.A.w:04X} X:{self.cpu.X.w:04X} Y:{self.cpu.Y.w:04X} S:{self.cpu.S.w:04X} D:{self.cpu.D.w:04X} DB:{self.cpu.DB.l:02X} "
 
         if self.cpu.EF:
-            s += "N" if self.cpu.NF else "n"
-            s += "V" if self.cpu.VF else "v"
-            s += "1" if self.cpu.MF else "0"
-            s += "B" if self.cpu.XF else "b"
-            s += "D" if self.cpu.DF else "d"
-            s += "I" if self.cpu.IF else "i"
-            s += "Z" if self.cpu.ZF else "z"
-            s += "C" if self.cpu.CF else "c"
+            s += "N" if self.cpu.NFlag else "n"
+            s += "V" if self.cpu.VFlag else "v"
+            s += "1" if self.cpu.MFlag else "0"
+            s += "B" if self.cpu.XFlag else "b"
+            s += "D" if self.cpu.DFlag else "d"
+            s += "I" if self.cpu.IFlag else "i"
+            s += "Z" if self.cpu.ZFlag else "z"
+            s += "C" if self.cpu.CFlag else "c"
         else:
-            s += "N" if self.cpu.NF else "n"
-            s += "V" if self.cpu.VF else "v"
-            s += "M" if self.cpu.MF else "m"
-            s += "X" if self.cpu.XF else "x"
-            s += "D" if self.cpu.DF else "d"
-            s += "I" if self.cpu.IF else "i"
-            s += "Z" if self.cpu.ZF else "z"
-            s += "C" if self.cpu.CF else "c"
+            s += "N" if self.cpu.NFlag else "n"
+            s += "V" if self.cpu.VFlag else "v"
+            s += "M" if self.cpu.MFlag else "m"
+            s += "X" if self.cpu.XFlag else "x"
+            s += "D" if self.cpu.DFlag else "d"
+            s += "I" if self.cpu.IFlag else "i"
+            s += "Z" if self.cpu.ZFlag else "z"
+            s += "C" if self.cpu.CFlag else "c"
 
         return s
 
@@ -110,12 +110,12 @@ class Disassembler:
         return f"#${self.operandByte:02X}"
 
     def immediateA(self):
-        if self.cpu.MF:
+        if self.cpu.MFlag:
             return f"#${self.operandByte:02X}"
         return f"#${self.operandWord:04X}"
 
     def immediateX(self):
-        if self.cpu.XF:
+        if self.cpu.XFlag:
             return f"#${self.operandByte:02X}"
         return f"#${self.operandWord:04X}"
 

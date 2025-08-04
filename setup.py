@@ -21,7 +21,7 @@ for py_file in py_files:
 setup(
     ext_modules=cythonize(
         extensions,
-        annotate=False,  # enables generation of the html annotation file
+        annotate=True,  # enables generation of the html annotation file
     ),
     packages=["pysnes"],
 )

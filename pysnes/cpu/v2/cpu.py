@@ -11,62 +11,66 @@ if cython.compiled:
     print(f"[blue]{__name__} compiled with Cython[/blue]")
 
 
+@cython.cclass
 class Reg:
-    def __init__(self, bits: int, value: int):
+    bits = cython.declare(cython.uchar, visibility="public")
+    value = cython.declare(cython.uint, visibility="public")
+
+    def __init__(self, bits: cython.uchar, value: cython.uint):
         self.bits = bits
         self.value = value
 
     @property
-    def l(self) -> int:
+    def l(self) -> cython.uchar:
         """Low byte getter"""
         return self.value & 0xFF
 
     @l.setter
-    def l(self, value: int):
+    def l(self, value: cython.uchar):
         """Low byte setter"""
         self.value &= 0xFFFF00
         self.value |= value & 0xFF
 
     @property
-    def h(self) -> int:
+    def h(self) -> cython.uchar:
         """High byte getter"""
         return self.value >> 8 & 0xFF
 
     @h.setter
-    def h(self, value: int):
+    def h(self, value: cython.uchar):
         """High byte setter"""
         self.value &= 0xFF00FF
         self.value |= value << 8 & 0xFF00
 
     @property
-    def b(self) -> int:
+    def b(self) -> cython.uchar:
         """Bank byte getter"""
         return self.value >> 16 & 0xFF
 
     @b.setter
-    def b(self, value: int):
+    def b(self, value: cython.uchar):
         """Bank byte setter"""
         self.value &= 0xFFFF
         self.value |= value << 16 & 0xFF0000
 
     @property
-    def w(self) -> int:
+    def w(self) -> cython.ushort:
         """Low word getter"""
         return self.value & 0xFFFF
 
     @w.setter
-    def w(self, value: int):
+    def w(self, value: cython.ushort):
         """Low word setter"""
         self.value &= 0xFF0000
         self.value |= value & 0xFFFF
 
     @property
-    def d(self) -> int:
+    def d(self) -> cython.uint:
         """24 bit getter"""
         return self.value & 0xFFFFFF
 
     @d.setter
-    def d(self, value: int):
+    def d(self, value: cython.uint):
         """24 bit setter"""
         self.value = value & 0xFFFFFF
 
@@ -88,7 +92,7 @@ class Cpu:
     def __init__(self, hardware_vectors: dict) -> None:
         self.reset_registers()
         self.load_instructions()
-        self.build_clock_cycles_table()
+        # self.build_clock_cycles_table()
 
         # NOTE shoehorned to make v2 compatible with v1
         from ..v1.cpu import CpuStatus
@@ -189,17 +193,17 @@ class Cpu:
         # I changed to True to make test for opcode 0xCB (WAI) pass
         return True
 
-    #@cython.ccall
+    @cython.ccall
     def write(self, addr: cython.uint, data: cython.uchar):
         self.cycles += self.get_clock_cycles(addr)
         self.bus[addr] = data
 
-    #@cython.ccall
+    @cython.ccall
     def read(self, addr: cython.uint) -> cython.uchar:
         self.cycles += self.get_clock_cycles(addr)
         return self.bus[addr]
 
-    #@cython.cfunc
+    @cython.ccall
     def readDirect(self, address: cython.uint) -> cython.uchar:
         # this is not part of bsnes implementation but it seems
         # tests expect the page to wrap around when in emulation mode
@@ -212,40 +216,49 @@ class Cpu:
             return self.read(self.D.w | address & 0xff)
         return self.read(self.D.w + address & 0xffff)
 
-    #@cython.cfunc
+    @cython.ccall
     def writeDirect(self, address: cython.uint, data: cython.uchar):
         if self.EF and self.D.l == 0:
             self.write(self.D.w | address & 0xff, data)
         else:
             self.write(self.D.w + address & 0xffff, data)
 
+    @cython.ccall
     def readDirectN(self, address: cython.uint) -> cython.uchar:
         return self.read(self.D.w + address & 0xffff)
 
+    @cython.ccall
     def readBank(self, address: cython.uint) -> cython.uchar:
         return self.read((self.DB.l << 16) + address & 0xffffff)
 
-    def writeBank(self, address: cython.uint, data: cython.uchar) -> None:
+    @cython.ccall
+    def writeBank(self, address: cython.uint, data: cython.uchar):
         self.write((self.DB.l << 16) + address & 0xffffff, data)
 
+    @cython.ccall
     def readLong(self, address: cython.uint) -> cython.uchar:
         return self.read(address & 0xffffff)
 
-    def writeLong(self, address: cython.uint, data: cython.uchar) -> None:
+    @cython.ccall
+    def writeLong(self, address: cython.uint, data: cython.uchar):
         self.write(address & 0xffffff, data)
 
+    @cython.ccall
     def readStack(self, address: cython.uint) -> cython.uchar:
         return self.read(self.S.w + address & 0xffff)
 
-    def writeStack(self, address: cython.uint, data: cython.uchar) -> None:
+    @cython.ccall
+    def writeStack(self, address: cython.uint, data: cython.uchar):
         self.write(self.S.w + address & 0xffff, data)
 
+    @cython.ccall
     def fetch(self) -> cython.uchar:
         # data = self.read(self.PB.l << 16 | self.PC.w)
         data = self.read(self.PC.d)
         self.PC.w += 1
         return data
 
+    @cython.ccall
     def pull(self) -> cython.uchar:
         if self.EF:
             self.S.l += 1
@@ -253,21 +266,25 @@ class Cpu:
             self.S.w += 1
         return self.read(self.S.w)
 
-    def push(self, data: cython.uchar) -> None:
+    @cython.ccall
+    def push(self, data: cython.uchar):
         self.write(self.S.w, data)
         if self.EF:
             self.S.l -= 1
         else:
             self.S.w -= 1
 
+    @cython.ccall
     def pullN(self) -> cython.uchar:
         self.S.w += 1
         return self.read(self.S.w)
 
-    def pushN(self, data: cython.uchar) -> None:
+    @cython.ccall
+    def pushN(self, data: cython.uchar):
         self.write(self.S.w, data)
         self.S.w -= 1
 
+    @cython.ccall
     def fetch_and_execute(self) -> cython.uint:
         self.prev_cycles = self.cycles
 
@@ -301,9 +318,10 @@ class Cpu:
 
         return self.cycles - self.prev_cycles
 
-    def build_clock_cycles_table(self):
-        """
-        Builds a table with the number of clock cycles to perform IO on each address.
+    @cython.cfunc
+    @cython.inline
+    def get_clock_cycles(self, addr: cython.uint) -> cython.uint:
+        """Returns the number of clock cycles to perform IO on a given address
 
         The 'Speed' column indicates the memory access speed for that area of memory.
         The SNES master clock runs at about 21MHz (probably as close to 1.89e9/88 Hz as possible).
@@ -340,38 +358,6 @@ class Cpu:
 
         Note 2: If bit 1 of CPU register $420D is set, the speed is Fast, otherwise it is Slow.
         """
-        fast, slow, xslow = 6, 8, 12
-        self.clock_cycles_table = [fast] * 0xFFFFFF
-        for full_addr in range(0, len(self.clock_cycles_table)):
-            bank = full_addr >> 16
-            addr = full_addr & 0xFFFF
-            if 0x00 <= bank <= 0x3F:
-                if 0x0000 <= addr <= 0x1FFF:
-                    self.clock_cycles_table[full_addr] = slow
-                if 0x4000 <= addr <= 0x41FF:
-                    self.clock_cycles_table[full_addr] = xslow
-                if 0x6000 <= addr <= 0x7FFF:
-                    self.clock_cycles_table[full_addr] = slow
-                if 0x8000 <= addr <= 0xFFFF:
-                    self.clock_cycles_table[full_addr] = slow
-            if 0x40 <= bank <= 0x7D:
-                self.clock_cycles_table[full_addr] = slow
-            if 0x7E <= bank <= 0x7F:
-                self.clock_cycles_table[full_addr] = slow
-            if 0x80 <= bank <= 0xBF:
-                if 0x0000 <= addr <= 0x1FFF:
-                    self.clock_cycles_table[full_addr] = slow
-                if 0x4000 <= addr <= 0x41FF:
-                    self.clock_cycles_table[full_addr] = xslow
-                if 0x6000 <= addr <= 0x7FFF:
-                    self.clock_cycles_table[full_addr] = slow
-                if 0x8000 <= addr <= 0xFFFF:
-                    self.clock_cycles_table[full_addr] = fast  # TODO check bit 1 of CPU register $420D
-            if 0xC0 <= bank <= 0xFF:
-                self.clock_cycles_table[full_addr] = fast  # TODO check bit 1 of CPU register $420D
-
-    def get_clock_cycles(self, addr: cython.uint) -> cython.uint:
-        """Returns the number of clock cycles to perform IO on a given address"""
 
         """
         https://board.zsnes.com/phpBB3/viewtopic.php?t=12711
@@ -386,7 +372,36 @@ class Cpu:
         6, 8, or 12 master clock cycles depending on which memory it's accessing.
         """
 
-        return self.clock_cycles_table[addr]
+        fast, slow, xslow = 6, 8, 12
+
+        bank = (addr >> 16) & 0xFF
+        addr = addr & 0xFFFF
+        if 0x00 <= bank <= 0x3F:
+            if 0x0000 <= addr <= 0x1FFF:
+                return slow
+            if 0x4000 <= addr <= 0x41FF:
+                return xslow
+            if 0x6000 <= addr <= 0x7FFF:
+                return slow
+            if 0x8000 <= addr <= 0xFFFF:
+                return slow
+        if 0x40 <= bank <= 0x7D:
+            return slow
+        if 0x7E <= bank <= 0x7F:
+            return slow
+        if 0x80 <= bank <= 0xBF:
+            if 0x0000 <= addr <= 0x1FFF:
+                return slow
+            if 0x4000 <= addr <= 0x41FF:
+                return xslow
+            if 0x6000 <= addr <= 0x7FFF:
+                return slow
+            if 0x8000 <= addr <= 0xFFFF:
+                return fast  # TODO check bit 1 of CPU register $420D
+        if 0xC0 <= bank <= 0xFF:
+            return fast  # TODO check bit 1 of CPU register $420D
+
+        return fast
 
     @property
     def P(self) -> cython.uchar:

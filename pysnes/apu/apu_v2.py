@@ -3,7 +3,7 @@ from typing import Any
 
 from ..register_types import Reg8, Reg16
 
-from .spc700.instructions import INSTRUCTIONS
+from .spc700.instructions_spc700 import INSTRUCTIONS
 from .apu import Timer  # TODO Move to new module
 
 

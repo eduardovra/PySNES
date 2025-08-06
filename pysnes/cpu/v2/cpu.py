@@ -1,8 +1,11 @@
 from functools import partial
 from typing import Any, TYPE_CHECKING
+from dataclasses import dataclass
 
 from rich import print
 import cython
+
+from .dma import DMA
 
 if TYPE_CHECKING:
     from ...bus import Bus
@@ -75,6 +78,31 @@ class Reg:
         self.value = value & 0xFFFFFF
 
 
+@dataclass
+class CpuStatus:
+    hirq_enable: bool = False
+    virq_enable: bool = False
+    irq_enable: bool = False
+
+    nmi_line: bool = False
+    nmi_transition: bool = False
+    nmi_enable: bool = False
+    nmi_pending: bool = False
+    nmi_hold: bool = False
+    nmi_valid: bool = False
+
+    nmi_line_last = False
+
+    h_blank_on: bool = False
+    v_blank_on: bool = False
+
+    auto_joypad_read_enable: bool = False
+
+    @property
+    def interrupt_pending(self) -> bool:
+        return self.nmi_pending
+
+
 @cython.cclass
 class Cpu:
     CFlag = cython.declare(cython.bint, visibility="public")
@@ -95,7 +123,6 @@ class Cpu:
         # self.build_clock_cycles_table()
 
         # NOTE shoehorned to make v2 compatible with v1
-        from ..v1.cpu import CpuStatus
         self.status = CpuStatus()
 
         from .wdc65816.disassembler import Disassembler
@@ -162,7 +189,6 @@ class Cpu:
         self.bus = bus
 
         # NOTE shoehorned to make v2 compatible with v1
-        from ..v1.cpu import DMA
         self.dma = DMA(bus)
 
     def idleIRQ(self):

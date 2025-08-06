@@ -18,6 +18,15 @@ for py_file in py_files:
         include_dirs=["/usr/include/SDL2/"],
     ))
 
+extensions = [
+    Extension(
+        name="pysnes",
+        sources=py_files,
+        libraries=["SDL2"],
+        include_dirs=["/usr/include/SDL2/"],
+    )
+]
+
 setup(
     ext_modules=cythonize(
         extensions,

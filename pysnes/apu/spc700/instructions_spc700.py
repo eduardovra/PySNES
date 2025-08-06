@@ -1,5 +1,5 @@
 from .addressing_modes import SPC700AddressingModes
-from .opcodes import SPC700Opcodes
+from .opcodes_spc700 import SPC700Opcodes
 
 
 INSTRUCTIONS = (

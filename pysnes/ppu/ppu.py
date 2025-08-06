@@ -87,7 +87,6 @@ class Ppu:
         self.v_counter = 0  # current scanline beign drawn
         self.frames = 0  # total frames rendered
 
-        self.vertices = []
         self.main_bgs = [0x00] * 256 * 262  # 262 was 239 before
 
     def inidisp_set(self, data: int) -> None:
@@ -452,8 +451,6 @@ class Ppu:
             x_ndc = 2.0 * (scrx / SCREEN_WIDTH) - 1.0
             # y_ndc = 1.0 - 2.0 * (self.v_counter / SCREEN_HEIGHT)
 
-            self.vertices.extend([x_ndc, y_ndc, 0.0, r, g, b])
-
             x, y, width = scrx, self.v_counter, SCREEN_WIDTH
             self.main_bgs[y * width + x] = u32_color
 
@@ -542,8 +539,6 @@ class Ppu:
 
                     x_ndc = 2.0 * (scrx / SCREEN_WIDTH) - 1.0
                     y_ndc = 1.0 - 2.0 * (scry / SCREEN_HEIGHT)
-
-                    self.vertices.extend([x_ndc, y_ndc, 0.0, r, g, b])
 
                     u32_color = self.get_u32_color(bpp, tilemap.palette, v, color_offset)
                     x, y, width = orgx, orgy, SCREEN_WIDTH
@@ -682,6 +677,7 @@ class Ppu:
         x: int,
         y: int,
     ) -> None:
+        raise NotImplementedError("This method is not doing anything at the moment")
         # Bitplane handling
         # The first byte is composed of the first
         # 8 least significant bits of the pixel
@@ -719,9 +715,6 @@ class Ppu:
         # 00 is considered transparent in all palettes
         if color:
             r, g, b = self.get_rbg_colors(bpp, palette, color)
-
-        # self.vertices = np.append(self.vertices, [x_ndc, y_ndc, 0.0, r, g, b])
-        self.vertices.extend([x_ndc, y_ndc, 0.0, r, g, b])
 
     def get_rbg_colors(self, bpp: int, palette: int, color: int, color_offset: int = 0) -> tuple:
         # 4 colors (2bpp palette) x 2 bytes each color

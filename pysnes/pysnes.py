@@ -110,7 +110,6 @@ class PySNES:
             if self.state == States.RESET:
                 frame_start = time.time()
                 self.scanline = 0
-                self.ppu.vertices.clear()
                 self.state = States.RUNNING_SCANLINES
 
             elif self.state == States.RUNNING_SCANLINES and not self.paused:

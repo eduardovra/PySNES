@@ -79,27 +79,28 @@ class Reg:
 
 
 @dataclass
+@cython.cclass
 class CpuStatus:
-    hirq_enable: bool = False
-    virq_enable: bool = False
-    irq_enable: bool = False
+    hirq_enable: cython.bint = False
+    virq_enable: cython.bint = False
+    irq_enable: cython.bint = False
 
-    nmi_line: bool = False
-    nmi_transition: bool = False
-    nmi_enable: bool = False
-    nmi_pending: bool = False
-    nmi_hold: bool = False
-    nmi_valid: bool = False
+    nmi_line: cython.bint = False
+    nmi_transition: cython.bint = False
+    nmi_enable: cython.bint = False
+    nmi_pending: cython.bint = False
+    nmi_hold: cython.bint = False
+    nmi_valid: cython.bint = False
 
-    nmi_line_last = False
+    nmi_line_last: cython.bint = False
 
-    h_blank_on: bool = False
-    v_blank_on: bool = False
+    h_blank_on: cython.bint = False
+    v_blank_on: cython.bint = False
 
-    auto_joypad_read_enable: bool = False
+    auto_joypad_read_enable: cython.bint = False
 
     @property
-    def interrupt_pending(self) -> bool:
+    def interrupt_pending(self) -> cython.bint:
         return self.nmi_pending
 
 

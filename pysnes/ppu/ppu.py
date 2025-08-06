@@ -3,9 +3,10 @@ from typing import TYPE_CHECKING
 from ctypes import c_uint8
 from typing import Optional, Union, Tuple
 
+import cython
 from sdl2 import *
 
-from .data_structures import *
+from .data_structures import Background, Object, Tilemap
 
 if TYPE_CHECKING:
     from ..cpu import Cpu
@@ -476,17 +477,17 @@ class Ppu:
             # (Addr<<9) + ((Y&0x1f)<<5) + (X&0x1f) +
             #     (SY ? ((Y&0x20)<<(SX ? 6 : 5)) : 0) + (SX ? ((X&0x20)<<5) : 0)
 
-            bg_size_w = 32 << (bg.screen_size & 1)
-            bg_size_h = 32 << (bg.screen_size >> 1)
-            scroll_x = bg.hoffset
-            scroll_y = bg.voffset
+            bg_size_w: cython.uint = 32 << (bg.screen_size & 1)
+            bg_size_h: cython.uint = 32 << (bg.screen_size >> 1)
+            scroll_x: cython.uint = bg.hoffset
+            scroll_y: cython.uint = bg.voffset
 
             orgx = scrx
             orgy = scry
             scry = (scry + scroll_y) % (8 * bg_size_h)
             scrx = (scrx + scroll_x) % (8 * bg_size_w)
 
-            offset = ((scry % 256 if bg_size_w == 64 else scry) // 8) * 32
+            offset: cython.uint = ((scry % 256 if bg_size_w == 64 else scry) // 8) * 32
             offset += ((scrx % 256) // 8)
             offset += (scrx // 256) * 0x400
             offset += (bg_size_w // 64) * ((scry // 256) * 0x800)

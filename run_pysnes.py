@@ -44,7 +44,7 @@ if __name__ == "__main__":
         # cProfile.run("pysnes.main()", "Profile.prof")
 
         s = pstats.Stats("Profile.prof")
-        s.strip_dirs().sort_stats("time").print_stats()
+        s.sort_stats("time").print_stats(50)
 
         pass
     elif args.load:

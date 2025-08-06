@@ -4,13 +4,16 @@ from ctypes import (
 )
 from dataclasses import dataclass
 
+import cython
+
 
 @dataclass
+@cython.cclass
 class Background:
-    number: int
+    number: cython.uint = 0
     """Background number 1-4"""
 
-    screen_size = 0
+    screen_size: cython.uint = 0
     """
     All tilemaps are 32x32 tiles. This controls the number of tilemaps in memory
     * 00=32x32
@@ -24,20 +27,20 @@ class Background:
     left part of the map and the second one (same size as the first one) will represent the right side of the map.
     """
 
-    screen_addr = 0
-    tiledata_addr = 0
-    tile_size = 0
+    screen_addr: cython.uint = 0
+    tiledata_addr: cython.uint = 0
+    tile_size: cython.uint = 0
     """
     If the BG character size for BG1/BG2/BG3/BG4 bit is set,
     then the BG is made of 16x16 tiles. Otherwise, 8x8 tiles are used.
     """
 
-    main_screen_enable = True
-    sub_screen_enable = True
-    hoffset = 0
-    voffset = 0
+    main_screen_enable: cython.bint = True
+    sub_screen_enable: cython.bint = True
+    hoffset: cython.uint = 0
+    voffset: cython.uint = 0
 
-    color_offset_mode_0: int = 0
+    color_offset_mode_0: cython.uint = 0
     """
     CGRAM Palette Entries
         15    Not used (should be zero) (read: PPU2 Open Bus)
@@ -60,6 +63,7 @@ class Background:
 
 
 @dataclass
+@cython.cclass
 class Object:
     x = 0
     y = 0
@@ -92,6 +96,7 @@ class Tilemap_(LittleEndianStructure):
 
 
 @dataclass
+@cython.cclass
 class Tilemap:
     addr: int
     palette: int
@@ -113,6 +118,7 @@ class Tilemap:
 
 
 @dataclass
+@cython.cclass
 class Tile:
     tile_map: Tilemap
     map_num: int  # map number 0-3

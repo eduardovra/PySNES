@@ -3,7 +3,6 @@ import sdl2 as sdl
 import imgui
 from imgui.integrations.sdl2 import SDL2Renderer
 import OpenGL.GL as gl
-import numpy as np
 from rich import print, inspect
 
 # https://github.com/pygame/pygame/issues/3110#issuecomment-1997404749
@@ -235,10 +234,9 @@ class Video:
     def draw_textures(self, main_bgs):
         """Draw the main background and backdrop textures."""
         texture = self.texture
-        array = np.array(main_bgs, dtype=np.uint32)
         gl.glBindTexture(gl.GL_TEXTURE_2D, texture)
         gl.glTexImage2D(
             gl.GL_TEXTURE_2D, 0, gl.GL_RGBA, 256, 224,
-            0, gl.GL_RGBA, gl.GL_UNSIGNED_INT_8_8_8_8, array
+            0, gl.GL_RGBA, gl.GL_UNSIGNED_INT_8_8_8_8, main_bgs
         )
         gl.glBindTexture(gl.GL_TEXTURE_2D, 0)

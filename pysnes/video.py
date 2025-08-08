@@ -1,35 +1,44 @@
 import os
 import sdl2 as sdl
-import imgui
-from imgui.integrations.sdl2 import SDL2Renderer
 import OpenGL.GL as gl
 from rich import print, inspect
 
 # https://github.com/pygame/pygame/issues/3110#issuecomment-1997404749
 os.environ["SDL_VIDEO_X11_FORCE_EGL"] = "1"
 
-# Define the vertex shader and fragment shader (OpenGL 3.3 compatible)
+# Define vertex shader that supports both colors and textures
 VERTEX_SHADER_SOURCE = """
 #version 330 core
-layout (location = 0) in vec3 aPos;  // Vertex position
-layout (location = 1) in vec3 aColor;  // Vertex color
+layout (location = 0) in vec3 aPos;      // Vertex position
+layout (location = 1) in vec3 aColor;    // Vertex color
+layout (location = 2) in vec2 aTexCoord; // Texture coordinate
 
-out vec3 vertexColor;  // Output to fragment shader
+out vec3 vertexColor;  // Output color to fragment shader
+out vec2 texCoord;     // Output texture coordinate to fragment shader
 
 void main() {
-    gl_Position = vec4(aPos, 1.0);  // Set the position of the point
-    vertexColor = aColor;  // Pass the color to the fragment shader
+    gl_Position = vec4(aPos, 1.0);
+    vertexColor = aColor;
+    texCoord = aTexCoord;
 }
 """
 
-# Updated fragment shader that uses the passed-in color for rendering
+# Fragment shader that can handle both colored rendering and textured rendering
 FRAGMENT_SHADER_SOURCE = """
 #version 330 core
 in vec3 vertexColor;  // Input from vertex shader
+in vec2 texCoord;     // Input texture coordinate from vertex shader
 out vec4 FragColor;
 
+uniform bool useTexture;        // Whether to use texture or color
+uniform sampler2D gameTexture;  // The game screen texture
+
 void main() {
-    FragColor = vec4(vertexColor, 1.0);  // Set the pixel color using the passed-in color
+    if (useTexture) {
+        FragColor = texture(gameTexture, texCoord);
+    } else {
+        FragColor = vec4(vertexColor, 1.0);
+    }
 }
 """
 
@@ -92,13 +101,6 @@ class Video:
 
         assert sdl.SDL_GL_SetSwapInterval(1) == 0, sdl.SDL_GetError()
 
-        # IMGUI_CHECKVERSION
-
-        self.imgui_context = imgui.create_context()
-
-        # Initialize the SDL2 renderer for ImGui
-        self.impl = SDL2Renderer(self.window)
-
         # Create texture for game screen rendering
         try:
             texture = gl.glGenTextures(1)
@@ -137,18 +139,12 @@ class Video:
             raise RuntimeError(f"Failed to create OpenGL buffers: {e}")
 
     def teardown_sdl(self) -> None:
-        self.impl.shutdown()
         sdl.SDL_GL_DeleteContext(self.gl_context)
         sdl.SDL_DestroyWindow(self.window)
         sdl.SDL_Quit()
 
     def update_screen(self) -> None:
-        # Clear the screen
-        gl.glClear(gl.GL_COLOR_BUFFER_BIT)
-
-        imgui.render()
-        self.impl.render(imgui.get_draw_data())
-
+        # Just swap buffers - screen clearing now happens in draw_textures
         sdl.SDL_GL_SwapWindow(self.window)
 
     def set_window_title(self, title: str) -> None:
@@ -232,11 +228,67 @@ class Video:
         gl.glDrawArrays(gl.GL_POINTS, 0, length)
 
     def draw_textures(self, main_bgs):
-        """Draw the main background and backdrop textures."""
-        texture = self.texture
-        gl.glBindTexture(gl.GL_TEXTURE_2D, texture)
+        """Draw the game screen texture directly to the window."""
+        # Clear screen first
+        gl.glClear(gl.GL_COLOR_BUFFER_BIT)
+        
+        # Update texture with game data
+        gl.glBindTexture(gl.GL_TEXTURE_2D, self.texture)
         gl.glTexImage2D(
             gl.GL_TEXTURE_2D, 0, gl.GL_RGBA, 256, 224,
             0, gl.GL_RGBA, gl.GL_UNSIGNED_INT_8_8_8_8, main_bgs
         )
+        
+        # Create vertex data for a textured quad 
+        # Format: [x, y, z, r, g, b, u, v] per vertex
+        import numpy as np
+        
+        quad_vertices = np.array([
+            # Position (x,y,z)     Color (r,g,b)      TexCoord (u,v)
+            [-0.8, -0.6, 0.0,     1.0, 1.0, 1.0,     0.0, 1.0],  # Bottom-left (flip V)
+            [ 0.8, -0.6, 0.0,     1.0, 1.0, 1.0,     1.0, 1.0],  # Bottom-right (flip V)
+            [ 0.8,  0.6, 0.0,     1.0, 1.0, 1.0,     1.0, 0.0],  # Top-right (flip V)
+            [-0.8, -0.6, 0.0,     1.0, 1.0, 1.0,     0.0, 1.0],  # Bottom-left (flip V)
+            [ 0.8,  0.6, 0.0,     1.0, 1.0, 1.0,     1.0, 0.0],  # Top-right (flip V)  
+            [-0.8,  0.6, 0.0,     1.0, 1.0, 1.0,     0.0, 0.0],  # Top-left (flip V)
+        ], dtype=np.float32)
+        
+        # Use shader program
+        gl.glUseProgram(self.shader_program)
+        
+        # Enable texture mode
+        use_texture_location = gl.glGetUniformLocation(self.shader_program, "useTexture")
+        if use_texture_location >= 0:
+            gl.glUniform1i(use_texture_location, 1)  # Enable texture mode
+        
+        texture_location = gl.glGetUniformLocation(self.shader_program, "gameTexture")
+        if texture_location >= 0:
+            gl.glUniform1i(texture_location, 0)  # Use texture unit 0
+        
+        # Bind texture to unit 0
+        gl.glActiveTexture(gl.GL_TEXTURE0)
+        gl.glBindTexture(gl.GL_TEXTURE_2D, self.texture)
+        
+        # Setup vertex data
+        gl.glBindVertexArray(self.VAO)
+        gl.glBindBuffer(gl.GL_ARRAY_BUFFER, self.VBO)
+        gl.glBufferData(gl.GL_ARRAY_BUFFER, quad_vertices.nbytes, quad_vertices, gl.GL_STATIC_DRAW)
+        
+        # Position attribute (location 0) - 3 floats
+        gl.glVertexAttribPointer(0, 3, gl.GL_FLOAT, gl.GL_FALSE, 8 * 4, None)
+        gl.glEnableVertexAttribArray(0)
+        
+        # Color attribute (location 1) - 3 floats, offset by 3*4 bytes
+        gl.glVertexAttribPointer(1, 3, gl.GL_FLOAT, gl.GL_FALSE, 8 * 4, gl.ctypes.c_void_p(3 * 4))
+        gl.glEnableVertexAttribArray(1)
+        
+        # Texture coordinate attribute (location 2) - 2 floats, offset by 6*4 bytes  
+        gl.glVertexAttribPointer(2, 2, gl.GL_FLOAT, gl.GL_FALSE, 8 * 4, gl.ctypes.c_void_p(6 * 4))
+        gl.glEnableVertexAttribArray(2)
+        
+        # Draw the quad as triangles
+        gl.glDrawArrays(gl.GL_TRIANGLES, 0, 6)
+        
+        # Cleanup
+        gl.glBindVertexArray(0)
         gl.glBindTexture(gl.GL_TEXTURE_2D, 0)

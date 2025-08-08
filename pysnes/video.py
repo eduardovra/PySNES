@@ -1,6 +1,7 @@
 import os
 import sdl2 as sdl
 import OpenGL.GL as gl
+import numpy as np
 from rich import print, inspect
 
 # https://github.com/pygame/pygame/issues/3110#issuecomment-1997404749
@@ -138,6 +139,24 @@ class Video:
         except Exception as e:
             raise RuntimeError(f"Failed to create OpenGL buffers: {e}")
 
+        # Pre-create vertex data for textured quad to avoid recreation every frame
+        self.quad_vertices = np.array([
+            # Position (x,y,z)     Color (r,g,b)      TexCoord (u,v)
+            [-0.8, -0.6, 0.0,     1.0, 1.0, 1.0,     0.0, 1.0],  # Bottom-left (flip V)
+            [ 0.8, -0.6, 0.0,     1.0, 1.0, 1.0,     1.0, 1.0],  # Bottom-right (flip V)
+            [ 0.8,  0.6, 0.0,     1.0, 1.0, 1.0,     1.0, 0.0],  # Top-right (flip V)
+            [-0.8, -0.6, 0.0,     1.0, 1.0, 1.0,     0.0, 1.0],  # Bottom-left (flip V)
+            [ 0.8,  0.6, 0.0,     1.0, 1.0, 1.0,     1.0, 0.0],  # Top-right (flip V)  
+            [-0.8,  0.6, 0.0,     1.0, 1.0, 1.0,     0.0, 0.0],  # Top-left (flip V)
+        ], dtype=np.float32)
+
+        # Cache uniform locations to avoid expensive lookups every frame
+        self.use_texture_location = gl.glGetUniformLocation(self.shader_program, "useTexture")
+        self.texture_location = gl.glGetUniformLocation(self.shader_program, "gameTexture")
+
+        # Pre-setup vertex attributes once during initialization
+        self.setup_vertex_attributes()
+
     def teardown_sdl(self) -> None:
         sdl.SDL_GL_DeleteContext(self.gl_context)
         sdl.SDL_DestroyWindow(self.window)
@@ -191,6 +210,30 @@ class Video:
 
         return program
 
+    def setup_vertex_attributes(self):
+        """Setup vertex attributes once during initialization."""
+        gl.glBindVertexArray(self.VAO)
+        gl.glBindBuffer(gl.GL_ARRAY_BUFFER, self.VBO)
+        
+        # Upload the pre-created vertex data
+        gl.glBufferData(gl.GL_ARRAY_BUFFER, self.quad_vertices.nbytes, self.quad_vertices, gl.GL_STATIC_DRAW)
+        
+        # Position attribute (location 0) - 3 floats
+        gl.glVertexAttribPointer(0, 3, gl.GL_FLOAT, gl.GL_FALSE, 8 * 4, None)
+        gl.glEnableVertexAttribArray(0)
+        
+        # Color attribute (location 1) - 3 floats, offset by 3*4 bytes
+        gl.glVertexAttribPointer(1, 3, gl.GL_FLOAT, gl.GL_FALSE, 8 * 4, gl.ctypes.c_void_p(3 * 4))
+        gl.glEnableVertexAttribArray(1)
+        
+        # Texture coordinate attribute (location 2) - 2 floats, offset by 6*4 bytes  
+        gl.glVertexAttribPointer(2, 2, gl.GL_FLOAT, gl.GL_FALSE, 8 * 4, gl.ctypes.c_void_p(6 * 4))
+        gl.glEnableVertexAttribArray(2)
+        
+        # Unbind for safety
+        gl.glBindBuffer(gl.GL_ARRAY_BUFFER, 0)
+        gl.glBindVertexArray(0)
+
     def draw_vertices(self, vertices, x, y, width, height):
         length = len(vertices) // 6  # assuming 6 floats per vertex: 3 for position, 3 for color
 
@@ -239,52 +282,22 @@ class Video:
             0, gl.GL_RGBA, gl.GL_UNSIGNED_INT_8_8_8_8, main_bgs
         )
         
-        # Create vertex data for a textured quad 
-        # Format: [x, y, z, r, g, b, u, v] per vertex
-        import numpy as np
-        
-        quad_vertices = np.array([
-            # Position (x,y,z)     Color (r,g,b)      TexCoord (u,v)
-            [-0.8, -0.6, 0.0,     1.0, 1.0, 1.0,     0.0, 1.0],  # Bottom-left (flip V)
-            [ 0.8, -0.6, 0.0,     1.0, 1.0, 1.0,     1.0, 1.0],  # Bottom-right (flip V)
-            [ 0.8,  0.6, 0.0,     1.0, 1.0, 1.0,     1.0, 0.0],  # Top-right (flip V)
-            [-0.8, -0.6, 0.0,     1.0, 1.0, 1.0,     0.0, 1.0],  # Bottom-left (flip V)
-            [ 0.8,  0.6, 0.0,     1.0, 1.0, 1.0,     1.0, 0.0],  # Top-right (flip V)  
-            [-0.8,  0.6, 0.0,     1.0, 1.0, 1.0,     0.0, 0.0],  # Top-left (flip V)
-        ], dtype=np.float32)
-        
         # Use shader program
         gl.glUseProgram(self.shader_program)
         
-        # Enable texture mode
-        use_texture_location = gl.glGetUniformLocation(self.shader_program, "useTexture")
-        if use_texture_location >= 0:
-            gl.glUniform1i(use_texture_location, 1)  # Enable texture mode
+        # Set uniforms using cached locations
+        if self.use_texture_location >= 0:
+            gl.glUniform1i(self.use_texture_location, 1)  # Enable texture mode
         
-        texture_location = gl.glGetUniformLocation(self.shader_program, "gameTexture")
-        if texture_location >= 0:
-            gl.glUniform1i(texture_location, 0)  # Use texture unit 0
+        if self.texture_location >= 0:
+            gl.glUniform1i(self.texture_location, 0)  # Use texture unit 0
         
         # Bind texture to unit 0
         gl.glActiveTexture(gl.GL_TEXTURE0)
         gl.glBindTexture(gl.GL_TEXTURE_2D, self.texture)
         
-        # Setup vertex data
+        # Use pre-configured VAO (vertex attributes already set up)
         gl.glBindVertexArray(self.VAO)
-        gl.glBindBuffer(gl.GL_ARRAY_BUFFER, self.VBO)
-        gl.glBufferData(gl.GL_ARRAY_BUFFER, quad_vertices.nbytes, quad_vertices, gl.GL_STATIC_DRAW)
-        
-        # Position attribute (location 0) - 3 floats
-        gl.glVertexAttribPointer(0, 3, gl.GL_FLOAT, gl.GL_FALSE, 8 * 4, None)
-        gl.glEnableVertexAttribArray(0)
-        
-        # Color attribute (location 1) - 3 floats, offset by 3*4 bytes
-        gl.glVertexAttribPointer(1, 3, gl.GL_FLOAT, gl.GL_FALSE, 8 * 4, gl.ctypes.c_void_p(3 * 4))
-        gl.glEnableVertexAttribArray(1)
-        
-        # Texture coordinate attribute (location 2) - 2 floats, offset by 6*4 bytes  
-        gl.glVertexAttribPointer(2, 2, gl.GL_FLOAT, gl.GL_FALSE, 8 * 4, gl.ctypes.c_void_p(6 * 4))
-        gl.glEnableVertexAttribArray(2)
         
         # Draw the quad as triangles
         gl.glDrawArrays(gl.GL_TRIANGLES, 0, 6)

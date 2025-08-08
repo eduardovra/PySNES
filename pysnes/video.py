@@ -4,6 +4,23 @@ import OpenGL.GL as gl
 import numpy as np
 from rich import print, inspect
 
+# Try to import SDL2 renderer for optimized rendering
+try:
+    from .video_sdl2 import SDL2Renderer
+    SDL2_AVAILABLE = True
+except ImportError as e:
+    SDL2Renderer = None
+    SDL2_AVAILABLE = False
+    print(f"[yellow]SDL2 renderer not available: {e}[/yellow]")
+
+# Try to import ModernGL for fallback rendering
+try:
+    from .video_moderngl import ModernGLRenderer
+    MODERNGL_AVAILABLE = True
+except ImportError as e:
+    ModernGLRenderer = None
+    MODERNGL_AVAILABLE = False
+
 # https://github.com/pygame/pygame/issues/3110#issuecomment-1997404749
 os.environ["SDL_VIDEO_X11_FORCE_EGL"] = "1"
 
@@ -49,11 +66,46 @@ class Video:
     WINDOW_WIDTH = 1400
     WINDOW_HEIGHT = 1400
 
+    def __init__(self):
+        # Choose renderer based on availability and preference
+        self.use_sdl2 = SDL2_AVAILABLE and not os.environ.get('PYSNES_FORCE_OPENGL', False)
+        self.use_moderngl = MODERNGL_AVAILABLE and not self.use_sdl2 and not os.environ.get('PYSNES_FORCE_PYOPENGL', False)
+        self.sdl2_renderer = None
+        self.moderngl_renderer = None
+        # Debug counters
+        self.sdl2_calls = 0
+        self.moderngl_calls = 0
+        self.pyopengl_calls = 0
+
     def initialize(self) -> None:
         result = sdl.SDL_Init(sdl.SDL_INIT_EVERYTHING)
         if result != 0:
             raise RuntimeError(f"Failed to initialize SDL: {sdl.SDL_GetError().decode()}")
 
+        # Create window first
+        self.window = sdl.SDL_CreateWindow(
+            b"PySNES",
+            0, 0, self.WINDOW_WIDTH, self.WINDOW_HEIGHT,
+            sdl.SDL_WINDOW_SHOWN | (sdl.SDL_WINDOW_OPENGL if not self.use_sdl2 else 0),
+        )
+
+        if not self.window:
+            raise RuntimeError(f"Failed to create SDL window: {sdl.SDL_GetError().decode()}")
+
+        # Initialize SDL2 direct renderer if available
+        if self.use_sdl2 and SDL2Renderer:
+            try:
+                self.sdl2_renderer = SDL2Renderer(256, 224)
+                self.sdl2_renderer.initialize(self.window)
+                print(f"[green]SDL2 renderer successfully initialized![/green]")
+                return  # Skip OpenGL initialization
+            except Exception as e:
+                print(f"[red]Failed to initialize SDL2 renderer: {e}[/red]")
+                print(f"[yellow]Falling back to OpenGL rendering...[/yellow]")
+                self.use_sdl2 = False
+                self.sdl2_renderer = None
+
+        # Continue with OpenGL initialization for ModernGL/PyOpenGL
         sdl.SDL_GL_SetAttribute(sdl.SDL_GL_DOUBLEBUFFER, 1)
         sdl.SDL_GL_SetAttribute(sdl.SDL_GL_DEPTH_SIZE, 24)
         sdl.SDL_GL_SetAttribute(sdl.SDL_GL_STENCIL_SIZE, 8)
@@ -67,14 +119,12 @@ class Video:
         sdl.SDL_SetHint(sdl.SDL_HINT_MAC_CTRL_CLICK_EMULATE_RIGHT_CLICK, b"1")
         sdl.SDL_SetHint(sdl.SDL_HINT_VIDEO_HIGHDPI_DISABLED, b"1")
 
-        self.window = sdl.SDL_CreateWindow(
-            b"PySNES",
-            0, 0, self.WINDOW_WIDTH, self.WINDOW_HEIGHT,
-            sdl.SDL_WINDOW_SHOWN | sdl.SDL_WINDOW_OPENGL,
-        )
-
         if not self.window:
             raise RuntimeError(f"Failed to create SDL window: {sdl.SDL_GetError().decode()}")
+
+        # If we're using SDL2 direct rendering, skip OpenGL setup
+        if self.use_sdl2:
+            return
 
         self.gl_context = sdl.SDL_GL_CreateContext(self.window)
         if not self.gl_context:
@@ -157,13 +207,39 @@ class Video:
         # Pre-setup vertex attributes once during initialization
         self.setup_vertex_attributes()
 
+        # Initialize ModernGL renderer if available and not using SDL2
+        if not self.use_sdl2 and self.use_moderngl and ModernGLRenderer:
+            self.moderngl_renderer = ModernGLRenderer(256, 224)
+            self.moderngl_renderer.initialize()
+            print(f"[green]ModernGL renderer successfully initialized![/green]")
+        elif not self.use_sdl2:
+            if not MODERNGL_AVAILABLE:
+                raise RuntimeError("No rendering backend available - need either SDL2 or ModernGL!")
+            else:
+                raise RuntimeError("ModernGL should be available but failed to create renderer!")
+
     def teardown_sdl(self) -> None:
-        sdl.SDL_GL_DeleteContext(self.gl_context)
+        # Clean up SDL2 renderer first
+        if self.sdl2_renderer:
+            self.sdl2_renderer.cleanup()
+            
+        # Clean up ModernGL resources
+        if self.moderngl_renderer:
+            self.moderngl_renderer.cleanup()
+            
+        # Clean up OpenGL context (only if we created one)
+        if hasattr(self, 'gl_context') and self.gl_context:
+            sdl.SDL_GL_DeleteContext(self.gl_context)
+            
         sdl.SDL_DestroyWindow(self.window)
         sdl.SDL_Quit()
 
     def update_screen(self) -> None:
-        # Just swap buffers - screen clearing now happens in draw_textures
+        # SDL2 renderer handles screen updates internally
+        if self.use_sdl2:
+            return
+        
+        # For OpenGL-based renderers, swap buffers
         sdl.SDL_GL_SwapWindow(self.window)
 
     def set_window_title(self, title: str) -> None:
@@ -272,36 +348,53 @@ class Video:
 
     def draw_textures(self, main_bgs):
         """Draw the game screen texture directly to the window."""
-        # Clear screen first
-        gl.glClear(gl.GL_COLOR_BUFFER_BIT)
+        if self.use_sdl2 and self.sdl2_renderer:
+            # Use SDL2 for direct 2D rendering (fastest option)
+            self.sdl2_renderer.draw_frame(main_bgs)
+            self.sdl2_calls += 1
+            return
         
-        # Update texture with game data
-        gl.glBindTexture(gl.GL_TEXTURE_2D, self.texture)
-        gl.glTexImage2D(
-            gl.GL_TEXTURE_2D, 0, gl.GL_RGBA, 256, 224,
-            0, gl.GL_RGBA, gl.GL_UNSIGNED_INT_8_8_8_8, main_bgs
-        )
+        if self.use_moderngl and self.moderngl_renderer:
+            # Use ModernGL for optimized rendering (bypasses PyOpenGL ctypes overhead)
+            self.moderngl_renderer.draw_frame(main_bgs)
+            self.moderngl_calls += 1
+            return
         
-        # Use shader program
-        gl.glUseProgram(self.shader_program)
+        # If no renderer is available, raise an error
+        raise RuntimeError("No valid renderer available!")
+    
+    def get_renderer_info(self) -> dict:
+        """Get information about the current renderer"""
+        info = {
+            'active_renderer': 'SDL2' if self.use_sdl2 else ('ModernGL' if self.use_moderngl else 'PyOpenGL'),
+            'sdl2_available': SDL2_AVAILABLE,
+            'moderngl_available': MODERNGL_AVAILABLE,
+            'sdl2_calls': getattr(self, 'sdl2_calls', 0),
+            'moderngl_calls': getattr(self, 'moderngl_calls', 0),
+            'pyopengl_calls': getattr(self, 'pyopengl_calls', 0),
+        }
         
-        # Set uniforms using cached locations
-        if self.use_texture_location >= 0:
-            gl.glUniform1i(self.use_texture_location, 1)  # Enable texture mode
-        
-        if self.texture_location >= 0:
-            gl.glUniform1i(self.texture_location, 0)  # Use texture unit 0
-        
-        # Bind texture to unit 0
-        gl.glActiveTexture(gl.GL_TEXTURE0)
-        gl.glBindTexture(gl.GL_TEXTURE_2D, self.texture)
-        
-        # Use pre-configured VAO (vertex attributes already set up)
-        gl.glBindVertexArray(self.VAO)
-        
-        # Draw the quad as triangles
-        gl.glDrawArrays(gl.GL_TRIANGLES, 0, 6)
-        
-        # Cleanup
-        gl.glBindVertexArray(0)
-        gl.glBindTexture(gl.GL_TEXTURE_2D, 0)
+        if self.sdl2_renderer:
+            info.update(self.sdl2_renderer.get_performance_info())
+        elif self.moderngl_renderer:
+            info.update(self.moderngl_renderer.get_performance_info())
+            
+        return info
+    
+    def toggle_renderer(self) -> bool:
+        """Toggle between available renderers (for testing/comparison)"""
+        if SDL2_AVAILABLE and not self.use_sdl2:
+            # Switch to SDL2
+            self.use_sdl2 = True
+            self.use_moderngl = False
+            print(f"[blue]Switched to SDL2 renderer[/blue]")
+            return True
+        elif MODERNGL_AVAILABLE and not self.use_moderngl and self.use_sdl2:
+            # Switch to ModernGL
+            self.use_sdl2 = False
+            self.use_moderngl = True
+            print(f"[blue]Switched to ModernGL renderer[/blue]")
+            return True
+        else:
+            print("[yellow]No other renderers available to toggle to[/yellow]")
+            return False

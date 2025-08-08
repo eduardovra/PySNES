@@ -29,6 +29,8 @@ pygame
 pyglet
 Pygments
 PyOpenGL
+moderngl
+moderngl-window
 pyparsing
 PySDL2
 pysdl2-dll

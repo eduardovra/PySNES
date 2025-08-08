@@ -1,6 +1,6 @@
 .PHONY: build clean run install test benchmark docs
 
-PY ?= uv run --python pypy@3.10
+PY ?= --python pypy@3.10
 
 all: build
 
@@ -8,7 +8,7 @@ build: build_pysnes
 
 build_pysnes:
 	@echo "Building PySNES..."
-	${PY} setup.py build_ext -j $(shell getconf _NPROCESSORS_ONLN) --inplace
+	uv run ${PY} setup.py build_ext -j $(shell getconf _NPROCESSORS_ONLN) --inplace
 
 clean:
 	@echo "Cleaning..."
@@ -30,8 +30,8 @@ clean:
 
 run: build
 	@echo "Running PySNES..."
-	${PY} run_pysnes.py
+	uv run ${PY} run_pysnes.py
 
 profile: build
 	@echo "Profiling PySNES..."
-	${PY} run_pysnes.py --profile
+	uv run ${PY} run_pysnes.py --profile

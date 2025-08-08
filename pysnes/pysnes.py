@@ -49,6 +49,12 @@ class PySNES:
         # Initialize video and create window
         self.video.initialize()
         self.video.set_window_title(f"PySNES - {rom.rom_file_name}")
+        
+        # Debug: Show which renderer is being used
+        renderer_info = self.video.get_renderer_info()
+        print(f"[blue]Video Renderer: {renderer_info.get('active_renderer', 'Unknown')}[/blue]")
+        if renderer_info.get('vendor'):
+            print(f"[blue]GPU: {renderer_info.get('vendor')} - {renderer_info.get('renderer')}[/blue]")
 
         # Used to pool inputs
         self.event = sdl.SDL_Event()
@@ -66,11 +72,13 @@ class PySNES:
         self.frame_fps = 0.0
 
         # Rich debug system - replaces ImGui for MASSIVE performance boost!
-        self.debug_enabled = True  # Start with debug enabled 
-        self.debug_console = Console()
+        self.debug_enabled = True  # Re-enable debug with better handling
+        self.debug_console = Console(file=sys.stderr, force_terminal=True)  # Use stderr to avoid conflicts
         self.debug_live = None
         self.debug_frame_counter = 0
-        self.debug_update_frequency = 20  # Update every 20 frames for smooth display
+        self.debug_update_frequency = 120  # Update every 120 frames for very stable display
+        self.debug_last_update_time = 0  # Time-based throttling
+        self.debug_min_update_interval = 1.0  # Minimum 1 second between updates
 
     def create_rich_debug_display(self):
         """Create Rich debug display - replaces ImGui for massive performance boost!"""
@@ -142,7 +150,7 @@ class PySNES:
                 self.debug_live = Live(
                     initial_display, 
                     console=self.debug_console,
-                    refresh_per_second=3,  # Limit refresh for performance
+                    refresh_per_second=1,  # Very low refresh for stable display
                     screen=True
                 )
                 self.debug_live.start()
@@ -153,12 +161,17 @@ class PySNES:
             return
             
         self.debug_frame_counter += 1
+        current_time = time.time()
         
-        # Update only every N frames for better performance
-        if self.debug_frame_counter % self.debug_update_frequency == 0:
+        # Update only every N frames AND with minimum time interval for stable display
+        time_check = (current_time - self.debug_last_update_time) >= self.debug_min_update_interval
+        frame_check = self.debug_frame_counter % self.debug_update_frequency == 0
+        
+        if time_check and frame_check:
             new_display = self.create_rich_debug_display()
             if new_display:
                 self.debug_live.update(new_display)
+                self.debug_last_update_time = current_time
                 
     def stop_debug_display(self):
         """Stop the Rich live debug display"""

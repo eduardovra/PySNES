@@ -696,7 +696,7 @@ class Ppu:
             l, h = tile_data[i + 16], tile_data[i + 17]
             color |= (h & mask) >> pixel << 3 | (l & mask) >> pixel << 2
 
-        # NOTE: I guess this is GL_RGB5?
+    # ...existing code...
 
         x_ndc = 2.0 * (x / SCREEN_WIDTH) - 1.0
         y_ndc = 1.0 - 2.0 * (y / SCREEN_HEIGHT)
@@ -732,7 +732,7 @@ class Ppu:
         g_8bit = (g_5bit * 255) // 31
         b_8bit = (b_5bit * 255) // 31
 
-        # normalize to [0, 1] for OpenGL
+    # ...existing code...
         r = r_8bit / 255
         g = g_8bit / 255
         b = b_8bit / 255
@@ -768,7 +768,7 @@ class Ppu:
         g_8bit = (g_5bit * 255) // 31
         b_8bit = (b_5bit * 255) // 31
 
-        # normalize to [0, 1] for OpenGL
+    # ...existing code...
         r = r_8bit / 255
         g = g_8bit / 255
         b = b_8bit / 255

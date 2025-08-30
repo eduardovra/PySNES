@@ -18,6 +18,7 @@ SCREEN_HEIGHT = 224
 # SCREEN_HEIGHT = 240
 
 
+@cython.cclass
 class Ppu:
     """
     Picture Processor Unit: 15-Bit
@@ -454,7 +455,10 @@ class Ppu:
             x, y, width = scrx, self.v_counter, SCREEN_WIDTH
             self.main_bgs[y * width + x] = u32_color
 
-    def draw_background_scanline(self, bg: Background, bpp: int, priority_selector: bool) -> None:
+    # @cython.nogil
+    @cython.cfunc
+    # @cython.noexcept
+    def draw_background_scanline(self, bg: Background, bpp: cython.uchar, priority_selector: cython.bint):
         scanline = self.v_counter  # TODO move to method argument
 
         assert bg.sub_screen_enable is False, "Sub screen not implemented"
@@ -467,22 +471,25 @@ class Ppu:
         # Assuming 256 dots per scanline
         for dot in range(256):
             # Calculate the tilemap entry address in VRAM
-            scrx, scry = dot, scanline
+            # scrx, scry = dot, scanline
+            scrx: cython.uint = dot
+            scry: cython.uint = scanline
 
             # To find the tilemap word address for a particular tile (X and Y), you'd use a
             # formula something like this:
             # (Addr<<9) + ((Y&0x1f)<<5) + (X&0x1f) +
             #     (SY ? ((Y&0x20)<<(SX ? 6 : 5)) : 0) + (SX ? ((X&0x20)<<5) : 0)
 
-            bg_size_w: cython.uint = 32 << (bg.screen_size & 1)
-            bg_size_h: cython.uint = 32 << (bg.screen_size >> 1)
+            screen_size: cython.uint = bg.screen_size
+            bg_size_w: cython.uint = 32 << (screen_size & 1)
+            bg_size_h: cython.uint = 32 << (screen_size >> 1)
             scroll_x: cython.uint = bg.hoffset
             scroll_y: cython.uint = bg.voffset
 
             orgx = scrx
             orgy = scry
-            scry = (scry + scroll_y) % (8 * bg_size_h)
-            scrx = (scrx + scroll_x) % (8 * bg_size_w)
+            scry: cython.uint = (scry + scroll_y) % (8 * bg_size_h)
+            scrx: cython.uint = (scrx + scroll_x) % (8 * bg_size_w)
 
             offset: cython.uint = ((scry % 256 if bg_size_w == 64 else scry) // 8) * 32
             offset += ((scrx % 256) // 8)
@@ -492,36 +499,44 @@ class Ppu:
             screen_addr = bg.screen_addr & 0xFFFF
             tilemap_addr = (screen_addr + offset) * 2 & 0xFFFF
 
-            tilemap = Tilemap.from_buffer(self.vram, tilemap_addr)
-            if tilemap.priority == priority_selector:
-                i = scry % 8
-                j = scrx % 8
-                v_shift = i + (-i + 7 - i) * tilemap.v_flip
-                h_shift = (7 - j) + (2 * j - 7) * tilemap.h_flip
+            # tilemap = Tilemap.from_buffer(self.vram, tilemap_addr)
+            low: cython.uint = self.vram[tilemap_addr]
+            high: cython.uint = self.vram[tilemap_addr + 1]
+            tilemap_addr: cython.uint = (high & 3) << 8 | low
+            tilemap_palette: cython.uint = (high >> 2) & 7
+            tilemap_priority: cython.bint = (high >> 5) & 1
+            tilemap_h_flip: cython.bint = (high >> 6) & 1
+            tilemap_v_flip: cython.bint = (high >> 7) & 1
+
+            if tilemap_priority == priority_selector:
+                i: cython.uint = scry % 8
+                j: cython.uint = scrx % 8
+                v_shift: cython.uint = i + (-i + 7 - i) * tilemap_v_flip
+                h_shift: cython.uint = (7 - j) + (2 * j - 7) * tilemap_h_flip
                 if bpp == 2:
-                    tile_address = (tilemap.addr * 8 + (bg.tiledata_addr * 2) + v_shift) * 2
-                    b_lo = self.vram[tile_address]
-                    b_hi = self.vram[tile_address + 1]
-                    v = ((b_lo >> h_shift) & 1) + (2 * ((b_hi >> h_shift) & 1))
+                    tile_address: cython.uint = (tilemap_addr * 8 + (bg.tiledata_addr * 2) + v_shift) * 2
+                    b_lo: cython.uint = self.vram[tile_address]
+                    b_hi: cython.uint = self.vram[tile_address + 1]
+                    v: cython.uint = ((b_lo >> h_shift) & 1) + (2 * ((b_hi >> h_shift) & 1))
                 elif bpp == 4:
-                    tile_address = (tilemap.addr * 16 + (bg.tiledata_addr * 2) + v_shift) * 2
-                    b_1 = self.vram[tile_address]
-                    b_2 = self.vram[tile_address + 1]
-                    b_3 = self.vram[tile_address + 16]
-                    b_4 = self.vram[tile_address + 17]
-                    v = ((b_1 >> h_shift) & 1) + (2 * ((b_2 >> h_shift) & 1)) + \
+                    tile_address: cython.uint = (tilemap_addr * 16 + (bg.tiledata_addr * 2) + v_shift) * 2
+                    b_1: cython.uint = self.vram[tile_address]
+                    b_2: cython.uint = self.vram[tile_address + 1]
+                    b_3: cython.uint = self.vram[tile_address + 16]
+                    b_4: cython.uint = self.vram[tile_address + 17]
+                    v: cython.uint = ((b_1 >> h_shift) & 1) + (2 * ((b_2 >> h_shift) & 1)) + \
                         (4 * ((b_3 >> h_shift) & 1)) + (8 * ((b_4 >> h_shift) & 1))
                 elif bpp == 8:
-                    tile_address = (tilemap.addr * 32 + (bg.tiledata_addr * 1) + v_shift) * 2
-                    b_1 = self.vram[tile_address]
-                    b_2 = self.vram[tile_address + 1]
-                    b_3 = self.vram[tile_address + 16]
-                    b_4 = self.vram[tile_address + 17]
-                    b_5 = self.vram[tile_address + 32]
-                    b_6 = self.vram[tile_address + 33]
-                    b_7 = self.vram[tile_address + 48]
-                    b_8 = self.vram[tile_address + 49]
-                    v = ((b_1 >> h_shift) & 1) + \
+                    tile_address: cython.uint = (tilemap_addr * 32 + (bg.tiledata_addr * 1) + v_shift) * 2
+                    b_1: cython.uint = self.vram[tile_address]
+                    b_2: cython.uint = self.vram[tile_address + 1]
+                    b_3: cython.uint = self.vram[tile_address + 16]
+                    b_4: cython.uint = self.vram[tile_address + 17]
+                    b_5: cython.uint = self.vram[tile_address + 32]
+                    b_6: cython.uint = self.vram[tile_address + 33]
+                    b_7: cython.uint = self.vram[tile_address + 48]
+                    b_8: cython.uint = self.vram[tile_address + 49]
+                    v: cython.uint = ((b_1 >> h_shift) & 1) + \
                         (2 * ((b_2 >> h_shift) & 1)) + \
                         (4 * ((b_3 >> h_shift) & 1)) + \
                         (8 * ((b_4 >> h_shift) & 1)) + \
@@ -535,14 +550,14 @@ class Ppu:
                 if v:
                     # Special case for BG2-BG4 in Mode 0
                     color_offset = bg.color_offset_mode_0 if self._bgmode == 0 else 0
-                    r, g, b = self.get_rbg_colors(bpp, tilemap.palette, v, color_offset)
+                    # r, g, b = self.get_rbg_colors(bpp, tilemap_palette, v, color_offset)
 
-                    x_ndc = 2.0 * (scrx / SCREEN_WIDTH) - 1.0
-                    y_ndc = 1.0 - 2.0 * (scry / SCREEN_HEIGHT)
+                    # x_ndc = 2.0 * (scrx / SCREEN_WIDTH) - 1.0
+                    # y_ndc = 1.0 - 2.0 * (scry / SCREEN_HEIGHT)
 
-                    u32_color = self.get_u32_color(bpp, tilemap.palette, v, color_offset)
-                    x, y, width = orgx, orgy, SCREEN_WIDTH
-                    self.main_bgs[y * width + x] = u32_color
+                    u32_color = self.get_u32_color(bpp, tilemap_palette, v, color_offset)
+                    # x, y, width = orgx, orgy, SCREEN_WIDTH
+                    self.main_bgs[orgy * SCREEN_WIDTH + orgx] = u32_color
 
                     if self.mosaic_enabled[bg.number - 1] and False:  # TODO implement mosaic
                         # for x in range(0, 256, size):

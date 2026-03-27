@@ -1,7 +1,6 @@
 import argparse
 from ctypes import byref
 import time
-from enum import IntEnum
 import sys
 import platform
 
@@ -15,6 +14,7 @@ from rich.panel import Panel
 from rich.columns import Columns
 
 from .rom import Rom
+from .scheduler import Scheduler
 from .bus import Bus
 from .cpu import Cpu
 from .apu import Apu
@@ -29,21 +29,18 @@ else:
     print("[blue]Cython is not enabled, using pure Python modules.[/blue]")
 
 
-class States(IntEnum):
-    RESET = 0
-    RUNNING_SCANLINES = 1
-    RENDER_GAME_SCREEN = 2
-
 
 class PySNES:
     def __init__(self, rom_file_path: str) -> None:
         rom = Rom(rom_file_path)
+        self.scheduler = Scheduler()
         self.apu = Apu()
         self.cpu = Cpu(rom.hardware_vectors)
-        self.ppu = Ppu(self.cpu)  # Pass CPU reference so PPU can control the NMI line
+        self.ppu = Ppu()
         self.controllers = [Controller(), Controller(disabled=True)]
-        bus = Bus(rom, self.cpu, self.apu, self.ppu, self.controllers)
+        bus = Bus(rom, self.cpu, self.apu, self.ppu, self.controllers, self.scheduler)
         self.cpu.attach(bus)
+        self.ppu.attach(self.scheduler, bus)
         self.video = Video()
 
         # Initialize video and create window
@@ -65,7 +62,6 @@ class PySNES:
         # Emulator state variables
         self.running = True
         self.paused = False
-        self.state = States.RESET
         self.loop_time = 0.0
         self.loop_fps = 0.0
         self.frame_time = 0.0
@@ -196,71 +192,39 @@ class PySNES:
         pass
 
     def main(self):
-        """Main loop with Rich debug system - much faster than ImGui!"""
-        # Start Rich debug display
+        """Main loop driven by the event scheduler."""
+        # One NTSC frame = 262 scanlines × 1364 master clocks
+        MC_PER_FRAME: int = 262 * 1364
+
+        # Register CPU and PPU with the scheduler
+        self.cpu.start(self.scheduler)
+        self.ppu.start()
+
         self.start_debug_display()
-        
-        # Initialize frame timing
         frame_start = time.time()
-        
+
         try:
-            # Main state machine
             while self.running:
-                loop_start = time.time()
+                if not self.paused:
+                    # Advance the scheduler by exactly one frame worth of master clocks
+                    frame_end = self.scheduler.master_clock + MC_PER_FRAME
+                    self.scheduler.run_to(frame_end)
 
-                if self.state == States.RESET:
-                    frame_start = time.time()
-                    self.scanline = 0
-                    self.state = States.RUNNING_SCANLINES
-
-                elif self.state == States.RUNNING_SCANLINES and not self.paused:
-                    # Run one scanline on the CPU, PPU and APU
-                    self.run_scanline()
-                    self.scanline += 1
-
-                    """
-                    Visible scanlines (NTSC): 224 (or 239 in high-res mode).
-                    Total scanlines (NTSC): 262.
-                    Total scanlines (PAL): 312.
-                    """
-                    if self.scanline == 262:
-                        self.state = States.RENDER_GAME_SCREEN
-
-                elif self.state == States.RENDER_GAME_SCREEN and not self.paused:
-                    # Draw textures - this is now much faster without ImGui!
+                    # Present the frame rendered by the PPU during this period
                     self.video.draw_textures(self.ppu.main_bgs)
+                    self.video.update_screen()
 
-                    # Calculate frame time
                     self.frame_time = time.time() - frame_start
                     if self.frame_time > 0:
                         self.frame_fps = 1 / self.frame_time
+                    frame_start = time.time()
 
-                    self.state = States.RESET
-
-                # Pool inputs
                 self.process_inputs()
-
-                # Update Rich debug display (replaces ImGui - much faster!)
                 self.update_debug_display()
 
-                # Swap buffers - no more ImGui rendering overhead!
-                self.video.update_screen()
-
-                # Calculate loop time
-                self.loop_time = time.time() - loop_start
-                if self.loop_time > 0:
-                    self.loop_fps = 1 / self.loop_time
-
         finally:
-            # Clean up
             self.stop_debug_display()
             self.video.teardown_sdl()
-
-    def run_scanline(self):
-        """Run a scanline"""
-        clocks = self.cpu.run_scanline()
-        self.ppu.tick(clocks)
-        self.apu.tick(clocks)
 
     def process_inputs(self):
         # Capture inputs from keyboard using SDL
@@ -380,3 +344,7 @@ def main():
     pysnes.main()
 
     pysnes.video.teardown_sdl()
+
+
+if __name__ == "__main__":
+    main()

@@ -15,21 +15,55 @@ from .controller import Controller
 @cython.cclass
 class Bus:
     def __init__(
-        self, rom: Rom, cpu: Cpu, apu: Apu, ppu: Ppu, controllers: List[Controller]
+        self,
+        rom: Rom,
+        cpu: Cpu,
+        apu: Apu,
+        ppu: Ppu,
+        controllers: List[Controller],
+        scheduler,
     ) -> None:
         self.rom = rom  # LoROM section (program memory)
         self.cpu = cpu
         self.apu = apu  # Sound system [0x2140-0x217F]
         self.ppu = ppu
+        self.scheduler = scheduler
         self.low_ram = bytearray(0x2000)
         self.high_ram = bytearray(0xE000)
         self.dma_ppu2_hw_registers = bytearray(0x44FF - 0x4200 + 1)
         self.extended_ram = bytearray(0x7FFFFF - 0x7E8000 + 1)
         self.controller_port1, self.controller_port2 = controllers
 
+        # H/V blank flags owned by the bus; set by the PPU scheduler events
+        self.hblank: bool = False
+        self.vblank: bool = False
+
         # i'll set up an unammaped memory region to capture all writes the test
         # does and are not necessarily mapped on real hardware
         self.unmapped = bytearray(2**24)  # 24 bits -> 16Mb
+
+    def raise_nmi(self) -> None:
+        """Called by PPU at V-Blank start (rising NMI edge)."""
+        self.cpu.status.nmi_line = True
+        if self.cpu.status.auto_joypad_read_enable:
+            self._update_controller_autojoypad_read()
+        self.cpu.nmi_rising_edge()
+
+    def lower_nmi(self) -> None:
+        """Called by PPU at V-Blank end (falling NMI edge)."""
+        self.cpu.status.nmi_line = False
+
+    def _update_controller_autojoypad_read(self) -> None:
+        self.controller_port1.latch(0)
+        self.controller_port1.latch(1)
+        self.controller_port1.joy_h = 0
+        for bit in reversed(range(8)):
+            if self.controller_port1.data() & 1:
+                self.controller_port1.joy_h |= 1 << bit
+        self.controller_port1.joy_l = 0
+        for bit in reversed(range(8)):
+            if self.controller_port1.data() & 1:
+                self.controller_port1.joy_l |= 1 << bit
 
     def __getitem__(self, abs_addr: cython.uint) -> cython.uchar:
         assert 0x000000 <= abs_addr <= 0xFFFFFF, "Address outside 24 bit range"
@@ -85,6 +119,7 @@ class Bus:
                 if 0x2140 <= addr <= 0x217F:
                     # 0x2140 - 0x204C == 0xF4 [addr of PORT0]
                     if 0x2140 <= addr <= 0x2143:  # TODO ugly
+                        self.apu.sync_to(self.scheduler.master_clock)
                         # print(f"  CPU read [{hex(addr)}] ==> {hex(self.apu.ports_w[addr - 0x2140])}")
                         return self.apu.ports_w[addr - 0x2140]
                     return self.apu[addr - 0x204C]
@@ -115,14 +150,10 @@ class Bus:
 
                     return data
                 if addr == 0x4212:  # HVBJOY - PPU Status
-                    # H-Blank hcounter <= 2 or hcounter >= 1096
-                    # V-Blank vcounter >= ppu.vdisp
                     return (
-                        (
-                            1 << 5
-                        )  # This bit is unmmaped but the test program keeps reading it
-                        | self.cpu.status.h_blank_on << 6
-                        | self.cpu.status.v_blank_on << 7
+                        (1 << 5)  # This bit is unmapped but the test program keeps reading it
+                        | self.hblank << 6
+                        | self.vblank << 7
                     )
                 if addr == 0x4218:  # JOY1L
                     return self.controller_port1.joy_l
@@ -333,6 +364,7 @@ class Bus:
                     return  # Not writable
 
                 if 0x2140 <= addr <= 0x2143:  # TODO ugly
+                    self.apu.sync_to(self.scheduler.master_clock)
                     # print(f"  CPU write [{hex(addr)}] <== {hex(data)}")
                     self.apu.ports_r[addr - 0x2140] = data
                     return
@@ -363,10 +395,10 @@ class Bus:
                     self.cpu.status.irq_enable = (
                         self.cpu.status.hirq_enable or self.cpu.status.virq_enable
                     )
-                    # Trigger transition if line is up when the flag is enabled
+                    # If NMI is being enabled while V-Blank line is already high, trigger immediately
                     if data & 0x80:
                         if not self.cpu.status.nmi_enable and self.cpu.status.nmi_line:
-                            self.cpu.status.nmi_transition = True
+                            self.cpu.nmi_rising_edge()
                     self.cpu.status.nmi_enable = bool(data & 0x80)
                     return
 

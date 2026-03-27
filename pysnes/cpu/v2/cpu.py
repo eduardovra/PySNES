@@ -85,23 +85,11 @@ class CpuStatus:
     virq_enable: cython.bint = False
     irq_enable: cython.bint = False
 
+    # nmi_line: set to True at V-Blank start by bus.raise_nmi(); read by bus at $4210
     nmi_line: cython.bint = False
-    nmi_transition: cython.bint = False
     nmi_enable: cython.bint = False
-    nmi_pending: cython.bint = False
-    nmi_hold: cython.bint = False
-    nmi_valid: cython.bint = False
-
-    nmi_line_last: cython.bint = False
-
-    h_blank_on: cython.bint = False
-    v_blank_on: cython.bint = False
 
     auto_joypad_read_enable: cython.bint = False
-
-    @property
-    def interrupt_pending(self) -> cython.bint:
-        return self.nmi_pending
 
 
 @cython.cclass
@@ -169,6 +157,9 @@ class Cpu:
         self.cycles: int = 182
         self.prev_cycles = self.cycles
 
+        # NMI pending flag — set by nmi_rising_edge(), checked in _step()
+        self._nmi_pending: bool = False
+
     def load_instructions(self):
         from .wdc65816.instructions import INSTRUCTIONS
 
@@ -191,6 +182,31 @@ class Cpu:
 
         # NOTE shoehorned to make v2 compatible with v1
         self.dma = DMA(bus)
+
+    # ------------------------------------------------------------------
+    # Scheduler-based execution
+    # ------------------------------------------------------------------
+
+    def start(self, scheduler) -> None:
+        """Register the CPU with the scheduler. Call once before the main loop."""
+        self.scheduler = scheduler
+        self.scheduler.add(0, self._step)
+
+    def _step(self) -> None:
+        """Single-instruction step, called by the Scheduler. Reschedules itself."""
+        if self._nmi_pending:
+            self._nmi_pending = False
+            vector = 0xFFFA if self.EF else 0xFFEA
+            mc = self.interrupt(vector)
+        else:
+            mc = self.fetch_and_execute()
+        # mc is in master clocks; schedule the next step that many clocks ahead
+        self.scheduler.add(mc, self._step)
+
+    def nmi_rising_edge(self) -> None:
+        """Called by the bus when V-Blank starts (rising NMI edge)."""
+        if self.status.nmi_enable:
+            self._nmi_pending = True
 
     def idleIRQ(self):
         pass
@@ -445,74 +461,6 @@ class Cpu:
         self.MFlag = data & 0x20 > 0
         self.VFlag = data & 0x40 > 0
         self.NFlag = data & 0x80 > 0
-
-    def run_scanline(self) -> int:
-        """
-        Runs a single scanline
-
-        https://wiki.superfamicom.org/timing
-
-        The SNES master clock runs at about 21.477MHz NTSC
-        The SNES runs 1 scanline every 1364 master cycles
-        Frames are 262 scanlines in non-interlace mode
-        There are always 340 dots ('pixels') per scanline
-        """
-        cycles = 0
-        target_cycles = self.cycles + 1364
-
-        while self.cycles < target_cycles:
-            cycles += self.tick()
-
-        return cycles
-
-    def update_controller_autojoypad_read(self) -> None:
-        self.bus.controller_port1.latch(0)
-        self.bus.controller_port1.latch(1)
-
-        self.bus.controller_port1.joy_h = 0  # JOY1H
-        for bit in reversed(range(8)):
-            if self.bus.controller_port1.data() & 1:
-                self.bus.controller_port1.joy_h |= 1 << bit
-        self.bus.controller_port1.joy_l = 0  # JOY1L
-        for bit in reversed(range(8)):
-            if self.bus.controller_port1.data() & 1:
-                self.bus.controller_port1.joy_l |= 1 << bit
-
-    def tick(self) -> cython.uint:
-        """Advances the CPU by one step"""
-        # NOTE this is for compatibility with cpu v1
-        # not sure I'm keeping this standard
-
-        # Read NMI line
-        if self.status.nmi_line and not self.status.nmi_line_last:
-            # Read controllers status during V-Blank if autojoypad is ON
-            if self.status.auto_joypad_read_enable:
-                self.update_controller_autojoypad_read()
-
-            # Transition to high
-            if self.status.nmi_enable:
-                self.status.nmi_transition = True
-
-        # Save last NMI line state
-        self.status.nmi_line_last = self.status.nmi_line
-
-        # Test for NMI rising edge and trigger interrupt on next iteration
-        if self.status.nmi_transition:
-            self.status.nmi_transition = False
-            self.status.nmi_pending = True
-
-        # If there's no interrupt pending keep normal execution flow
-        # if not self.status.interrupt_pending:
-        #     cycles = self.fetch_and_execute()
-        #     return cycles
-
-        # NMI trigger has been scheduled, so jump to its vector
-        if self.status.nmi_pending:
-            self.status.nmi_pending = False
-            vector = 0xFFFA if self.EF else 0xFFEA
-            return self.interrupt(vector)
-
-        return self.fetch_and_execute()
 
     def interrupt(self, vector: int) -> int:
         """

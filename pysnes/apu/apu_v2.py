@@ -60,6 +60,10 @@ class Apu:
 
         self.timers = [Timer(self, 128), Timer(self, 128), Timer(self, 16)]
 
+        # Catchup clock tracking: master clock value at last APU sync
+        # APU runs at ~1.024 MHz; 1 APU clock ≈ 21 master clocks (21477272/1024000)
+        self._last_synced_mc: int = 0
+
         self.test_register = 0x0A  # F0 (write-only)
         self.control_register = 0x80  # F1 (write only)
         self.dsp_register_address = 0x00  # F2 (r/w)
@@ -197,9 +201,21 @@ class Apu:
                     apu_str,
                 ))
 
-    def tick(self, master_cycles) -> None:
-        self.step_timers(128)  # TODO count real clock cycles
-        self.fetch_and_execute()
+    # Approximate master-clock-to-APU-clock ratio (integer division)
+    _APU_MC_PER_CLOCK: int = 21  # 21477272 / 1024000 ≈ 20.979
+
+    def sync_to(self, master_clock: int) -> None:
+        """Catch the APU up to the given master clock value.
+
+        Called lazily whenever the CPU reads or writes an APU I/O port, ensuring
+        the APU has run up to that point in time before the port value is sampled.
+        """
+        elapsed = master_clock - self._last_synced_mc
+        apu_ticks = elapsed // self._APU_MC_PER_CLOCK
+        for _ in range(apu_ticks):
+            self.step_timers(1)
+            self.fetch_and_execute()
+        self._last_synced_mc += apu_ticks * self._APU_MC_PER_CLOCK
 
     def step_timers(self, clocks: int) -> None:
         for timer in self.timers:

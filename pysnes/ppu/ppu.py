@@ -1,7 +1,5 @@
-from typing import TYPE_CHECKING
-
 from ctypes import c_uint8
-from typing import Optional, Union, Tuple
+from typing import Optional, Union, Tuple, TYPE_CHECKING
 
 import cython
 from sdl2 import *
@@ -9,7 +7,14 @@ from sdl2 import *
 from .data_structures import Background, Object, Tilemap
 
 if TYPE_CHECKING:
-    from ..cpu import Cpu
+    from ..scheduler import Scheduler
+    from ..bus import Bus
+
+# NTSC scanline timing (master clocks)
+_MC_PER_SCANLINE: int = 1364        # master clocks per scanline
+_HBLANK_START_MC: int = 1096        # dot 274 * 4 mc/dot — when H-Blank begins
+_VBLANK_START_LINE: int = 225       # first V-Blank scanline (after 224 visible lines)
+_TOTAL_SCANLINES: int = 262         # total scanlines per frame (NTSC)
 
 # SNES default resolution (NTSC)
 SCREEN_WIDTH = 256
@@ -26,14 +31,14 @@ class Ppu:
 
     def __init__(
         self,
-        cpu: "Cpu",
         *,
         vram_dump: Optional[bytes] = None,
         cgram_dump: Optional[bytes] = None,
         oam_dump: Optional[bytes] = None,
     ) -> None:
-        # CPU ref is used to control NMI line on V-Blank
-        self.cpu = cpu
+        # Scheduler and bus are attached after construction via attach()
+        self.scheduler = None
+        self.bus = None
 
         # VRAM - Video RAM
         if vram_dump is None:
@@ -79,13 +84,9 @@ class Ppu:
         self.mosaic_enabled = [False, False, False, False]
         self.mosaic_size = 0
 
-        # Clock
-        self.ticks = 0
-        self.line_clocks = 0
-
         self.field = 0  # 0 for even frames, 1 for odd frames
-        self.h_counter = 0  # current dot beign drawn
-        self.v_counter = 0  # current scanline beign drawn
+        self.h_counter = 0  # current dot being drawn (updated at H-Blank / scanline start)
+        self.v_counter = 0  # current scanline being drawn
         self.frames = 0  # total frames rendered
 
         self.main_bgs = [0x00] * 256 * 262  # 262 was 239 before
@@ -305,45 +306,55 @@ class Ppu:
         self.bg4.sub_screen_enable = bool(data >> 3 & 1)
         self.oam_sub_screen_enable = bool(data >> 4 & 1)
 
-    def tick(self, master_cycles: int = 2) -> None:
-        """
-        https://wiki.superfamicom.org/timing
+    # ------------------------------------------------------------------
+    # Scheduler integration
+    # ------------------------------------------------------------------
 
-        The SNES master clock runs at about 21.477MHz NTSC
-        The SNES runs 1 scanline every 1364 master cycles
-        Frames are 262 scanlines in non-interlace mode
-        There are always 340 dots ('pixels') per scanline
+    def attach(self, scheduler, bus) -> None:
+        """Attach the scheduler and bus after construction."""
+        self.scheduler = scheduler
+        self.bus = bus
 
-        For 60 frames/s:
-        Each frame should be drawn every 16.6ms
-        Each scanline should be drawn every 63.5us
-        """
-        self.line_clocks += master_cycles
-        self.h_counter = self.line_clocks // 4  # Each dot takes ~4 master cycles
+    def start(self) -> None:
+        """Schedule the first H-Blank event. Call once before the main loop."""
+        self.scheduler.add(_HBLANK_START_MC, self._hblank)
 
-        # Wrap H counter
-        if self.h_counter > 339:
+    def _hblank(self) -> None:
+        """Fired at dot 274 of each scanline (H-Blank start)."""
+        self.h_counter = 274
+        self.bus.hblank = True
+
+        if self.v_counter < _VBLANK_START_LINE:
             self.render_scanline()
-            # H counter range is 0-339, but visible part is 22-277
-            self.line_clocks = 0
-            self.h_counter = 0
-            self.v_counter += 1
 
-        # Wrap V counter
-        if self.v_counter == 262:
-            # V counter range is 0-261, but visible part is 1-224
-            self.v_counter = 0
-            # Flip even/odd frame
-            self.field ^= 1
-            # Increment frame counter
-            self.frames += 1
+        # Schedule end of scanline / start of next
+        self.scheduler.add(_MC_PER_SCANLINE - _HBLANK_START_MC, self._scanline_end)
 
-        # H-Blank is 62 dots
-        self.cpu.status.h_blank_on = not (22 <= self.h_counter <= 277)
-        # V-Blank is 38 scanlines
-        self.cpu.status.v_blank_on = not (1 <= self.v_counter <= 224)
-        # NMI line
-        self.cpu.status.nmi_line = self.cpu.status.v_blank_on
+    def _scanline_end(self) -> None:
+        """Fired at the end of each scanline."""
+        self.bus.hblank = False
+        self.h_counter = 0
+        self.v_counter += 1
+
+        if self.v_counter == _VBLANK_START_LINE:
+            self._vblank_start()
+        elif self.v_counter == _TOTAL_SCANLINES:
+            self._vblank_end()
+
+        # Schedule H-Blank for the next scanline
+        self.scheduler.add(_HBLANK_START_MC, self._hblank)
+
+    def _vblank_start(self) -> None:
+        self.bus.vblank = True
+        self.bus.raise_nmi()
+
+    def _vblank_end(self) -> None:
+        self.bus.vblank = False
+        self.bus.lower_nmi()
+        # Reset counters for next frame
+        self.v_counter = 0
+        self.field ^= 1
+        self.frames += 1
 
     def render_scanline(self):
         """
@@ -929,7 +940,7 @@ def main():
         cgram_dump = f.read()
     with open(oam_file, "rb") as f:
         oam_dump = f.read()
-    ppu = Ppu(None, vram_dump=vram_dump, cgram_dump=cgram_dump, oam_dump=oam_dump)
+    ppu = Ppu(vram_dump=vram_dump, cgram_dump=cgram_dump, oam_dump=oam_dump)
 
     SDL_Init(SDL_INIT_VIDEO)
     window = SDL_CreateWindow(b"PySNES", 0, 0, 768, 768, SDL_WINDOW_SHOWN)

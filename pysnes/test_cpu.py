@@ -17,7 +17,7 @@ TESTS_PATH = "submodules/ProcessorTests/65816/v1"
 def get_test_cases():
     onlyfiles = [
         os.path.join(TESTS_PATH, f) for f in os.listdir(TESTS_PATH)
-        if os.path.isfile(os.path.join(TESTS_PATH, f)) and f.upper().startswith('29')  # EA -> NOP, 29 -> AND, A0 -> LDY
+        if os.path.isfile(os.path.join(TESTS_PATH, f)) and f.upper().startswith('29')  # EA -> NOP, 29 -> AND, A0 -> LDY — expand to all for full baseline
     ]
 
     # onlyfiles = onlyfiles[:3]  # limit to 3 files

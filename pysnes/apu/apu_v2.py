@@ -122,6 +122,9 @@ class Apu:
         # Catchup clock tracking: master clock value at last APU sync
         # APU runs at ~1.024 MHz; 1 APU clock ≈ 21 master clocks (21477272/1024000)
         self._last_synced_mc: int = 0
+        # Set when APU writes to ports_w; causes sync_to to yield so the CPU
+        # can observe each intermediate port value before the APU runs further.
+        self._ports_w_dirty: bool = False
 
         self.test_register = 0x0A  # F0 (write-only)
         self.control_register = 0x80  # F1 (write only)
@@ -249,12 +252,20 @@ class Apu:
 
         Called lazily whenever the CPU reads or writes an APU I/O port, ensuring
         the APU has run up to that point in time before the port value is sampled.
+
+        Stops early when the APU writes to ports_w so the CPU always observes
+        each intermediate value rather than only seeing the final state after a
+        large batch of ticks.  The remaining time is picked up on the next call.
         """
         elapsed = master_clock - self._last_synced_mc
         apu_ticks = elapsed // self._APU_MC_PER_CLOCK
-        for _ in range(apu_ticks):
+        self._ports_w_dirty = False
+        for i in range(apu_ticks):
             self.step_timers(1)
             self.fetch_and_execute()
+            if self._ports_w_dirty:
+                self._last_synced_mc += (i + 1) * self._APU_MC_PER_CLOCK
+                return
         self._last_synced_mc += apu_ticks * self._APU_MC_PER_CLOCK
 
     def step_timers(self, clocks: int) -> None:
@@ -320,8 +331,8 @@ class Apu:
         elif addr == 0x00F3:
             self.dsp_register_data = value
         elif 0x00F4 <= addr <= 0x00F7:
-            # print(f"  APU write [{hex(addr)}] <== {hex(value)}")
             self.ports_w[addr - 0x00F4] = value
+            self._ports_w_dirty = True
         elif 0x00FA <= addr <= 0x00FC:
             timer = self.timers[addr - 0x00FA]
             timer.target = value
@@ -425,12 +436,14 @@ class Apu:
             self.ports_r[1] = 0x00
             self.ports_w[0] = 0x00
             self.ports_w[1] = 0x00
+            self._ports_w_dirty = True
 
         if data & 0x20:  # TODO not sure if r or w ports should be reset
             self.ports_r[2] = 0x00
             self.ports_r[3] = 0x00
             self.ports_w[2] = 0x00
             self.ports_w[3] = 0x00
+            self._ports_w_dirty = True
 
         self.ipl_rom_enable = bool(data & 0x80)
 

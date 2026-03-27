@@ -1,9 +1,9 @@
-[submodule "ProcessorTests"]
-	path = submodules/ProcessorTests
-	url = git@github.com:TomHarte/ProcessorTests.git
 [submodule "submodules/SNES"]
 	path = submodules/SNES
 	url = git@github.com:PeterLemon/SNES.git
 [submodule "submodules/snes-test-roms"]
 	path = submodules/snes-test-roms
 	url = https://gitlab.com/higan/snes-test-roms.git
+[submodule "submodules/65816"]
+	path = submodules/65816
+	url = git@github.com:SingleStepTests/65816.git

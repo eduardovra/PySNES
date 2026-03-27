@@ -38,10 +38,6 @@ class Bus:
         self.hblank: bool = False
         self.vblank: bool = False
 
-        # i'll set up an unammaped memory region to capture all writes the test
-        # does and are not necessarily mapped on real hardware
-        self.unmapped = bytearray(2**24)  # 24 bits -> 16Mb
-
     def raise_nmi(self) -> None:
         """Called by PPU at V-Blank start (rising NMI edge)."""
         self.cpu.status.nmi_line = True
@@ -120,7 +116,6 @@ class Bus:
                     # 0x2140 - 0x204C == 0xF4 [addr of PORT0]
                     if 0x2140 <= addr <= 0x2143:  # TODO ugly
                         self.apu.sync_to(self.scheduler.master_clock)
-                        # print(f"  CPU read [{hex(addr)}] ==> {hex(self.apu.ports_w[addr - 0x2140])}")
                         return self.apu.ports_w[addr - 0x2140]
                     return self.apu[addr - 0x204C]
 
@@ -138,14 +133,6 @@ class Bus:
                         | 1 << 6  # This bit is open bus, I'm setting it to satisfy the PLP test program
                         | 0x02  # 5A22 chip version number [0-3]
                     )
-                    # if self.cpu.status.nmi_line:
-                    # if self.cpu.PC.value == 0x8218 and self.cpu.status.nmi_line:
-                    #     breakpoint()
-                    # if not self.cpu.status.nmi_hold: # (bsnes)
-
-                    # if self.cpu.status.nmi_line:
-                    #     print(f"Clearing NMI line due to read from 0x{addr:04X} {data:04X}")
-
                     self.cpu.status.nmi_line = False  # Reading clears the line
 
                     return data
@@ -164,15 +151,10 @@ class Bus:
                 if addr == 0x421B:  # JOY2H
                     return self.controller_port2.joy_h
 
-                if 0x421C <= addr <= 0x421F:  # Auto Joypad Read registers
-                    print(f"[yellow]Reading unmamped memory region: 0x{abs_addr:06X}[/yellow]")
-
-                if 0x4300 <= addr <= 0x43FF:
-                    print("READ DMA REGISTER: {}" % hex(addr))
                 return self.dma_ppu2_hw_registers[addr - 0x4200]
 
         print(f"[yellow]Reading unmapped memory region: 0x{abs_addr:06X}[/yellow]")
-        return self.unmapped[abs_addr]
+        return 0
 
     def __setitem__(self, abs_addr: cython.uint, data: cython.uchar):
         assert 0x000000 <= abs_addr <= 0xFFFFFF, "Address outside 24 bit range"
@@ -181,7 +163,6 @@ class Bus:
         bank = abs_addr >> 16 & 0xFF
         addr = abs_addr & 0xFFFF
 
-        # TODO dealing with the addresses tests are sending
         # mirror LoROM sections
         if 0x80 <= bank <= 0xFD:
             bank = bank - 0x80
@@ -200,13 +181,6 @@ class Bus:
 
         if bank == 0x00:
             if 0x2100 <= addr <= 0x21FF:
-                # if 0x2102 <= addr <= 0x2104:
-                #    print("WRITE OAM REGISTER: %s = %s" % (hex(addr), hex(data)))
-                # if 0x2115 <= addr <= 0x2119:
-                #    print("WRITE VRAM REGISTER: %s = %s" % (hex(addr), hex(data)))
-                # if 0x2121 <= addr <= 0x2122:
-                #    print("WRITE CGRAM REGISTER: %s = %s" % (hex(addr), hex(data)))
-
                 if addr == 0x2100:  # INIDISP
                     self.ppu.inidisp_set(data)
                     return
@@ -365,7 +339,6 @@ class Bus:
 
                 if 0x2140 <= addr <= 0x2143:  # TODO ugly
                     self.apu.sync_to(self.scheduler.master_clock)
-                    # print(f"  CPU write [{hex(addr)}] <== {hex(data)}")
                     self.apu.ports_r[addr - 0x2140] = data
                     return
 
@@ -378,12 +351,10 @@ class Bus:
                 return  # Writes to this addr are ignored
 
             elif addr == 0x420B:  # MDMAEN
-                # print("WRITE DMA REGISTER: %s = %s" % (hex(addr), hex(data)))
                 self.cpu.dma.mdmaen_set(data)
                 return
 
             elif addr == 0x420C:  # HDMAEN
-                # print("WRITE HDMA REGISTER: %s = %s" % (hex(addr), hex(data)))
                 self.cpu.dma.hdmaen_set(data)
                 return
 
@@ -403,7 +374,6 @@ class Bus:
                     return
 
                 if 0x4300 <= addr <= 0x43FF:
-                    # print("WRITE DMA REGISTER: %s = %s" % (hex(addr), hex(data)))
                     self.cpu.dma[addr] = data
                     return
 
@@ -419,4 +389,3 @@ class Bus:
             return
 
         print(f"[yellow]Writting unmapped memory region: 0x{abs_addr:06X} = 0x{data:02X}[/yellow]")
-        self.unmapped[abs_addr] = data

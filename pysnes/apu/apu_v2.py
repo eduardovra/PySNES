@@ -4,7 +4,66 @@ from typing import Any
 from ..register_types import Reg8, Reg16
 
 from .spc700.instructions_spc700 import INSTRUCTIONS
-from .apu import Timer  # TODO Move to new module
+
+
+class Timer:
+    TIMER_WAIT_STATES = (2, 4, 8, 16)  # Clock dividers
+
+    def __init__(self, apu: "Apu", frequency: int) -> None:
+        self.apu = apu
+        self.frequency = frequency
+        self.stage0 = 0x00  # 8 bits
+        self.stage1 = 0x00  # 8 bits
+        self.stage2 = 0x00  # 8 bits
+        self.stage3 = 0x0  # 4 bits
+
+        self.line = False
+        self.enable = False
+        self.target = 0x00  # 8 bits
+
+    def step(self, _clocks: int) -> None:
+        wait_states = self.apu.internal_wait_states  # TODO can be external
+        clocks = self.TIMER_WAIT_STATES[wait_states]
+        clocks = 128
+
+        # stage 0 increment
+        self.stage0 = (self.stage0 + clocks) & 0xFF
+        if self.stage0 < self.frequency:
+            return
+        self.stage0 = (self.stage0 - self.frequency) & 0xFF
+
+        # stage 1 increment
+        self.stage1 ^= 1  # Toogle
+        self.syncronize_stage1()
+
+    def syncronize_stage1(self) -> None:
+        level = self.stage1
+        if not self.apu.timers_enable:
+            level = 0
+        if self.apu.timers_disable:
+            level = 0
+        # only pulse on 1->0 transition
+        if not self.lower(level):
+            return
+
+        # stage 2 increment
+        if not self.enable:
+            return
+        self.stage2 = (self.stage2 + 1) & 0xFF
+        if self.stage2 != self.target:
+            return
+
+        # stage 3 increment
+        self.stage2 = 0
+        self.stage3 = (self.stage3 + 1) & 0x0F
+
+    def lower(self, level) -> bool:
+        if self.line and not level:
+            self.line = False
+            return True
+        elif not self.line and level:
+            self.line = True
+        return False
 
 
 class Apu:
@@ -151,25 +210,6 @@ class Apu:
         return data
 
     def fetch_and_execute(self):
-        # SMW
-        if self.PC == 0x0500: # SMW
-            print(f"APU jumped to program start {hex(self.PC)}")
-            self.program_started = True
-
-        if getattr(self, "program_started", False):
-            if self.PC > 0x0516:
-                pass
-
-        _breakpoint = getattr(self, "breakpoint", None)
-        if self.PC == _breakpoint:
-            print(f"Reached breakpoint {hex(self.PC)}")
-
-        if self.PC == 0x12F2: # SMW
-            print(f"APU reached StandardTransfer subroutine {hex(self.PC)}")
-
-        if self.PC == 0x133D: # SMW
-            print(f"APU finished StandardTransfer subroutine {hex(self.PC)}")
-
         opcode = self.fetch()
 
         debug_str = "APU 0x{:04X} 0x{:02X} {}".format(

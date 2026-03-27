@@ -150,7 +150,7 @@ class PySNES:
                     screen=True
                 )
                 self.debug_live.start()
-                
+
     def update_debug_display(self):
         """Update the Rich debug display - much faster than ImGui!"""
         if not self.debug_enabled or not self.debug_live:
@@ -168,13 +168,13 @@ class PySNES:
             if new_display:
                 self.debug_live.update(new_display)
                 self.debug_last_update_time = current_time
-                
+
     def stop_debug_display(self):
         """Stop the Rich live debug display"""
         if self.debug_live:
             self.debug_live.stop()
             self.debug_live = None
-            
+
     def toggle_debug(self):
         """Toggle debug display on/off for maximum performance"""
         self.debug_enabled = not self.debug_enabled

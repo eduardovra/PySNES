@@ -42,12 +42,9 @@ class SPC700Opcodes:
 
     def CMP(self, x, y):
         z = x - y
-        #assert z >= 0
-        #self.CF = z >= 0  # bsnes version
-        self.CF = z > 0xFF
-        self.ZF = c_uint8(z).value == 0
-        #self.NF = bool(z & 0x80)  # bsnes version
-        self.NF = z < 0
+        self.CF = z >= 0  # no borrow when x >= y
+        self.ZF = z & 0xFF == 0
+        self.NF = bool(z & 0x80)
         return x
 
     def DEC(self, x):
@@ -104,10 +101,9 @@ class SPC700Opcodes:
         assert x >= 0
         carry = self.CF
         self.CF = bool(x & 0x80)
-        x = (carry << 7 | x >> 1) & 0xFF
+        x = ((x << 1) | int(carry)) & 0xFF
         self.ZF = x == 0
         self.NF = bool(x & 0x80)
-        assert (carry << 7 | x >> 1) >= 0
         return x
 
     def ROR(self, x):
@@ -127,13 +123,12 @@ class SPC700Opcodes:
         return SPC700Opcodes.ADC(self, x & 0xFF, ~y & 0xFF)
 
     def ADW(self, x, y):
-        #assert False
         assert x >= 0
         assert y >= 0
         self.CF = False
-        z = SPC700Opcodes.ADC(self, x, y)
-        z |= SPC700Opcodes.ADC(self, x >> 8, y >> 8) << 8
-        z &= 0xFFFF
+        lo = SPC700Opcodes.ADC(self, x & 0xFF, y & 0xFF)
+        hi = SPC700Opcodes.ADC(self, (x >> 8) & 0xFF, (y >> 8) & 0xFF)
+        z = (hi << 8) | lo
         self.ZF = z == 0
         return z
 
@@ -154,11 +149,11 @@ class SPC700Opcodes:
         return y
 
     def SBW(self, x, y):
-        #assert False
         assert x >= 0
         assert y >= 0
         self.CF = True
-        z = SPC700Opcodes.SBC(self, x, y)
-        z |= SPC700Opcodes.SBC(self, x >> 8, y >> 8) << 8
+        lo = SPC700Opcodes.SBC(self, x & 0xFF, y & 0xFF)
+        hi = SPC700Opcodes.SBC(self, (x >> 8) & 0xFF, (y >> 8) & 0xFF)
+        z = (hi << 8) | lo
         self.ZF = z & 0xFFFF == 0
         return z

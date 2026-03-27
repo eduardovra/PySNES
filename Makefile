@@ -35,3 +35,7 @@ run: build
 profile: build
 	@echo "Profiling PySNES..."
 	uv run ${PY} run_pysnes.py --profile
+
+tests: build
+	@echo "Running tests..."
+	uv run ${PY} pytest

@@ -126,6 +126,11 @@ class Apu:
         # can observe each intermediate port value before the APU runs further.
         self._ports_w_dirty: bool = False
 
+        # Per-instruction cycle counter.  Reset at the top of fetch_and_execute;
+        # incremented by every __getitem__, __setitem__, and idle() call so tests
+        # can assert the total cycle count matches the reference data.
+        self.cycles: int = 0
+
         self.test_register = 0x0A  # F0 (write-only)
         self.control_register = 0x80  # F1 (write only)
         self.dsp_register_address = 0x00  # F2 (r/w)
@@ -178,6 +183,10 @@ class Apu:
                     self.debug_symbols[opcode] += f" {args}"
             self.debug_symbols[opcode] = self.debug_symbols[opcode].ljust(30)
 
+    def idle(self) -> None:
+        """One internal CPU cycle with no external memory access."""
+        self.cycles += 1
+
     def load_program(self, data):
         """Used for testing only"""
         self.ipl_rom = data
@@ -189,22 +198,18 @@ class Apu:
         return self[addr]
 
     def store(self, addr, data):
-        self[self.PF << 8 | addr] = data
+        self[(self.PF << 8) | (addr & 0xFF)] = data
 
     def load(self, addr):
-        return self[self.PF << 8 | addr]
+        return self[(self.PF << 8) | (addr & 0xFF)]
 
     def pull(self):
-        assert self.S + 1 >= 0
         self.S = (self.S + 1) & 0xFF
-        address = 1 << 8 | self.S
-        return self.load(address)
+        return self.read(0x100 | self.S)
 
     def push(self, data):
-        address = 1 << 8 | self.S
-        assert self.S - 1 >= 0
+        self.write(0x100 | self.S, data & 0xFF)
         self.S = (self.S - 1) & 0xFF
-        self.store(address, data & 0xFF)  # mask last 8 bits as some instructions will just push bigger variables
 
     def fetch(self):
         data = self.read(self.PC)
@@ -213,6 +218,7 @@ class Apu:
         return data
 
     def fetch_and_execute(self):
+        self.cycles = 0
         opcode = self.fetch()
 
         debug_str = "APU 0x{:04X} 0x{:02X} {}".format(
@@ -273,6 +279,7 @@ class Apu:
             timer.step(clocks)
 
     def __getitem__(self, addr: int) -> int:
+        self.cycles += 1
 
         # if 0xF0 <= addr <= 0xF3:
         #    print(f"!!! Reading register {hex(addr)}")
@@ -313,6 +320,7 @@ class Apu:
         )
 
     def __setitem__(self, addr: int, value: int) -> None:
+        self.cycles += 1
         assert isinstance(addr, int)
         assert isinstance(value, int)
         assert 0x00 <= value <= 0xFF, f"Attemped to write value bigger than 1 byte: {hex(value)}"
@@ -333,9 +341,15 @@ class Apu:
         elif 0x00F4 <= addr <= 0x00F7:
             self.ports_w[addr - 0x00F4] = value
             self._ports_w_dirty = True
+        elif addr == 0x00F8:
+            self.f8 = value
+        elif addr == 0x00F9:
+            self.f9 = value
         elif 0x00FA <= addr <= 0x00FC:
             timer = self.timers[addr - 0x00FA]
             timer.target = value
+        elif 0x00FD <= addr <= 0x00FF:
+            self.timers[addr - 0x00FD].stage3 = value
         elif 0x0100 <= addr <= 0x01FF:
             self.page_1[addr - 0x0100] = value
         elif 0x0200 <= addr <= 0xFFBF:
@@ -383,7 +397,14 @@ class Apu:
 
     @property
     def test_register(self) -> int:
-        return 0x00  # Write only register
+        return (
+            (int(self.timers_disable) << 0)
+            | (int(self.ram_writable) << 1)
+            | (int(self.ram_disable) << 2)
+            | (int(self.timers_enable) << 3)
+            | (self.external_wait_states << 4)
+            | (self.internal_wait_states << 6)
+        )
 
     @test_register.setter
     def test_register(self, data: int) -> None:

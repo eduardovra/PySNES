@@ -101,7 +101,10 @@ def test_spc700(test_case):
 
     # ── Build expected cycle sequence ────────────────────────────────────
     # Cycles: [address, value, "read"/"write"/"wait"]
-    # "wait" entries are internal cycles with no memory transaction.
+    # "wait" entries are internal cycles (no memory transaction).
+    # Entries with null value are ghost reads the hardware performs but whose
+    # value is discarded; they count toward the cycle total but are excluded
+    # from the memory-access sequence check (same convention as the 65816 tests).
     expected_cycles = test_case["cycles"]
     expected_mem = [
         (addr, value, kind)
@@ -111,7 +114,6 @@ def test_spc700(test_case):
     expected_cycle_count = len(expected_cycles)
 
     performed_mem = []
-    performed_cycle_count = [0]  # mutable counter accessible inside closures
 
     real_getitem = Apu.__getitem__
     real_setitem = Apu.__setitem__
@@ -119,12 +121,10 @@ def test_spc700(test_case):
     def getitem(self, address):
         value = real_getitem(self, address)
         performed_mem.append((address, value, "read"))
-        performed_cycle_count[0] += 1
         return value
 
     def setitem(self, address, value):
         performed_mem.append((address, value, "write"))
-        performed_cycle_count[0] += 1
         return real_setitem(self, address, value)
 
     with patch.object(Apu, "__getitem__", autospec=True) as mock_get, \
@@ -132,6 +132,7 @@ def test_spc700(test_case):
         mock_get.side_effect = getitem
         mock_set.side_effect = setitem
         apu.fetch_and_execute()
+        actual_cycle_count = apu.cycles  # capture before mock exits
 
     # ── Verify final register state ───────────────────────────────────────
     final = test_case["final"]
@@ -146,9 +147,14 @@ def test_spc700(test_case):
         got = apu[addr]
         assert got == value, f"ram[{hex(addr)}] = {hex(got)} != {hex(value)}"
 
-    # ── Verify memory access sequence (cycles) ────────────────────────────
+    # ── Verify memory access sequence and total cycle count ──────────────
     assert performed_mem == expected_mem, (
         f"Memory accesses differ:\n"
         f"  expected: {expected_mem}\n"
         f"  got:      {performed_mem}"
+    )
+    # apu.cycles is incremented by every __getitem__, __setitem__, and idle()
+    # call, giving the full instruction cycle count including internal waits.
+    assert actual_cycle_count == expected_cycle_count, (
+        f"Cycle count: got {actual_cycle_count}, expected {expected_cycle_count}"
     )

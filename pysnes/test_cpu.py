@@ -1,8 +1,6 @@
 from collections import defaultdict
 import os
 import json
-# import orjson as json  # faster json
-# import ujson as json  # faster json
 from unittest.mock import patch
 
 import pytest
@@ -11,8 +9,8 @@ from rich import print
 from .cpu.v2.cpu import Cpu as CpuV2
 
 
-# https://github.com/TomHarte/ProcessorTests/tree/main/65816
-TESTS_PATH = "submodules/ProcessorTests/65816/v1"
+TESTS_PATH = "submodules/65816/v1"
+
 
 def get_test_cases():
     onlyfiles = [

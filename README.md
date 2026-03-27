@@ -28,6 +28,13 @@ python -m pysnes.pysnes
 uv run --python pypy3.10 -m pysnes.pysnes
 ```
 
+### Running tests with uv
+
+```
+uv run --python pypy3.10 pytest
+```
+
+
 ## Building
 
 ### Inplace

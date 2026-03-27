@@ -142,3 +142,6 @@ imgui.ini
 *.so
 *.c
 *.html
+
+# Claude Code local settings
+.claude/

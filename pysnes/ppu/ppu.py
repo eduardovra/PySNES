@@ -41,10 +41,10 @@ class Ppu:
         else:
             self.vram = bytearray(vram_dump)
         self.vmain = 0x00
-        self.vmaddl = c_uint8(0x00)
-        self.vmaddh = c_uint8(0x00)
-        self._vmdatal = c_uint8(0x00)
-        self._vmdatah = c_uint8(0x00)
+        self.vmaddl: cython.uchar = 0
+        self.vmaddh: cython.uchar = 0
+        self._vmdatal: cython.uchar = 0
+        self._vmdatah: cython.uchar = 0
 
         self.inidisp_set(0)
 
@@ -129,37 +129,39 @@ class Ppu:
         """
 
     @property
-    def vmdatal(self) -> int:
-        return self._vmdatal.value
+    def vmdatal(self) -> cython.uchar:
+        return self._vmdatal
 
     @vmdatal.setter
-    def vmdatal(self, data: int) -> None:
-        self._vmdatal = c_uint8(data)
+    def vmdatal(self, data: cython.uchar) -> None:
+        self._vmdatal = data
         if not self.vmain_addr_increment_mode:
             self.write_vram()
 
     @property
-    def vmdatah(self) -> int:
-        return self._vmdatah.value
+    def vmdatah(self) -> cython.uchar:
+        return self._vmdatah
 
     @vmdatah.setter
-    def vmdatah(self, data: int) -> None:
-        self._vmdatah = c_uint8(data)
+    def vmdatah(self, data: cython.uchar) -> None:
+        self._vmdatah = data
         if self.vmain_addr_increment_mode:
             self.write_vram()
 
     def write_vram(self) -> None:
-        base_addr = (self.vmaddl.value | self.vmaddh.value << 8) * 2
-        self.vram[base_addr + 0] = self._vmdatal.value
-        self.vram[base_addr + 1] = self._vmdatah.value
+        base_addr = (self.vmaddl | self.vmaddh << 8) * 2
+        # base_addr &= 0xFFFF
+        assert base_addr < len(self.vram), f"VRAM write out of bounds: 0x{base_addr:06X}"
+        self.vram[base_addr + 0] = self._vmdatal
+        self.vram[base_addr + 1] = self._vmdatah
         self.increment_vmadd()
 
     def increment_vmadd(self) -> None:
         addr = (
-            self.vmaddl.value | self.vmaddh.value << 8
+            self.vmaddl | self.vmaddh << 8
         ) + self.vmain_addr_increment_amount
-        self.vmaddl.value = (addr >> 0) & 0xFF
-        self.vmaddh.value = (addr >> 8) & 0xFF
+        self.vmaddl = (addr >> 0) & 0xFF
+        self.vmaddh = (addr >> 8) & 0xFF
 
     @property
     def cgadd(self) -> int:
@@ -461,7 +463,7 @@ class Ppu:
     def draw_background_scanline(self, bg: Background, bpp: cython.uchar, priority_selector: cython.bint):
         scanline = self.v_counter  # TODO move to method argument
 
-        assert bg.sub_screen_enable is False, "Sub screen not implemented"
+        # assert bg.sub_screen_enable is False, "Sub screen not implemented"
 
         if not bg.main_screen_enable:
             return
@@ -692,7 +694,7 @@ class Ppu:
         x: int,
         y: int,
     ) -> None:
-        raise NotImplementedError("This method is not doing anything at the moment")
+        # raise NotImplementedError("This method is not doing anything at the moment")
         # Bitplane handling
         # The first byte is composed of the first
         # 8 least significant bits of the pixel

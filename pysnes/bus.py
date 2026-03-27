@@ -85,7 +85,7 @@ class Bus:
                 if 0x2140 <= addr <= 0x217F:
                     # 0x2140 - 0x204C == 0xF4 [addr of PORT0]
                     if 0x2140 <= addr <= 0x2143:  # TODO ugly
-                        print(f"  CPU read [{hex(addr)}] ==> {hex(self.apu.ports_w[addr - 0x2140])}")
+                        # print(f"  CPU read [{hex(addr)}] ==> {hex(self.apu.ports_w[addr - 0x2140])}")
                         return self.apu.ports_w[addr - 0x2140]
                     return self.apu[addr - 0x204C]
 
@@ -265,10 +265,10 @@ class Bus:
                     self.ppu.vmain = data
                     return
                 if addr == 0x2116:  # VMADDL
-                    self.ppu.vmaddl.value = data
+                    self.ppu.vmaddl = data
                     return
                 if addr == 0x2117:  # VMADDH
-                    self.ppu.vmaddh.value = data
+                    self.ppu.vmaddh = data
                     return
                 if addr == 0x2118:  # VMDATAL
                     self.ppu.vmdatal = data
@@ -278,7 +278,20 @@ class Bus:
                     return
 
                 if addr == 0x211A:  # M7SEL
-                    raise NotImplementedError("M7SEL register not implemented")
+                    # raise NotImplementedError("M7SEL register not implemented")
+                    """
+                    7-6   Screen Over (see below)
+                    5-2   Not used
+                    1     Screen V-Flip (0=Normal, 1=Flipped)     ;\flip 256x256 "screen"
+                    0     Screen H-Flip (0=Normal, 1=Flipped)     ;/
+                    Screen Over (when exceeding the 128x128 tile BG Map size):
+                        0=Wrap within 128x128 tile area
+                        1=Wrap within 128x128 tile area (same as 0)
+                        2=Outside 128x128 tile area is Transparent
+                        3=Outside 128x128 tile area is filled by Tile 00h
+                    """
+                    self.ppu.m7sel = data
+                    return
 
                 # if 0x211B <= addr <= 0x2120:  # M7A to M7Y
                 #     raise NotImplementedError(f"{addr:<#04x} register not implemented")
@@ -320,7 +333,7 @@ class Bus:
                     return  # Not writable
 
                 if 0x2140 <= addr <= 0x2143:  # TODO ugly
-                    print(f"  CPU write [{hex(addr)}] <== {hex(data)}")
+                    # print(f"  CPU write [{hex(addr)}] <== {hex(data)}")
                     self.apu.ports_r[addr - 0x2140] = data
                     return
 

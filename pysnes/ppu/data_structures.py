@@ -1,13 +1,8 @@
-from ctypes import (
-    c_uint16,
-    LittleEndianStructure,
-)
 from dataclasses import dataclass
 
 import cython
 
 
-# @dataclass
 @cython.cclass
 class Background:
     screen_size = cython.declare(cython.uint)
@@ -101,25 +96,6 @@ class Object:
     priority = 0
     palette = 0
     size = False
-
-
-# DEPRECATED in favor of the faster version of this class below
-class Tilemap_(LittleEndianStructure):
-    """
-    palette = (high >> 2) & 7
-    priotity = (high >> 5) & 1
-    h_flip = (high >> 6) & 1
-    v_flip = (high >> 7) & 1
-    addr = high & 3 | low           More like a tile id, it's an index selecting which character to draw
-    """
-
-    _fields_ = [
-        ("addr", c_uint16, 10),
-        ("palette", c_uint16, 3),
-        ("priority", c_uint16, 1),
-        ("h_flip", c_uint16, 1),
-        ("v_flip", c_uint16, 1),
-    ]
 
 
 @dataclass

@@ -7,3 +7,6 @@
 [submodule "submodules/65816"]
 	path = submodules/65816
 	url = git@github.com:SingleStepTests/65816.git
+[submodule "submodules/SingleStepTests_spc700"]
+	path = submodules/SingleStepTests_spc700
+	url = git@github.com:SingleStepTests/spc700.git

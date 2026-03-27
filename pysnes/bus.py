@@ -366,11 +366,13 @@ class Bus:
                     self.cpu.status.irq_enable = (
                         self.cpu.status.hirq_enable or self.cpu.status.virq_enable
                     )
-                    # If NMI is being enabled while V-Blank line is already high, trigger immediately
-                    if data & 0x80:
-                        if not self.cpu.status.nmi_enable and self.cpu.status.nmi_line:
-                            self.cpu.nmi_rising_edge()
+                    # If NMI is being enabled while V-Blank line is already high, trigger immediately.
+                    # nmi_enable must be set first so nmi_rising_edge() sees it as True.
+                    was_enabled = self.cpu.status.nmi_enable
                     self.cpu.status.nmi_enable = bool(data & 0x80)
+                    if data & 0x80:
+                        if not was_enabled and self.cpu.status.nmi_line:
+                            self.cpu.nmi_rising_edge()
                     return
 
                 if 0x4300 <= addr <= 0x43FF:

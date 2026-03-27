@@ -1,0 +1,154 @@
+"""
+SPC700 instruction tests using the SingleStepTests suite.
+
+Each test case from the JSON files specifies:
+  initial  — register values and RAM contents before execution
+  final    — expected register values and RAM after execution
+  cycles   — expected memory accesses (read/write) and internal waits
+
+Mirrors the structure of test_cpu.py for the WDC65816.
+
+Test data: submodules/SingleStepTests_spc700/v1/
+"""
+
+import os
+import json
+from collections import defaultdict
+from unittest.mock import patch
+
+import pytest
+
+from .apu.apu_v2 import Apu
+
+
+TESTS_PATH = "submodules/SingleStepTests_spc700/v1"
+
+
+def _write_mem(apu: Apu, addr: int, value: int) -> None:
+    """Write directly to APU backing memory, bypassing I/O side-effects."""
+    if addr <= 0x00EF:
+        apu.page_0[addr] = value
+    elif addr <= 0x00FF:
+        # I/O register range — use __setitem__ (minimal side-effects expected
+        # in instruction tests, but use the real path for accuracy)
+        apu[addr] = value
+    elif addr <= 0x01FF:
+        apu.page_1[addr - 0x0100] = value
+    elif addr <= 0xFFBF:
+        apu.memory[addr - 0x0200] = value
+    else:
+        # 0xFFC0–0xFFFF: IPL ROM range — make writable and disable ROM overlay
+        if isinstance(apu.ipl_rom, (bytes, bytearray)):
+            apu.ipl_rom = bytearray(apu.ipl_rom)
+        apu.ipl_rom[addr - 0xFFC0] = value
+        apu.ipl_rom_enable = False
+
+
+def get_test_cases():
+    if not os.path.isdir(TESTS_PATH):
+        return [], []
+
+    onlyfiles = sorted(
+        os.path.join(TESTS_PATH, f)
+        for f in os.listdir(TESTS_PATH)
+        if os.path.isfile(os.path.join(TESTS_PATH, f))
+        and f.lower().endswith(".json")
+        # Expand the filter below to run more opcodes; restrict for fast dev runs.
+        # and f.lower().startswith("00")  # single opcode
+    )
+
+    test_counter = defaultdict(int)
+    test_cases, test_ids = [], []
+
+    for file_path in onlyfiles:
+        with open(file_path) as f:
+            for test_case in json.load(f):
+                test_id = test_case["name"].replace(" ", "_")
+
+                # Limit to 1 test per opcode variant for a quick baseline.
+                # Remove this guard (or raise the cap) for a thorough run.
+                if test_counter[test_id[:2]] >= 1:
+                    continue
+                test_counter[test_id[:2]] += 1
+
+                test_ids.append(test_id)
+                test_cases.append(test_case)
+
+                if len(test_cases) >= 1_000_000:
+                    return test_cases, test_ids
+
+    return test_cases, test_ids
+
+
+TEST_CASES, TEST_IDS = get_test_cases()
+
+
+@pytest.mark.parametrize("test_case", TEST_CASES, ids=TEST_IDS)
+def test_spc700(test_case):
+    apu = Apu()
+
+    # ── Load initial state ────────────────────────────────────────────────
+    initial = test_case["initial"]
+    for addr, value in initial["ram"]:
+        _write_mem(apu, addr, value)
+
+    apu.PC = initial["pc"]
+    apu.A  = initial["a"]
+    apu.X  = initial["x"]
+    apu.Y  = initial["y"]
+    apu.S  = initial["sp"]
+    apu.PSW = initial["psw"]
+
+    # ── Build expected cycle sequence ────────────────────────────────────
+    # Cycles: [address, value, "read"/"write"/"wait"]
+    # "wait" entries are internal cycles with no memory transaction.
+    expected_cycles = test_case["cycles"]
+    expected_mem = [
+        (addr, value, kind)
+        for addr, value, kind in expected_cycles
+        if kind in ("read", "write") and addr is not None and value is not None
+    ]
+    expected_cycle_count = len(expected_cycles)
+
+    performed_mem = []
+    performed_cycle_count = [0]  # mutable counter accessible inside closures
+
+    real_getitem = Apu.__getitem__
+    real_setitem = Apu.__setitem__
+
+    def getitem(self, address):
+        value = real_getitem(self, address)
+        performed_mem.append((address, value, "read"))
+        performed_cycle_count[0] += 1
+        return value
+
+    def setitem(self, address, value):
+        performed_mem.append((address, value, "write"))
+        performed_cycle_count[0] += 1
+        return real_setitem(self, address, value)
+
+    with patch.object(Apu, "__getitem__", autospec=True) as mock_get, \
+         patch.object(Apu, "__setitem__", autospec=True) as mock_set:
+        mock_get.side_effect = getitem
+        mock_set.side_effect = setitem
+        apu.fetch_and_execute()
+
+    # ── Verify final register state ───────────────────────────────────────
+    final = test_case["final"]
+    assert apu.PC  == final["pc"],  f"PC:  {hex(apu.PC)}  != {hex(final['pc'])}"
+    assert apu.A   == final["a"],   f"A:   {hex(apu.A)}   != {hex(final['a'])}"
+    assert apu.X   == final["x"],   f"X:   {hex(apu.X)}   != {hex(final['x'])}"
+    assert apu.Y   == final["y"],   f"Y:   {hex(apu.Y)}   != {hex(final['y'])}"
+    assert apu.S   == final["sp"],  f"SP:  {hex(apu.S)}   != {hex(final['sp'])}"
+    assert apu.PSW == final["psw"], f"PSW: {hex(apu.PSW)} != {hex(final['psw'])}"
+
+    for addr, value in final["ram"]:
+        got = apu[addr]
+        assert got == value, f"ram[{hex(addr)}] = {hex(got)} != {hex(value)}"
+
+    # ── Verify memory access sequence (cycles) ────────────────────────────
+    assert performed_mem == expected_mem, (
+        f"Memory accesses differ:\n"
+        f"  expected: {expected_mem}\n"
+        f"  got:      {performed_mem}"
+    )

@@ -13,6 +13,16 @@ TESTS_PATH = "submodules/65816/v1"
 # Opcodes for which cycle counts are verified (expand as coverage grows).
 CYCLE_CHECK_OPCODES = {"ea", "1a", "3a", "18", "38"}
 
+# Per-worker file cache: avoids reloading the same JSON file for every test.
+_FILE_CACHE: dict = {}
+
+
+def _load_case(file_path: str, index: int) -> dict:
+    if file_path not in _FILE_CACHE:
+        with open(file_path) as f:
+            _FILE_CACHE[file_path] = json.load(f)
+    return _FILE_CACHE[file_path][index]
+
 
 def get_test_cases(opcode_filter=None, max_per_opcode=None, mode=None):
     """Load test cases from the SingleStepTests suite.
@@ -48,7 +58,7 @@ def get_test_cases(opcode_filter=None, max_per_opcode=None, mode=None):
     test_cases, test_ids = [], []
     for file_path in onlyfiles:
         with open(file_path) as f:
-            for test_case in json.load(f):
+            for i, test_case in enumerate(json.load(f)):
                 test_id = test_case["name"].replace(" ", "_")
 
                 if limit > 0 and test_counter[test_id[0:4]] >= limit:
@@ -56,7 +66,7 @@ def get_test_cases(opcode_filter=None, max_per_opcode=None, mode=None):
                 test_counter[test_id[0:4]] += 1
 
                 test_ids.append(test_id)
-                test_cases.append(test_case)
+                test_cases.append((file_path, i))
 
                 if len(test_cases) >= 1_000_000:
                     return test_cases, test_ids
@@ -76,6 +86,8 @@ class FakeBus:
 
 
 def test_v2(test_case):
+    file_path, index = test_case
+    test_case = _load_case(file_path, index)
     cpu = CpuV2(None)
     bus = FakeBus()
     cpu.attach(bus)

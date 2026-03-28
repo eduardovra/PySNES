@@ -21,6 +21,17 @@ from .apu.apu_v2 import Apu
 
 TESTS_PATH = "submodules/SingleStepTests_spc700/v1"
 
+# Per-worker file cache: avoids reloading the same JSON file for every test.
+# Each xdist worker has its own copy of this dict (separate process).
+_FILE_CACHE: dict = {}
+
+
+def _load_case(file_path: str, index: int) -> dict:
+    if file_path not in _FILE_CACHE:
+        with open(file_path) as f:
+            _FILE_CACHE[file_path] = json.load(f)
+    return _FILE_CACHE[file_path][index]
+
 
 def _write_mem(apu: Apu, addr: int, value: int) -> None:
     """Write directly to APU backing memory, bypassing I/O side-effects."""
@@ -67,7 +78,7 @@ def get_test_cases(opcode_filter=None, max_per_opcode=None, mode=None):
 
     for file_path in onlyfiles:
         with open(file_path) as f:
-            for test_case in json.load(f):
+            for i, test_case in enumerate(json.load(f)):
                 test_id = test_case["name"].replace(" ", "_")
 
                 if limit > 0 and test_counter[test_id[:2]] >= limit:
@@ -75,7 +86,7 @@ def get_test_cases(opcode_filter=None, max_per_opcode=None, mode=None):
                 test_counter[test_id[:2]] += 1
 
                 test_ids.append(test_id)
-                test_cases.append(test_case)
+                test_cases.append((file_path, i))
 
                 if len(test_cases) >= 1_000_000:
                     return test_cases, test_ids
@@ -84,6 +95,8 @@ def get_test_cases(opcode_filter=None, max_per_opcode=None, mode=None):
 
 
 def test_spc700(test_case):
+    file_path, index = test_case
+    test_case = _load_case(file_path, index)
     apu = Apu()
 
     # ── Load initial state ────────────────────────────────────────────────

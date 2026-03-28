@@ -450,7 +450,7 @@ class SPC700AddressingModes:
         indirect = self.fetch()
         self.address = self.load(indirect + 0)
         self.address |= self.load(indirect + 1) << 8
-        self.address = self.address + index
+        self.address = (self.address + index) & 0xFFFF
         self.idle()
         self.data = self.read(self.address)
         self.A = func(self, self.A, self.data)
@@ -463,7 +463,7 @@ class SPC700AddressingModes:
         indirect = self.fetch()
         self.address = self.load(indirect + 0)
         self.address |= self.load(indirect + 1) << 8
-        self.address = self.address + index
+        self.address = (self.address + index) & 0xFFFF
         self.idle()
         self.read(self.address)  # dummy read before write (hardware behaviour)
         self.data = data

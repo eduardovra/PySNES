@@ -361,6 +361,11 @@ class Apu:
         elif 0x0200 <= addr <= 0xFFBF:
             # print(f"[{hex(addr)}] <== {hex(value)}")
             self.memory[addr - 0x0200] = value
+        elif 0xFFC0 <= addr <= 0xFFFF:
+            # IPL ROM range: writable only when ipl_rom has been made mutable
+            # (e.g. by _write_mem in instruction tests)
+            if isinstance(self.ipl_rom, bytearray):
+                self.ipl_rom[addr - 0xFFC0] = value
         else:
             print(
                 "Error writting unmamped memory region: 0x{:04X} <== 0x{:04X}".format(

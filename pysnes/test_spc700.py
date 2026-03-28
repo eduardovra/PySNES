@@ -21,16 +21,9 @@ from .apu.apu_v2 import Apu
 
 TESTS_PATH = "submodules/SingleStepTests_spc700/v1"
 
-# Per-worker file cache: avoids reloading the same JSON file for every test.
-# Each xdist worker has its own copy of this dict (separate process).
-_FILE_CACHE: dict = {}
-
-
 def _load_case(file_path: str, index: int) -> dict:
-    if file_path not in _FILE_CACHE:
-        with open(file_path) as f:
-            _FILE_CACHE[file_path] = json.load(f)
-    return _FILE_CACHE[file_path][index]
+    with open(file_path) as f:
+        return json.load(f)[index]
 
 
 def _write_mem(apu: Apu, addr: int, value: int) -> None:

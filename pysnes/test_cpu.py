@@ -13,15 +13,9 @@ TESTS_PATH = "submodules/65816/v1"
 # Opcodes for which cycle counts are verified (expand as coverage grows).
 CYCLE_CHECK_OPCODES = {"ea", "1a", "3a", "18", "38"}
 
-# Per-worker file cache: avoids reloading the same JSON file for every test.
-_FILE_CACHE: dict = {}
-
-
 def _load_case(file_path: str, index: int) -> dict:
-    if file_path not in _FILE_CACHE:
-        with open(file_path) as f:
-            _FILE_CACHE[file_path] = json.load(f)
-    return _FILE_CACHE[file_path][index]
+    with open(file_path) as f:
+        return json.load(f)[index]
 
 
 def get_test_cases(opcode_filter=None, max_per_opcode=None, mode=None):

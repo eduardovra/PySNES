@@ -16,7 +16,7 @@ import json
 from collections import defaultdict
 from unittest.mock import patch
 
-from .apu.apu_v2 import Apu
+from .apu import Apu
 
 
 TESTS_PATH = "submodules/SingleStepTests_spc700/v1"

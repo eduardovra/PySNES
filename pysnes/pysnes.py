@@ -21,7 +21,6 @@ from .apu import Apu
 from .ppu import Ppu
 from .controller import Controller
 from .video import Video
-from .trace_matcher import check_trace_line
 
 if cython.compiled:
     print("[green]Cython is enabled, using compiled modules.[/green]")

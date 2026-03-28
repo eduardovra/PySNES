@@ -52,9 +52,9 @@ pysnes/video.py           Video renderer wrapper
 pysnes/video_sdl2.py      SDL2 2D rendering engine (hardware-accelerated)
 pysnes/register_types.py  Register type definitions
 pysnes/trace_matcher.py   CPU instruction trace verification tool
-pysnes/cpu/v2/cpu.py      WDC65816 CPU core (v2 is active; v1 is legacy)
-pysnes/cpu/v2/wdc65816/   65816 instruction set, opcodes, addressing modes, disassembler
-pysnes/apu/apu_v2.py      SPC700 audio CPU core (v2 is active; apu.py is legacy)
+pysnes/cpu/cpu.py         WDC65816 CPU core
+pysnes/cpu/wdc65816/      65816 instruction set, opcodes, addressing modes, disassembler
+pysnes/apu/apu.py         SPC700 audio CPU core
 pysnes/apu/spc700/        SPC700 instructions, opcodes, addressing modes
 pysnes/ppu/ppu.py         Picture Processing Unit (~900 lines, main graphics pipeline)
 pysnes/ppu/data_structures.py  Background and sprite data structures
@@ -131,7 +131,7 @@ uv run --python pypy@3.10 pytest pysnes/test_cpu.py --opcode ea --mode n  # comb
 - 65816 test data is at `submodules/65816/v1/` (files named `{opcode}.{e|n}.json`)
 - SPC700 test data is at `submodules/SingleStepTests_spc700/v1/`
 - Tests verify: initial state → execute instruction → final registers, RAM, and memory access sequence
-- CPU v2 and APU v2 are the tested implementations
+- CPU (`pysnes/cpu/cpu.py`) and APU (`pysnes/apu/apu.py`) are the tested implementations
 - `pytest-xdist` is available for parallel execution (memory is bounded — test params are `(file, index)` refs, not full dicts)
 - **Do NOT use `-n auto` for `test_cpu.py`** — it spawns too many workers and crashes the machine. Use `-n 6` until CPU test worker memory footprint is reduced.
 - Cycle count checking is enabled for opcodes in `CYCLE_CHECK_OPCODES` in `test_cpu.py` (currently: ea, 1a, 3a, 18, 38)
@@ -148,7 +148,7 @@ uv run --python pypy@3.10 pytest pysnes/test_cpu.py --opcode ea --mode n  # comb
 - **Pure Python mode Cython**: No `.pyx` files — all `.py` files compiled by Cython. This allows running without a build step during development.
 - **PyPy + Cython**: Can run either way — PyPy JIT or Cython-compiled CPython. Cython build is the primary path.
 - **SDL2 over OpenGL/ImGui**: Switched for major performance gains. Don't reintroduce OpenGL/ImGui.
-- **v2 over v1**: CPU v2 and APU v2 are the active implementations. v1 directories are legacy — don't modify them.
+- **Leave v1 alone**: `pysnes/cpu/v1/` is legacy — don't modify it.
 - **Scanline-based timing**: CPU runs until scanline budget, then PPU renders that scanline. This is how real SNES hardware works.
 
 ## ROM for Testing

@@ -1,6 +1,6 @@
 import pytest
 
-from .apu_v2 import Apu
+from .apu import Apu
 
 
 @pytest.fixture

@@ -30,11 +30,11 @@ clean:
 
 run: build
 	@echo "Running PySNES..."
-	uv run ${PY} run_pysnes.py
+	uv run ${PY} scripts/run_pysnes.py
 
 profile: build
 	@echo "Profiling PySNES..."
-	uv run ${PY} run_pysnes.py --profile
+	uv run ${PY} scripts/run_pysnes.py --profile
 
 tests: build
 	@echo "Running tests..."

@@ -12,12 +12,12 @@ Covers:
 
 import pytest
 
-from .scheduler import Scheduler
+from ..scheduler import Scheduler
 from .bus import Bus
-from .cpu import Cpu
-from .apu import Apu
-from .ppu import Ppu
-from .controller import Controller
+from ..cpu import Cpu
+from ..apu import Apu
+from ..ppu import Ppu
+from ..controller import Controller
 
 
 # ---------------------------------------------------------------------------

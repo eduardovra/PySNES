@@ -1,4 +1,4 @@
-from .cpu import Cpu
+from pysnes.cpu import Cpu
 
 
 def check_trace_line(line: str, cpu: Cpu):

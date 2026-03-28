@@ -1,8 +1,6 @@
 from functools import partial
 from typing import Any
 
-from ..register_types import Reg8, Reg16
-
 from .spc700.instructions_spc700 import INSTRUCTIONS
 
 

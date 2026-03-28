@@ -5,12 +5,12 @@ from typing import List
 import cython
 from rich import print
 
-from .rom import Rom
-from .cpu import Cpu
-from .apu import Apu
-from .ppu import Ppu
-from .controller import Controller
-from .scheduler import Scheduler
+from ..rom import Rom
+from ..cpu import Cpu
+from ..apu import Apu
+from ..ppu import Ppu
+from ..controller import Controller
+from ..scheduler import Scheduler
 
 
 @cython.cclass

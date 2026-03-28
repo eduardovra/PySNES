@@ -5,7 +5,7 @@ from unittest.mock import patch
 
 from rich import print
 
-from .cpu.v2.cpu import Cpu as CpuV2
+from .cpu import Cpu
 
 
 TESTS_PATH = "submodules/65816/v1"
@@ -85,10 +85,10 @@ class FakeBus:
         self.memory[addr] = value
 
 
-def test_v2(test_case):
+def test_cpu(test_case):
     file_path, index = test_case
     test_case = _load_case(file_path, index)
-    cpu = CpuV2(None)
+    cpu = Cpu(None)
     bus = FakeBus()
     cpu.attach(bus)
 

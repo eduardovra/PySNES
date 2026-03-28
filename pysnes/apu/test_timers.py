@@ -25,7 +25,7 @@ Test register $F0:
 
 import pytest
 
-from .apu.apu_v2 import Apu, Timer
+from .apu import Apu, Timer
 
 
 # ---------------------------------------------------------------------------

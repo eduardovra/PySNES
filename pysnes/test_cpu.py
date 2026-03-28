@@ -3,7 +3,6 @@ import os
 import json
 from unittest.mock import patch
 
-import pytest
 from rich import print
 
 from .cpu.v2.cpu import Cpu as CpuV2
@@ -12,13 +11,21 @@ from .cpu.v2.cpu import Cpu as CpuV2
 TESTS_PATH = "submodules/65816/v1"
 
 
-def get_test_cases():
-    onlyfiles = [
-        os.path.join(TESTS_PATH, f) for f in os.listdir(TESTS_PATH)
-        if os.path.isfile(os.path.join(TESTS_PATH, f)) and f.upper().startswith('29')  # EA -> NOP, 29 -> AND, A0 -> LDY — expand to all for full baseline
-    ]
+def get_test_cases(opcode_filter=None):
+    """Load test cases from the SingleStepTests suite.
 
-    # onlyfiles = onlyfiles[:3]  # limit to 3 files
+    opcode_filter: optional hex prefix string (e.g. "29") to restrict to one opcode.
+    When None, all opcodes are loaded (full run).
+    """
+    if not os.path.isdir(TESTS_PATH):
+        return [], []
+
+    prefix = opcode_filter.upper() if opcode_filter else None
+    onlyfiles = sorted(
+        os.path.join(TESTS_PATH, f) for f in os.listdir(TESTS_PATH)
+        if os.path.isfile(os.path.join(TESTS_PATH, f))
+        and (prefix is None or f.upper().startswith(prefix))
+    )
 
     test_counter = defaultdict(int)
 
@@ -28,7 +35,7 @@ def get_test_cases():
             for test_case in json.load(f):
                 test_id = test_case["name"].replace(" ", "_")
 
-                # add only 3 tests per instruction for a partial run
+                # Limit to 1 test per opcode variant for a quick baseline.
                 if test_counter[test_id[0:4]] >= 1:
                     continue
                 test_counter[test_id[0:4]] += 1
@@ -36,13 +43,12 @@ def get_test_cases():
                 test_ids.append(test_id)
                 test_cases.append(test_case)
 
-                if len(test_cases) >= 1000000:
+                if len(test_cases) >= 1_000_000:
                     return test_cases, test_ids
 
     return test_cases, test_ids
 
 
-TEST_CASES, TEST_IDS = get_test_cases()
 
 
 class FakeBus:
@@ -56,7 +62,6 @@ class FakeBus:
         self.memory[addr] = value
 
 
-@pytest.mark.parametrize('test_case', TEST_CASES, ids=TEST_IDS)
 def test_v2(test_case):
     cpu = CpuV2(None)
     bus = FakeBus()

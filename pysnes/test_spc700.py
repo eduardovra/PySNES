@@ -16,8 +16,6 @@ import json
 from collections import defaultdict
 from unittest.mock import patch
 
-import pytest
-
 from .apu.apu_v2 import Apu
 
 
@@ -44,17 +42,22 @@ def _write_mem(apu: Apu, addr: int, value: int) -> None:
         apu.ipl_rom_enable = False
 
 
-def get_test_cases():
+def get_test_cases(opcode_filter=None):
+    """Load SPC700 test cases.
+
+    opcode_filter: optional hex prefix (e.g. "00") to restrict to one opcode.
+    When None, all opcodes are loaded.
+    """
     if not os.path.isdir(TESTS_PATH):
         return [], []
 
+    prefix = opcode_filter.lower() if opcode_filter else None
     onlyfiles = sorted(
         os.path.join(TESTS_PATH, f)
         for f in os.listdir(TESTS_PATH)
         if os.path.isfile(os.path.join(TESTS_PATH, f))
         and f.lower().endswith(".json")
-        # Expand the filter below to run more opcodes; restrict for fast dev runs.
-        # and f.lower().startswith("00")  # single opcode
+        and (prefix is None or f.lower().startswith(prefix))
     )
 
     test_counter = defaultdict(int)
@@ -80,10 +83,6 @@ def get_test_cases():
     return test_cases, test_ids
 
 
-TEST_CASES, TEST_IDS = get_test_cases()
-
-
-@pytest.mark.parametrize("test_case", TEST_CASES, ids=TEST_IDS)
 def test_spc700(test_case):
     apu = Apu()
 

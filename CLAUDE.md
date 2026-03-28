@@ -16,7 +16,7 @@ The codebase is in active development. CPU and SPC700 instruction tests pass aga
 ### Commands
 ```bash
 # Install dependencies
-uv run --python pypy@3.10 pip install -r requirements.txt
+uv sync --python pypy@3.10
 
 # Build (Cython compile all .py files into a .so)
 make build          # uses PyPy 3.10 by default

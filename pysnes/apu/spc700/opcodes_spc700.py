@@ -138,7 +138,7 @@ class SPC700Opcodes:
         z = x - y
         self.CF = z >= 0
         self.ZF = z & 0xFFFF == 0
-        self.NF = z < 0  # bool(z & 0x8000)
+        self.NF = bool(z & 0x8000)
         return x
 
     def LDW(self, x, y):

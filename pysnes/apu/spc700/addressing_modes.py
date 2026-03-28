@@ -72,7 +72,7 @@ class SPC700AddressingModes:
         self.address |= self.fetch() << 8
         index = getattr(self, reg)
         self.idle()
-        self.data = self.read(self.address + index)
+        self.data = self.read((self.address + index) & 0xFFFF)
         self.A = func(self, self.A, self.data)
 
     def AbsoluteIndexedWrite(self, index):
@@ -81,7 +81,7 @@ class SPC700AddressingModes:
         assert index >= 0
         self.address = self.fetch()
         self.address |= self.fetch() << 8
-        self.address = self.address + index
+        self.address = (self.address + index) & 0xFFFF
         self.idle()
         self.read(self.address)  # dummy read before write (hardware behaviour)
         self.write(self.address, self.A)
@@ -214,11 +214,11 @@ class SPC700AddressingModes:
         self.idle()
         self.idle()
         if self.CF or self.A > 0x99:
-            self.A += 0x60
+            self.A = (self.A + 0x60) & 0xFF
             self.CF = True
 
         if self.HF or (self.A & 15) > 0x09:
-            self.A += 0x06
+            self.A = (self.A + 0x06) & 0xFF
 
         self.ZF = self.A == 0
         self.NF = bool(self.A & 0x80)
@@ -228,11 +228,11 @@ class SPC700AddressingModes:
         self.idle()
         self.idle()
         if not self.CF or self.A > 0x99:
-            self.A -= 0x60
+            self.A = (self.A - 0x60) & 0xFF
             self.CF = False
 
         if not self.HF or (self.A & 15) > 0x09:
-            self.A -= 0x06
+            self.A = (self.A - 0x06) & 0xFF
 
         self.ZF = self.A == 0
         self.NF = bool(self.A & 0x80)
@@ -345,7 +345,7 @@ class SPC700AddressingModes:
         self.address = self.fetch()
         index = getattr(self, reg_index)
         self.idle()
-        self.data = self.load(self.address + index)
+        self.data = self.load((self.address + index) & 0xFF)
         target = getattr(self, reg_target)
         result = func(self, target, self.data)
         setattr(self, reg_target, result)
@@ -363,7 +363,7 @@ class SPC700AddressingModes:
         # MOV dp+X,A / MOV dp+Y,A — 5 cycles: opcode + fetch_dp + idle + dummy_read + write
         self.data = getattr(self, reg_data)
         index = getattr(self, reg_index)
-        self.address = self.fetch() + index
+        self.address = (self.fetch() + index) & 0xFF
         self.idle()
         self.load(self.address)  # dummy read before write (hardware behaviour)
         self.store(self.address, self.data)

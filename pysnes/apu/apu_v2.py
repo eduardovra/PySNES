@@ -16,6 +16,7 @@ class Timer:
         self.stage1 = 0x00  # 8 bits
         self.stage2 = 0x00  # 8 bits
         self.stage3 = 0x0  # 4 bits
+        self.stage3_shadow = 0x0  # last value read or written (for test final-state checks)
 
         self.line = False
         self.enable = False
@@ -131,6 +132,7 @@ class Apu:
         # can assert the total cycle count matches the reference data.
         self.cycles: int = 0
 
+        self._control_register_raw = 0x80  # F1 raw written value (for readback)
         self.test_register = 0x0A  # F0 (write-only)
         self.control_register = 0x80  # F1 (write only)
         self.dsp_register_address = 0x00  # F2 (r/w)
@@ -302,10 +304,11 @@ class Apu:
         elif addr == 0x00F9:
             return self.f9
         elif 0x00FA <= addr <= 0x00FC:
-            return 0  # TODO handle write only access
+            return self.timers[addr - 0x00FA].target
         elif 0x00FD <= addr <= 0x00FF:
             timer = self.timers[addr - 0x00FD]
             data = timer.stage3
+            timer.stage3_shadow = data
             timer.stage3 = 0
             return data
         elif 0x0100 <= addr <= 0x01FF:
@@ -340,6 +343,7 @@ class Apu:
             self.dsp_register_data = value
         elif 0x00F4 <= addr <= 0x00F7:
             self.ports_w[addr - 0x00F4] = value
+            self.ports_r[addr - 0x00F4] = value  # mirror so APU can read its own writes
             self._ports_w_dirty = True
         elif addr == 0x00F8:
             self.f8 = value
@@ -349,7 +353,9 @@ class Apu:
             timer = self.timers[addr - 0x00FA]
             timer.target = value
         elif 0x00FD <= addr <= 0x00FF:
-            self.timers[addr - 0x00FD].stage3 = value
+            timer = self.timers[addr - 0x00FD]
+            timer.stage3 = value
+            timer.stage3_shadow = value
         elif 0x0100 <= addr <= 0x01FF:
             self.page_1[addr - 0x0100] = value
         elif 0x0200 <= addr <= 0xFFBF:
@@ -423,10 +429,11 @@ class Apu:
 
     @property
     def control_register(self) -> int:
-        return 0x00  # Write only register
+        return self._control_register_raw
 
     @control_register.setter
     def control_register(self, data: int) -> None:
+        self._control_register_raw = data
         # 0->1 transistion resets timers
         timer0 = self.timers[0]
         timer0_enable = timer0.enable

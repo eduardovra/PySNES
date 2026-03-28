@@ -27,8 +27,8 @@ def _write_mem(apu: Apu, addr: int, value: int) -> None:
     if addr <= 0x00EF:
         apu.page_0[addr] = value
     elif addr <= 0x00FF:
-        # I/O register range — use __setitem__ (minimal side-effects expected
-        # in instruction tests, but use the real path for accuracy)
+        # I/O register range — use __setitem__ (which mirrors port writes to
+        # ports_r so the APU can read back what was initialised here).
         apu[addr] = value
     elif addr <= 0x01FF:
         apu.page_1[addr - 0x0100] = value
@@ -142,7 +142,12 @@ def test_spc700(test_case):
     assert apu.PSW == final["psw"], f"PSW: {hex(apu.PSW)} != {hex(final['psw'])}"
 
     for addr, value in final["ram"]:
-        got = apu[addr]
+        # 0xFD-0xFF are timer counters that clear on read; use the shadow
+        # (last-read/written value) to avoid a second clear-on-read here.
+        if 0xFD <= addr <= 0xFF:
+            got = apu.timers[addr - 0xFD].stage3_shadow
+        else:
+            got = apu[addr]
         assert got == value, f"ram[{hex(addr)}] = {hex(got)} != {hex(value)}"
 
     # ── Verify memory access sequence and total cycle count ──────────────

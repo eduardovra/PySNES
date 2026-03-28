@@ -27,9 +27,13 @@ extensions = [
     )
 ]
 
+import multiprocessing
+
 setup(
     ext_modules=cythonize(
         extensions,
+        nthreads=multiprocessing.cpu_count(),
+        cache=True,
         annotate=True,  # enables generation of the html annotation file
     ),
     packages=["pysnes"],

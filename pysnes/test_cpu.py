@@ -10,6 +10,9 @@ from .cpu.v2.cpu import Cpu as CpuV2
 
 TESTS_PATH = "submodules/65816/v1"
 
+# Opcodes for which cycle counts are verified (expand as coverage grows).
+CYCLE_CHECK_OPCODES = {"ea", "1a", "3a", "18", "38"}
+
 
 def get_test_cases(opcode_filter=None, max_per_opcode=None, mode=None):
     """Load test cases from the SingleStepTests suite.
@@ -152,6 +155,14 @@ def test_v2(test_case):
 
     # check on read/write cycles
     assert calls_performed == calls_expected
+
+    # cycle count check (only for opcodes in CYCLE_CHECK_OPCODES)
+    opcode_name = test_case["name"].split()[0].lower()
+    if opcode_name in CYCLE_CHECK_OPCODES:
+        expected_cycle_count = len(test_case["cycles"])
+        assert cpu.icycles == expected_cycle_count, (
+            f"cycle count: {cpu.icycles} != {expected_cycle_count}"
+        )
 
 
 # VP == VPB

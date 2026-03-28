@@ -158,6 +158,10 @@ class Cpu:
         self.cycles: int = 182
         self.prev_cycles = self.cycles
 
+        # Per-instruction cycle counter (bus reads/writes + idles).
+        # Reset at the top of fetch_and_execute; used by instruction tests.
+        self.icycles: int = 0
+
         # NMI pending flag — set by nmi_rising_edge(), checked in _step()
         self._nmi_pending: bool = False
 
@@ -210,10 +214,10 @@ class Cpu:
             self._nmi_pending = True
 
     def idleIRQ(self):
-        pass
+        self.icycles += 1
 
     def idle(self):
-        pass
+        self.icycles += 1
 
     def idle2(self):
         if (self.D.l):
@@ -240,11 +244,13 @@ class Cpu:
     @cython.ccall
     def write(self, addr: cython.uint, data: cython.uchar):
         self.cycles += self.get_clock_cycles(addr)
+        self.icycles += 1
         self.bus[addr] = data
 
     @cython.ccall
     def read(self, addr: cython.uint) -> cython.uchar:
         self.cycles += self.get_clock_cycles(addr)
+        self.icycles += 1
         return self.bus[addr]
 
     @cython.ccall
@@ -331,6 +337,7 @@ class Cpu:
     @cython.ccall
     def fetch_and_execute(self) -> cython.uint:
         self.prev_cycles = self.cycles
+        self.icycles = 0
 
         if self.trace_enabled:
             disassembled = self.disassembler.disassemble(self.PC.w)

@@ -57,7 +57,7 @@ def test_bd(apu: Apu):
     assert apu.X == 0x50
     assert apu.Y == 0x00
     assert apu.S == 0x50
-    assert apu.PSW == 0x00
+    assert apu.PSW == 0x02  # BD: MOV SP,X — no flags affected; initial ZF=True
 
 
 def test_c6(apu: Apu):
@@ -91,30 +91,29 @@ def test_1d(apu: Apu):
 
 
 def test_d0_take(apu: Apu):
-    """PC+=r  if Z == 0"""
-    apu.load_program([0xD0, 0xFC])
+    """BNE: PC += r if Z == 0 (branch taken when ZF=False)"""
+    apu.ZF = False  # Z=0 → branch taken
+    apu.load_program([0xD0, 0xFC])  # offset -4
     apu.fetch_and_execute()
 
-    assert apu.PC == 0xFFC2
+    # PC after reading 2 bytes = 0xFFC2; branch taken: 0xFFC2 + (-4) = 0xFFBE
+    assert apu.PC == 0xFFBE
     assert apu.A == 0x00
     assert apu.X == 0x00
     assert apu.Y == 0x00
     assert apu.S == 0xEF
-    assert apu.PSW == 0x20
-
-    apu.ZF = False
-    apu.fetch_and_execute()
+    assert apu.PSW == 0x00  # ZF=False, no other flags set
 
 
 def test_d0_dont_take(apu: Apu):
-    """PC+=r  if Z == 0"""
-    apu.ZF = False
+    """BNE: branch not taken when ZF=True (Z == 1)"""
+    # Initial ZF=True (reset default)
     apu.load_program([0xD0, 0xFC])
     apu.fetch_and_execute()
 
-    assert apu.PC == 0xFFC2
+    assert apu.PC == 0xFFC2  # 2 bytes consumed, no branch
     assert apu.A == 0x00
     assert apu.X == 0x00
     assert apu.Y == 0x00
     assert apu.S == 0xEF
-    assert apu.PSW == 0x20
+    assert apu.PSW == 0x02  # ZF=True (initial state preserved)

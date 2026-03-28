@@ -40,6 +40,7 @@ class PySNES:
         self.controllers = [Controller(), Controller(disabled=True)]
         bus = Bus(rom, self.cpu, self.apu, self.ppu, self.controllers, self.scheduler)
         self.cpu.attach(bus)
+        self.cpu.trace_enabled = True  # enable instruction trace for the debug TUI
         self.ppu.attach(self.scheduler, bus)
         self.video = Video()
 

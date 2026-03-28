@@ -117,6 +117,7 @@ class Cpu:
         from .wdc65816.disassembler import Disassembler
         self.disassembler = Disassembler(self)
         self.trace_log = []
+        self.trace_enabled = False  # set True to populate trace_log (reads bus)
 
     def __str__(self) -> str:
         return f"A:{self.A.w:04X} X:{self.X.w:04X} Y:{self.Y.w:04X} D:{self.D.w:04X} S:{self.S.w:04X} P:{self.P:02X} DB:{self.DB.l:02X} PB:{self.PC.b:02X} PC:{self.PC.w:06X}"
@@ -331,9 +332,10 @@ class Cpu:
     def fetch_and_execute(self) -> cython.uint:
         self.prev_cycles = self.cycles
 
-        disassembled = self.disassembler.disassemble(self.PC.w)
-        self.trace_log.append(disassembled)
-        self.trace_log = self.trace_log[-10:]  # only the last instructions
+        if self.trace_enabled:
+            disassembled = self.disassembler.disassemble(self.PC.w)
+            self.trace_log.append(disassembled)
+            self.trace_log = self.trace_log[-10:]  # only the last instructions
 
         opcode = self.fetch()
         instruction = self.instructions[opcode]

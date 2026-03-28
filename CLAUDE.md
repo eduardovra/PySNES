@@ -4,7 +4,7 @@
 
 A SNES emulator written in Python, targeting real-time emulation speed while keeping elegant Python syntax. The performance strategy is Cython (pure Python mode) compiled with PyPy 3.10, or a combination of both.
 
-The last commit message was "commiting code in unknown state from previous testing" — the emulator may not be fully working. Approach with care and verify state before making changes.
+The codebase is in active development. CPU and SPC700 instruction tests pass against the SingleStepTests suite.
 
 ## Build & Run
 
@@ -37,6 +37,9 @@ make profile        # runs with cProfile
 - **Python version must be ~3.10** — ImGui (now removed but still in pyproject.toml) didn't compile in 3.11 with PyPy
 - All `.py` files in `pysnes/` are compiled into a single monolithic Cython `.so` extension
 - `setup.py` compiles everything and links against SDL2
+- `cythonize()` uses `cache=True` and `nthreads=cpu_count()` — only changed `.py` files are re-transpiled; Cython step is parallelised
+- Generated `.c` and `.html` files sit alongside `.py` files but are git-ignored
+- The C compilation step (setuptools) always recompiles all `.o` files due to a setuptools regression — this is a known limitation
 
 ## Architecture
 
@@ -74,8 +77,8 @@ pysnes/ppu/data_structures.py  Background and sprite data structures
 ## Implementation Status
 
 ### Fully Implemented
-- WDC65816 CPU: all 256 opcodes, all addressing modes, flags, registers
-- SPC700 APU: instruction set, registers, memory, timers, I/O ports to CPU
+- WDC65816 CPU: all 256 opcodes, all addressing modes, flags, registers. Passes SingleStepTests (512 files, 1 case/opcode/mode by default; 6 pre-existing failures for opcodes 42/44/54 which are known broken)
+- SPC700 APU: full instruction set, registers, memory, timers, I/O ports to CPU. Passes all 25,600 SingleStepTests cases at 100/opcode
 - PPU basics: tilemap rendering, BG1-4, sprite composition, CGRAM palette
 - Memory bus: address decoding, LoROM mapping, RAM regions, PPU/APU register access
 - ROM loading: header parsing, vector extraction (RESET, NMI, IRQ, COP, ABORT)
@@ -125,9 +128,12 @@ uv run --python pypy@3.10 pytest pysnes/test_cpu.py --mode n              # nati
 uv run --python pypy@3.10 pytest pysnes/test_cpu.py --opcode ea --mode n  # combine filters
 ```
 
-- ProcessorTests submodule is at `submodules/ProcessorTests/65816/v1/` (JSON test cases)
-- Tests verify: initial CPU state → execute instruction → verify final state
-- CPU v2 is the tested implementation
+- 65816 test data is at `submodules/65816/v1/` (files named `{opcode}.{e|n}.json`)
+- SPC700 test data is at `submodules/SingleStepTests_spc700/v1/`
+- Tests verify: initial state → execute instruction → final registers, RAM, and memory access sequence
+- CPU v2 and APU v2 are the tested implementations
+- `pytest-xdist` is available; use `-n auto` for parallel execution (memory is bounded — test params are `(file, index)` refs, not full dicts)
+- Cycle count checking is enabled for opcodes in `CYCLE_CHECK_OPCODES` in `test_cpu.py` (currently: ea, 1a, 3a, 18, 38)
 
 ## Performance Notes
 - Cython compiles all Python to C for speed

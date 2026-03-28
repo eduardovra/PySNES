@@ -116,10 +116,13 @@ uv run --python pypy@3.10 pytest pysnes/test_spc700.py
 uv run --python pypy@3.10 pytest pysnes/apu/test_apu.py pysnes/test_timers.py pysnes/test_interrupts.py pysnes/test_scheduler.py
 
 # Filter options (apply to test_cpu.py and test_spc700.py)
-uv run --python pypy@3.10 pytest pysnes/test_cpu.py --opcode ea          # single opcode
+uv run --python pypy@3.10 pytest pysnes/test_cpu.py --opcode ea           # single opcode
 uv run --python pypy@3.10 pytest pysnes/test_spc700.py --opcode d0        # single opcode
 uv run --python pypy@3.10 pytest pysnes/test_cpu.py --max-per-opcode 0    # all cases (unlimited)
 uv run --python pypy@3.10 pytest pysnes/test_cpu.py --max-per-opcode 10   # 10 cases per opcode
+uv run --python pypy@3.10 pytest pysnes/test_cpu.py --mode e              # emulation mode only (65816)
+uv run --python pypy@3.10 pytest pysnes/test_cpu.py --mode n              # native mode only (65816)
+uv run --python pypy@3.10 pytest pysnes/test_cpu.py --opcode ea --mode n  # combine filters
 ```
 
 - ProcessorTests submodule is at `submodules/ProcessorTests/65816/v1/` (JSON test cases)

@@ -42,11 +42,12 @@ def _write_mem(apu: Apu, addr: int, value: int) -> None:
         apu.ipl_rom_enable = False
 
 
-def get_test_cases(opcode_filter=None, max_per_opcode=None):
+def get_test_cases(opcode_filter=None, max_per_opcode=None, mode=None):
     """Load SPC700 test cases.
 
     opcode_filter:   optional hex prefix (e.g. "00") to restrict to one opcode.
     max_per_opcode:  max cases per opcode variant; 0 = unlimited (default: 1).
+    mode:            ignored (SPC700 has no emulation/native distinction).
     """
     if not os.path.isdir(TESTS_PATH):
         return [], []

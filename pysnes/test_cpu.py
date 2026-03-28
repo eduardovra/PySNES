@@ -11,21 +11,33 @@ from .cpu.v2.cpu import Cpu as CpuV2
 TESTS_PATH = "submodules/65816/v1"
 
 
-def get_test_cases(opcode_filter=None, max_per_opcode=None):
+def get_test_cases(opcode_filter=None, max_per_opcode=None, mode=None):
     """Load test cases from the SingleStepTests suite.
 
     opcode_filter:   optional hex prefix (e.g. "29") to restrict to one opcode.
     max_per_opcode:  max cases per opcode variant; 0 = unlimited (default: 1).
+    mode:            optional "e" or "n" to restrict to emulation/native mode.
     """
     if not os.path.isdir(TESTS_PATH):
         return [], []
 
     limit = 1 if max_per_opcode is None else max_per_opcode
     prefix = opcode_filter.upper() if opcode_filter else None
+
+    def _include(filename):
+        # filename format: {opcode}.{mode}.json  e.g. "29.e.json"
+        parts = filename.split(".")
+        if len(parts) != 3 or parts[2].lower() != "json":
+            return False
+        if prefix is not None and not parts[0].upper().startswith(prefix):
+            return False
+        if mode is not None and parts[1].lower() != mode.lower():
+            return False
+        return True
+
     onlyfiles = sorted(
         os.path.join(TESTS_PATH, f) for f in os.listdir(TESTS_PATH)
-        if os.path.isfile(os.path.join(TESTS_PATH, f))
-        and (prefix is None or f.upper().startswith(prefix))
+        if os.path.isfile(os.path.join(TESTS_PATH, f)) and _include(f)
     )
 
     test_counter = defaultdict(int)
@@ -47,8 +59,6 @@ def get_test_cases(opcode_filter=None, max_per_opcode=None):
                     return test_cases, test_ids
 
     return test_cases, test_ids
-
-
 
 
 class FakeBus:

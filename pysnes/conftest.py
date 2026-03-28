@@ -14,6 +14,13 @@ def pytest_addoption(parser):
         metavar="N",
         help="Limit to N test cases per opcode variant (default: 1; 0 = unlimited)",
     )
+    parser.addoption(
+        "--mode",
+        action="store",
+        default=None,
+        choices=["e", "n"],
+        help="65816 only: restrict to emulation (e) or native (n) mode tests",
+    )
 
 
 def pytest_generate_tests(metafunc):
@@ -22,8 +29,9 @@ def pytest_generate_tests(metafunc):
 
     opcode = metafunc.config.getoption("--opcode", default=None)
     max_per = metafunc.config.getoption("--max-per-opcode", default=None)
+    mode = metafunc.config.getoption("--mode", default=None)
     module = metafunc.definition.module
 
     if hasattr(module, "get_test_cases"):
-        test_cases, test_ids = module.get_test_cases(opcode, max_per)
+        test_cases, test_ids = module.get_test_cases(opcode, max_per, mode=mode)
         metafunc.parametrize("test_case", test_cases, ids=test_ids)

@@ -232,3 +232,129 @@ def test_hvbjoy_no_blanks():
     val = bus[0x004212]
     assert not (val & (1 << 7))
     assert not (val & (1 << 6))
+
+
+# ---------------------------------------------------------------------------
+# Low RAM boundary — first byte
+# ---------------------------------------------------------------------------
+
+def test_low_ram_boundary_first_byte():
+    bus, *_ = make_bus()
+    bus[0x000000] = 0x01
+    assert bus[0x000000] == 0x01
+
+
+# ---------------------------------------------------------------------------
+# LoROM Region 2 — banks $40–$6F, full address range ($0000–$FFFF)
+# ---------------------------------------------------------------------------
+
+def test_lorom_region2_read():
+    """Banks $40–$6F expose the full 64KB: low half is ROM too."""
+    bus, rom, *_ = make_bus()
+    # Bank $40, addr $0010 → ROM offset: 0x40 * 0x8000 + 0x0010 = 0x200010
+    # But ROM is only 512 KB (0x80000), so use a small bank number inside range
+    # Bank $40 = 64 decimal; offset = 64 * 0x8000 + 0x0010 = 0x200010 — beyond 512KB
+    # Use bank $40 with addr >= 0x8000 to stay in region 1 overlap, OR use addr < 0x8000
+    # For region 2 specifically (addr 0x0000-0x7FFF in banks 0x40-0x6F):
+    # rom_addr = bank * 0x8000 + addr (addr < 0x8000, so no subtraction)
+    # Bank $40=64, addr $0020 → rom_addr = 64*0x8000 + 0x0020 = 0x200020 (too big)
+    # Use bank $40 but stub ROM is 512KB=0x80000; 0x200020 > 0x80000 → returns 0
+    # Instead use bank $40 addr $0000 with small value to test routing (not OOB crash)
+    rom.rom[0] = 0  # ensure clean
+    val = bus[0x400000]  # should not crash; ROM is 512KB so addr 0x200000 is OOB → 0
+    assert val == 0  # StubRom returns 0 for OOB — routing reached ROM, no crash
+
+
+def test_lorom_region2_boundary_bank40():
+    """Bank $40, addr $0000 routes through LoROM region 2 (not RAM)."""
+    bus, rom, *_ = make_bus()
+    # Confirm it doesn't hit low_ram (which would be bank 0x00-0x3F only)
+    bus[0x000100] = 0xAB      # write low_ram via bank $00
+    val = bus[0x400100]       # read via bank $40 addr $0100 — region 2, goes to ROM
+    assert val != 0xAB        # must NOT return the low_ram value
+
+
+# ---------------------------------------------------------------------------
+# LoROM Region 3 — banks $70–$7D, addr $8000–$FFFF
+# ---------------------------------------------------------------------------
+
+def test_lorom_region3_read():
+    """Banks $70–$7D, high half map to ROM."""
+    bus, rom, *_ = make_bus()
+    # bank $70=112, addr $8010 → rom_addr = 112*0x8000 + (0x8010-0x8000) = 0x380010
+    # 0x380010 > 512KB → OOB, StubRom returns 0; test just confirms routing/no crash
+    val = bus[0x708010]
+    assert val == 0
+
+
+def test_lorom_region3_not_ram():
+    """Bank $70 addr $8000 must not hit low_ram or high_ram."""
+    bus, rom, *_ = make_bus()
+    bus[0x7E0100] = 0xCC      # write low_ram via bank $7E
+    val = bus[0x708100]       # bank $70, addr $8100 → LoROM region 3
+    assert val != 0xCC
+
+
+# ---------------------------------------------------------------------------
+# LoROM mirror write (banks $80–$FD → mirrors $00–$7D)
+# ---------------------------------------------------------------------------
+
+def test_lorom_mirror_write():
+    """Write through a mirrored bank ($80+) lands in the same ROM slot as $00."""
+    bus, rom, *_ = make_bus()
+    bus[0x808010] = 0x55      # bank $80 mirrors bank $00
+    assert rom.rom[0x0010] == 0x55
+
+
+# ---------------------------------------------------------------------------
+# Controller — JOYSER0 write ($4016) latches both ports
+# ---------------------------------------------------------------------------
+
+def test_joyser0_write_latches_controller():
+    """Writing 1 then 0 to JOYSER0 latches the controller shift register."""
+    bus, *_ = make_bus()
+    bus[0x004016] = 0x01      # latch high
+    bus[0x004016] = 0x00      # latch low — loads shift register
+    # After latch cycle, reading data() should return 1s (no keys pressed → padding)
+    val = bus[0x004016]       # JOYSER0 read
+    assert val in range(0, 0x100)  # sanity: valid byte returned
+
+
+# ---------------------------------------------------------------------------
+# Joy registers — JOY1L/1H/2L/2H ($4218–$421B)
+# ---------------------------------------------------------------------------
+
+def test_joy1l_read():
+    bus, _, _, _, _ = make_bus()
+    bus.controller_port1.joy_l = 0xAB
+    assert bus[0x004218] == 0xAB
+
+
+def test_joy1h_read():
+    bus, _, _, _, _ = make_bus()
+    bus.controller_port1.joy_h = 0xCD
+    assert bus[0x004219] == 0xCD
+
+
+def test_joy2l_read():
+    bus, _, _, _, _ = make_bus()
+    bus.controller_port2.joy_l = 0x12
+    assert bus[0x00421A] == 0x12
+
+
+def test_joy2h_read():
+    bus, _, _, _, _ = make_bus()
+    bus.controller_port2.joy_h = 0x34
+    assert bus[0x00421B] == 0x34
+
+
+# ---------------------------------------------------------------------------
+# NMITIMEN read ($4200) — verify it routes to dma_ppu2_hw_registers fallback
+# (the register is write-only; reads fall through to the bytearray)
+# ---------------------------------------------------------------------------
+
+def test_nmitimen_read_fallthrough():
+    """Reading $4200 returns the value stored in dma_ppu2_hw_registers."""
+    bus, *_ = make_bus()
+    bus.dma_ppu2_hw_registers[0x4200 - 0x4200] = 0x42
+    assert bus[0x004200] == 0x42

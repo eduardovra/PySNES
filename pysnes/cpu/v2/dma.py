@@ -47,14 +47,14 @@ class Channel:
 
         for index in range(self.transfer_size):
             if self.direction == 0:
-                data = self.bus[self.source_bank << 16 | self.source_address] # A bus
+                data = self.bus.read(self.source_bank << 16 | self.source_address) # A bus
             else:
-                data = self.bus[0x2100 | self.target_address]
+                data = self.bus.read(0x2100 | self.target_address)
 
             if self.transfer_mode == 0:  # Write 1 byte, B0->$21xx
-                self.bus[target_addr] = data
+                self.bus.write(target_addr, data)
             elif self.transfer_mode == 1:  # Write 2 bytes, B0->$21xx B1->$21XX+1
-                self.bus[target_addr + (index & 1)] = data
+                self.bus.write(target_addr + (index & 1), data)
 
             if not self.fixed_transfer:
                 self.source_address += 1

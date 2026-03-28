@@ -132,7 +132,8 @@ uv run --python pypy@3.10 pytest pysnes/test_cpu.py --opcode ea --mode n  # comb
 - SPC700 test data is at `submodules/SingleStepTests_spc700/v1/`
 - Tests verify: initial state → execute instruction → final registers, RAM, and memory access sequence
 - CPU v2 and APU v2 are the tested implementations
-- `pytest-xdist` is available; use `-n auto` for parallel execution (memory is bounded — test params are `(file, index)` refs, not full dicts)
+- `pytest-xdist` is available for parallel execution (memory is bounded — test params are `(file, index)` refs, not full dicts)
+- **Do NOT use `-n auto` for `test_cpu.py`** — it spawns too many workers and crashes the machine. Use `-n 6` until CPU test worker memory footprint is reduced.
 - Cycle count checking is enabled for opcodes in `CYCLE_CHECK_OPCODES` in `test_cpu.py` (currently: ea, 1a, 3a, 18, 38)
 
 ## Performance Notes

@@ -10,10 +10,21 @@ from .cpu import Cpu
 from .apu import Apu
 from .ppu import Ppu
 from .controller import Controller
+from .scheduler import Scheduler
 
 
 @cython.cclass
 class Bus:
+    cpu: Cpu
+    ppu: Ppu
+    scheduler: Scheduler
+    low_ram: cython.uchar[:]
+    high_ram: cython.uchar[:]
+    extended_ram: cython.uchar[:]
+    dma_ppu2_hw_registers: cython.uchar[:]
+    hblank: cython.bint
+    vblank: cython.bint
+
     def __init__(
         self,
         rom: Rom,
@@ -21,7 +32,7 @@ class Bus:
         apu: Apu,
         ppu: Ppu,
         controllers: List[Controller],
-        scheduler,
+        scheduler: Scheduler,
     ) -> None:
         self.rom = rom  # LoROM section (program memory)
         self.cpu = cpu
@@ -35,8 +46,8 @@ class Bus:
         self.controller_port1, self.controller_port2 = controllers
 
         # H/V blank flags owned by the bus; set by the PPU scheduler events
-        self.hblank: bool = False
-        self.vblank: bool = False
+        self.hblank = False
+        self.vblank = False
 
     def raise_nmi(self) -> None:
         """Called by PPU at V-Blank start (rising NMI edge)."""
@@ -53,19 +64,19 @@ class Bus:
         self.controller_port1.latch(0)
         self.controller_port1.latch(1)
         self.controller_port1.joy_h = 0
-        for bit in reversed(range(8)):
+        for bit in range(7, -1, -1):
             if self.controller_port1.data() & 1:
                 self.controller_port1.joy_h |= 1 << bit
         self.controller_port1.joy_l = 0
-        for bit in reversed(range(8)):
+        for bit in range(7, -1, -1):
             if self.controller_port1.data() & 1:
                 self.controller_port1.joy_l |= 1 << bit
 
-    def __getitem__(self, abs_addr: cython.uint) -> cython.uchar:
-        assert 0x000000 <= abs_addr <= 0xFFFFFF, "Address outside 24 bit range"
-
-        bank = abs_addr >> 16 & 0xFF
-        addr = abs_addr & 0xFFFF
+    @cython.cfunc
+    @cython.inline
+    def read(self, abs_addr: cython.uint) -> cython.uchar:
+        bank: cython.uint = abs_addr >> 16 & 0xFF
+        addr: cython.uint = abs_addr & 0xFFFF
 
         # mirror LoROM sections
         if 0x80 <= bank <= 0xFD:
@@ -74,7 +85,7 @@ class Bus:
         if ((0x00 <= bank <= 0x6F) and 0x8000 <= addr <= 0xFFFF) or \
             ((0x40 <= bank <= 0x6F) and (0x0000 <= addr <= 0xFFFF)) or \
             ((0x70 <= bank <= 0x7D) and (0x8000 <= addr <= 0xFFFF)):
-            rom_addr = (bank * 0x8000) + (addr - (0x8000 if addr >= 0x8000 else 0))
+            rom_addr: cython.uint = (bank * 0x8000) + (addr - (0x8000 if addr >= 0x8000 else 0))
             return self.rom[rom_addr]
 
         if 0x7E2000 <= abs_addr <= 0x7E7FFF:
@@ -156,12 +167,14 @@ class Bus:
         print(f"[yellow]Reading unmapped memory region: 0x{abs_addr:06X}[/yellow]")
         return 0
 
-    def __setitem__(self, abs_addr: cython.uint, data: cython.uchar):
-        assert 0x000000 <= abs_addr <= 0xFFFFFF, "Address outside 24 bit range"
-        assert 0x00 <= data <= 0xFF, "Data outside 8 bit range"
+    def __getitem__(self, abs_addr: cython.uint) -> cython.uchar:
+        return self.read(abs_addr)
 
-        bank = abs_addr >> 16 & 0xFF
-        addr = abs_addr & 0xFFFF
+    @cython.cfunc
+    @cython.inline
+    def write(self, abs_addr: cython.uint, data: cython.uchar):
+        bank: cython.uint = abs_addr >> 16 & 0xFF
+        addr: cython.uint = abs_addr & 0xFFFF
 
         # mirror LoROM sections
         if 0x80 <= bank <= 0xFD:
@@ -170,7 +183,7 @@ class Bus:
         if ((0x00 <= bank <= 0x6F) and 0x8000 <= addr <= 0xFFFF) or \
             ((0x40 <= bank <= 0x6F) and (0x0000 <= addr <= 0xFFFF)) or \
             ((0x70 <= bank <= 0x7D) and (0x8000 <= addr <= 0xFFFF)):
-            rom_addr = (bank * 0x8000) + (addr - (0x8000 if addr >= 0x8000 else 0))
+            rom_addr: cython.uint = (bank * 0x8000) + (addr - (0x8000 if addr >= 0x8000 else 0))
             self.rom.rom[rom_addr] = data
             return
 
@@ -391,3 +404,6 @@ class Bus:
             return
 
         print(f"[yellow]Writting unmapped memory region: 0x{abs_addr:06X} = 0x{data:02X}[/yellow]")
+
+    def __setitem__(self, abs_addr: cython.uint, data: cython.uchar):
+        self.write(abs_addr, data)

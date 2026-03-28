@@ -78,6 +78,12 @@ class FakeBus:
     def __setitem__(self, addr, value):
         self.memory[addr] = value
 
+    def read(self, addr):
+        return self.memory[addr]
+
+    def write(self, addr, value):
+        self.memory[addr] = value
+
 
 def test_v2(test_case):
     file_path, index = test_case
@@ -122,21 +128,21 @@ def test_v2(test_case):
         elif outputs[3] == 'w':
             calls_expected.append(f"setitem({hex(address)}, {hex(value)})")
 
-    real_getitem = FakeBus.__getitem__
-    def getitem(self, address):
-        value = real_getitem(self, address)
+    real_read = FakeBus.read
+    def read(self, address):
+        value = real_read(self, address)
         calls_performed.append(f"getitem({hex(address)}) -> {hex(value)}")
         return value
-    real_setitem = FakeBus.__setitem__
-    def setitem(self, address, value):
+    real_write = FakeBus.write
+    def write(self, address, value):
         calls_performed.append(f"setitem({hex(address)}, {hex(value)})")
-        return real_setitem(self, address, value)
+        return real_write(self, address, value)
 
     # mocks to track memory access
-    with patch.object(FakeBus, "__getitem__", autospec=True) as mock_getitem, \
-            patch.object(FakeBus, "__setitem__", autospec=True) as mock_setitem:
-        mock_getitem.side_effect = getitem
-        mock_setitem.side_effect = setitem
+    with patch.object(FakeBus, "read", autospec=True) as mock_getitem, \
+            patch.object(FakeBus, "write", autospec=True) as mock_setitem:
+        mock_getitem.side_effect = read
+        mock_setitem.side_effect = write
         # while cpu.PC.w != final["pc"]:  # TODO consider PBR
         while len(calls_performed) < len(calls_expected):
             cpu.fetch_and_execute()

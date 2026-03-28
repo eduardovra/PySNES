@@ -105,6 +105,7 @@ class Cpu:
 
     cycles = cython.declare(cython.uint, visibility="public")
     prev_cycles = cython.declare(cython.uint, visibility="public")
+    status = cython.declare(CpuStatus, visibility="public")
 
     def __init__(self, hardware_vectors: dict) -> None:
         self.reset_registers()
@@ -245,13 +246,13 @@ class Cpu:
     def write(self, addr: cython.uint, data: cython.uchar):
         self.cycles += self.get_clock_cycles(addr)
         self.icycles += 1
-        self.bus[addr] = data
+        self.bus.write(addr, data)
 
     @cython.ccall
     def read(self, addr: cython.uint) -> cython.uchar:
         self.cycles += self.get_clock_cycles(addr)
         self.icycles += 1
-        return self.bus[addr]
+        return self.bus.read(addr)
 
     @cython.ccall
     def readDirect(self, address: cython.uint) -> cython.uchar:
@@ -478,23 +479,23 @@ class Cpu:
         """
         # Bank
         if not self.EF:
-            self.bus[self.S.w] = self.PC.b
+            self.bus.write(self.S.w, self.PC.b)
             self.S.w -= 1
         # High
-        self.bus[self.S.w] = self.PC.h
+        self.bus.write(self.S.w, self.PC.h)
         self.S.w -= 1
         # Low
-        self.bus[self.S.w] = self.PC.l
+        self.bus.write(self.S.w, self.PC.l)
         self.S.w -= 1
         # P register
         p = self.P
-        self.bus[self.S.w] = p & ~0x10 if self.EF else p
+        self.bus.write(self.S.w, p & ~0x10 if self.EF else p)
         self.S.w -= 1
 
         self.IFlag = True
         self.DFlag = False
 
-        addr = self.bus[vector] | self.bus[vector + 1] << 8
+        addr = self.bus.read(vector) | self.bus.read(vector + 1) << 8
         self.PC.w = addr
 
         return 1  # whatever

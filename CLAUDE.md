@@ -148,8 +148,8 @@ uv run --python pypy@3.10 pytest pysnes/test_cpu.py --opcode ea --mode n  # comb
 - **Pure Python mode Cython**: No `.pyx` files — all `.py` files compiled by Cython. This allows running without a build step during development.
 - **PyPy + Cython**: Can run either way — PyPy JIT or Cython-compiled CPython. Cython build is the primary path.
 - **SDL2 over OpenGL/ImGui**: Switched for major performance gains. Don't reintroduce OpenGL/ImGui.
-- **Leave v1 alone**: `pysnes/cpu/v1/` is legacy — don't modify it.
-- **Scanline-based timing**: CPU runs until scanline budget, then PPU renders that scanline. This is how real SNES hardware works.
+- **Automated testing**: We aim for every functionallity to be covered by automated tests. When there is a change to be made, the tests need to be created first to perfectly outline the end goal.
+- **Scanline-based timing**: CPU runs until scanline budget, then PPU renders that scanline. This is not how real SNES hardware operates, but it's a compromise to improve performance in hopes for most games to work.
 
 ## ROM for Testing
 - ROM files are in `roms/` directory (not committed to git)

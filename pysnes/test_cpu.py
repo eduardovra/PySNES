@@ -11,15 +11,16 @@ from .cpu.v2.cpu import Cpu as CpuV2
 TESTS_PATH = "submodules/65816/v1"
 
 
-def get_test_cases(opcode_filter=None):
+def get_test_cases(opcode_filter=None, max_per_opcode=None):
     """Load test cases from the SingleStepTests suite.
 
-    opcode_filter: optional hex prefix string (e.g. "29") to restrict to one opcode.
-    When None, all opcodes are loaded (full run).
+    opcode_filter:   optional hex prefix (e.g. "29") to restrict to one opcode.
+    max_per_opcode:  max cases per opcode variant; 0 = unlimited (default: 1).
     """
     if not os.path.isdir(TESTS_PATH):
         return [], []
 
+    limit = 1 if max_per_opcode is None else max_per_opcode
     prefix = opcode_filter.upper() if opcode_filter else None
     onlyfiles = sorted(
         os.path.join(TESTS_PATH, f) for f in os.listdir(TESTS_PATH)
@@ -35,8 +36,7 @@ def get_test_cases(opcode_filter=None):
             for test_case in json.load(f):
                 test_id = test_case["name"].replace(" ", "_")
 
-                # Limit to 1 test per opcode variant for a quick baseline.
-                if test_counter[test_id[0:4]] >= 1:
+                if limit > 0 and test_counter[test_id[0:4]] >= limit:
                     continue
                 test_counter[test_id[0:4]] += 1
 

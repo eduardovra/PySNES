@@ -42,15 +42,16 @@ def _write_mem(apu: Apu, addr: int, value: int) -> None:
         apu.ipl_rom_enable = False
 
 
-def get_test_cases(opcode_filter=None):
+def get_test_cases(opcode_filter=None, max_per_opcode=None):
     """Load SPC700 test cases.
 
-    opcode_filter: optional hex prefix (e.g. "00") to restrict to one opcode.
-    When None, all opcodes are loaded.
+    opcode_filter:   optional hex prefix (e.g. "00") to restrict to one opcode.
+    max_per_opcode:  max cases per opcode variant; 0 = unlimited (default: 1).
     """
     if not os.path.isdir(TESTS_PATH):
         return [], []
 
+    limit = 1 if max_per_opcode is None else max_per_opcode
     prefix = opcode_filter.lower() if opcode_filter else None
     onlyfiles = sorted(
         os.path.join(TESTS_PATH, f)
@@ -68,9 +69,7 @@ def get_test_cases(opcode_filter=None):
             for test_case in json.load(f):
                 test_id = test_case["name"].replace(" ", "_")
 
-                # Limit to 1 test per opcode variant for a quick baseline.
-                # Remove this guard (or raise the cap) for a thorough run.
-                if test_counter[test_id[:2]] >= 1:
+                if limit > 0 and test_counter[test_id[:2]] >= limit:
                     continue
                 test_counter[test_id[:2]] += 1
 

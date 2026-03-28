@@ -103,11 +103,23 @@ pysnes/ppu/data_structures.py  Background and sprite data structures
 ## Testing
 
 ```bash
-# CPU tests (TomHarte's ProcessorTests suite)
+# All tests
+uv run --python pypy@3.10 pytest pysnes/
+
+# CPU tests (TomHarte's ProcessorTests / SingleStepTests 65816)
 uv run --python pypy@3.10 pytest pysnes/test_cpu.py
 
-# APU unit tests
-uv run --python pypy@3.10 pytest pysnes/apu/test_apu.py
+# SPC700 instruction tests (SingleStepTests spc700)
+uv run --python pypy@3.10 pytest pysnes/test_spc700.py
+
+# APU / timer / interrupt / scheduler unit tests
+uv run --python pypy@3.10 pytest pysnes/apu/test_apu.py pysnes/test_timers.py pysnes/test_interrupts.py pysnes/test_scheduler.py
+
+# Filter options (apply to test_cpu.py and test_spc700.py)
+uv run --python pypy@3.10 pytest pysnes/test_cpu.py --opcode ea          # single opcode
+uv run --python pypy@3.10 pytest pysnes/test_spc700.py --opcode d0        # single opcode
+uv run --python pypy@3.10 pytest pysnes/test_cpu.py --max-per-opcode 0    # all cases (unlimited)
+uv run --python pypy@3.10 pytest pysnes/test_cpu.py --max-per-opcode 10   # 10 cases per opcode
 ```
 
 - ProcessorTests submodule is at `submodules/ProcessorTests/65816/v1/` (JSON test cases)

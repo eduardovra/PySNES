@@ -145,3 +145,4 @@ imgui.ini
 
 # Claude Code local settings
 .claude/
+tools/

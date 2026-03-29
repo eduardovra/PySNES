@@ -1,14 +1,12 @@
 import os
 import sdl2 as sdl
-from rich import print, inspect
-
 try:
     from .video_sdl2 import SDL2Renderer
     SDL2_AVAILABLE = True
 except ImportError as e:
     SDL2Renderer = None
     SDL2_AVAILABLE = False
-    print(f"[yellow]SDL2 renderer not available: {e}[/yellow]")
+    print(f"SDL2 renderer not available: {e}")
 
 
 
@@ -20,10 +18,16 @@ class Video:
 
     def __init__(self):
         self.use_sdl2 = SDL2_AVAILABLE
+        self.window = None
         self.sdl2_renderer = None
         self.sdl2_calls = 0
 
     def initialize(self) -> None:
+        if os.environ.get("PYSNES_HEADLESS") == "1":
+            self.window = None
+            self.sdl2_renderer = None
+            return
+
         result = sdl.SDL_Init(sdl.SDL_INIT_EVERYTHING)
         if result != 0:
             raise RuntimeError(f"Failed to initialize SDL: {sdl.SDL_GetError().decode()}")
@@ -41,12 +45,14 @@ class Video:
             try:
                 self.sdl2_renderer = SDL2Renderer(256, 224)
                 self.sdl2_renderer.initialize(self.window)
-                print(f"[green]SDL2 renderer successfully initialized![green]")
+                print("SDL2 renderer successfully initialized!")
             except Exception as e:
-                print(f"[red]Failed to initialize SDL2 renderer: {e}[/red]")
+                print(f"Failed to initialize SDL2 renderer: {e}")
                 self.sdl2_renderer = None
 
     def teardown_sdl(self) -> None:
+        if self.window is None:
+            return
         if self.sdl2_renderer:
             self.sdl2_renderer.cleanup()
         sdl.SDL_DestroyWindow(self.window)
@@ -57,9 +63,17 @@ class Video:
         pass
 
     def set_window_title(self, title: str) -> None:
+        if self.window is None:
+            return
         sdl.SDL_SetWindowTitle(self.window, title.encode())
 
+    def save_screenshot(self, path: str = "screenshot.bmp") -> None:
+        if self.sdl2_renderer:
+            self.sdl2_renderer.save_screenshot(path)
+
     def draw_textures(self, main_bgs):
+        if self.window is None:
+            return
         if self.use_sdl2 and self.sdl2_renderer:
             self.sdl2_renderer.draw_frame(main_bgs)
             self.sdl2_calls += 1
@@ -77,5 +91,5 @@ class Video:
         return info
 
     def toggle_renderer(self) -> bool:
-        print("[yellow]No other renderers available to toggle to[/yellow]")
+        print("No other renderers available to toggle to")
         return False

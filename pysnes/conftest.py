@@ -1,5 +1,27 @@
 def pytest_addoption(parser):
     parser.addoption(
+        "--frames",
+        action="store",
+        default=60,
+        type=int,
+        metavar="N",
+        help="Number of frames to run for integration tests (default: 60)",
+    )
+    parser.addoption(
+        "--instructions",
+        action="store",
+        default=100_000,
+        type=int,
+        metavar="N",
+        help="Number of CPU instructions for instruction-level trace (default: 100000)",
+    )
+    parser.addoption(
+        "--no-cache",
+        action="store_true",
+        default=False,
+        help="Force re-download Mesen AppImage even if cached",
+    )
+    parser.addoption(
         "--opcode",
         action="store",
         default=None,

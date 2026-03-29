@@ -1,17 +1,12 @@
 import argparse
 from ctypes import byref
+import signal
 import time
 import sys
 import platform
 
 import sdl2 as sdl
 import cython
-from rich import print
-from rich.console import Console
-from rich.live import Live
-from rich.table import Table
-from rich.panel import Panel
-from rich.columns import Columns
 
 from .rom import Rom
 from .scheduler import Scheduler
@@ -23,15 +18,15 @@ from .controller import Controller
 from .video import Video
 
 if cython.compiled:
-    print("[green]Cython is enabled, using compiled modules.[/green]")
+    print("Cython is enabled, using compiled modules.")
 else:
-    print("[blue]Cython is not enabled, using pure Python modules.[/blue]")
-
+    print("Cython is not enabled, using pure Python modules.")
 
 
 class PySNES:
     def __init__(self, rom_file_path: str) -> None:
         rom = Rom(rom_file_path)
+        self.rom_name = rom.rom_file_name
         self.scheduler = Scheduler()
         self.apu = Apu()
         self.cpu = Cpu(rom.hardware_vectors)
@@ -39,178 +34,165 @@ class PySNES:
         self.controllers = [Controller(), Controller(disabled=True)]
         bus = Bus(rom, self.cpu, self.apu, self.ppu, self.controllers, self.scheduler)
         self.cpu.attach(bus)
-        self.cpu.trace_enabled = True  # enable instruction trace for the debug TUI
+        self.cpu.trace_enabled = False
         self.ppu.attach(self.scheduler, bus)
+        self.bus = bus
         self.video = Video()
 
-        # Initialize video and create window
         self.video.initialize()
-        self.video.set_window_title(f"PySNES - {rom.rom_file_name}")
-        
-        # Debug: Show which renderer is being used
-        renderer_info = self.video.get_renderer_info()
-        print(f"[blue]Video Renderer: {renderer_info.get('active_renderer', 'Unknown')}[/blue]")
-        if renderer_info.get('vendor'):
-            print(f"[blue]GPU: {renderer_info.get('vendor')} - {renderer_info.get('renderer')}[/blue]")
+        self.video.set_window_title(f"PySNES - {self.rom_name}")
 
-        # Used to pool inputs
         self.event = sdl.SDL_Event()
 
         # Reset PC to the address in the cartridge reset vector
         self.cpu.PC.w = rom.hardware_vectors["emulation"]["RESET"]
 
-        # Emulator state variables
+        # Emulator state
         self.running = True
         self.paused = False
-        self.loop_time = 0.0
-        self.loop_fps = 0.0
         self.frame_time = 0.0
         self.frame_fps = 0.0
 
-        # Rich debug system - replaces ImGui for MASSIVE performance boost!
-        self.debug_enabled = True  # Re-enable debug with better handling
-        self.debug_console = Console(file=sys.stderr, force_terminal=True)  # Use stderr to avoid conflicts
-        self.debug_live = None
-        self.debug_frame_counter = 0
-        self.debug_update_frequency = 120  # Update every 120 frames for very stable display
-        self.debug_last_update_time = 0  # Time-based throttling
-        self.debug_min_update_interval = 1.0  # Minimum 1 second between updates
+        # Signal-triggered actions (set flag in handler, execute in main loop)
+        self._screenshot_requested = False
+        self._dump_requested = False
+        signal.signal(signal.SIGUSR1, self._handle_sigusr1)
+        signal.signal(signal.SIGUSR2, self._handle_sigusr2)
 
-    def create_rich_debug_display(self):
-        """Create Rich debug display - replaces ImGui for massive performance boost!"""
-        if not self.debug_enabled:
-            return None
-            
-        # Performance table
-        perf_table = Table(title="⚡ Performance", show_header=True, header_style="bold cyan")
-        perf_table.add_column("Metric", style="cyan", width=12)
-        perf_table.add_column("Value", style="green", width=10)
-        
-        perf_table.add_row("Loop FPS", f"{self.loop_fps:6.1f}")
-        perf_table.add_row("Frame FPS", f"{self.frame_fps:6.1f}")
-        perf_table.add_row("Loop Time", f"{self.loop_time:.4f}s")
-        perf_table.add_row("Frame Time", f"{self.frame_time:.4f}s")
-        
-        # CPU registers table  
-        cpu_table = Table(title="💾 CPU Registers", show_header=True, header_style="bold magenta")
-        cpu_table.add_column("Register", style="magenta", width=8)
-        cpu_table.add_column("Value", style="yellow", width=10)
-        
-        cpu_table.add_row("PC", f"0x{self.cpu.PC.value:06X}")
-        cpu_table.add_row("A", f"0x{self.cpu.A.value:04X}")
-        cpu_table.add_row("X", f"0x{self.cpu.X.value:04X}")
-        cpu_table.add_row("Y", f"0x{self.cpu.Y.value:04X}")
-        cpu_table.add_row("SP", f"0x{self.cpu.S.value:04X}")
-        cpu_table.add_row("DB", f"0x{self.cpu.DB.value:02X}")
-        cpu_table.add_row("P", f"0x{self.cpu.P:02X}")
-        
-        # CPU Instruction log table
-        log_table = Table(title="📜 CPU Instructions", show_header=True, header_style="bold yellow")
-        log_table.add_column("Trace", style="white", width=80)
-        
-        # Use the CPU's existing trace_log - it's already perfectly formatted!
-        if hasattr(self.cpu, 'trace_log') and self.cpu.trace_log:
-            for entry in self.cpu.trace_log:
-                log_table.add_row(str(entry))
-        
-        # Status info
-        status_table = Table(title="🎮 Status", show_header=False)
-        status_table.add_column("Info", style="white")
-        
-        status_table.add_row(f"State: {'PAUSED' if self.paused else 'RUNNING'}")
-        status_table.add_row(f"Frame: {self.debug_frame_counter}")
-        status_table.add_row(f"Debug: {self.debug_update_frequency} frame update")
-        status_table.add_row("")
-        status_table.add_row("[bold blue]Controls:[/bold blue]")
-        status_table.add_row("F12 - Toggle debug")
-        status_table.add_row("SPACE - Pause/Resume")
-        status_table.add_row("ESC - Quit")
-        
-        # Combine tables in columns for compact display
-        top_row = Columns([
-            Panel(perf_table, border_style="green"),
-            Panel(cpu_table, border_style="magenta"), 
-            Panel(status_table, border_style="blue")
-        ], expand=False)
-        
-        bottom_row = Panel(log_table, border_style="yellow")
-        
-        from rich.console import Group
-        return Group(top_row, bottom_row)
+        # CPU trace: compare against bsnes reference
+        self._trace_file = None
+        self._trace_ref = None
+        self._trace_count = 0
+        self._trace_limit = 100_000
+        self._trace_diverged = False
 
-    def start_debug_display(self):
-        """Start the Rich live debug display"""
-        if self.debug_enabled and not self.debug_live:
-            initial_display = self.create_rich_debug_display()
-            if initial_display:
-                self.debug_live = Live(
-                    initial_display, 
-                    console=self.debug_console,
-                    refresh_per_second=1,  # Very low refresh for stable display
-                    screen=True
-                )
-                self.debug_live.start()
+    def _handle_sigusr1(self, _signum, _frame):
+        self._screenshot_requested = True
 
-    def update_debug_display(self):
-        """Update the Rich debug display - much faster than ImGui!"""
-        if not self.debug_enabled or not self.debug_live:
-            return
-            
-        self.debug_frame_counter += 1
-        current_time = time.time()
-        
-        # Update only every N frames AND with minimum time interval for stable display
-        time_check = (current_time - self.debug_last_update_time) >= self.debug_min_update_interval
-        frame_check = self.debug_frame_counter % self.debug_update_frequency == 0
-        
-        if time_check and frame_check:
-            new_display = self.create_rich_debug_display()
-            if new_display:
-                self.debug_live.update(new_display)
-                self.debug_last_update_time = current_time
+    def _handle_sigusr2(self, _signum, _frame):
+        self._dump_requested = True
 
-    def stop_debug_display(self):
-        """Stop the Rich live debug display"""
-        if self.debug_live:
-            self.debug_live.stop()
-            self.debug_live = None
+    def _do_screenshot(self):
+        path = "screenshot.bmp"
+        self.video.save_screenshot(path)
+        print(f"Screenshot saved to {path}", flush=True)
 
-    def toggle_debug(self):
-        """Toggle debug display on/off for maximum performance"""
-        self.debug_enabled = not self.debug_enabled
-        if self.debug_enabled:
-            self.start_debug_display()
+    def _do_memory_dump(self):
+        vram = bytes(self.ppu.vram)
+        cgram = bytes(self.ppu.cgram)
+        wram = bytes(self.bus.low_ram) + bytes(self.bus.high_ram)
+
+        with open("vram_dump.bin", "wb") as f:
+            f.write(vram)
+        with open("cgram_dump.bin", "wb") as f:
+            f.write(cgram)
+        with open("wram_dump.bin", "wb") as f:
+            f.write(wram)
+        print(f"Memory dumps saved: vram_dump.bin ({len(vram)}B), cgram_dump.bin ({len(cgram)}B), wram_dump.bin ({len(wram)}B)", flush=True)
+
+    def start_trace(self, ref_path: str):
+        """Open trace log file and bsnes reference for comparison."""
+        try:
+            self._trace_file = open("cpu_trace.log", "w")
+            self._trace_ref = open(ref_path, "r")
+            self.cpu.trace_enabled = True
+            print(f"CPU trace started (limit {self._trace_limit} instructions, ref: {ref_path})", flush=True)
+        except FileNotFoundError as e:
+            print(f"Warning: Could not open trace reference: {e}", flush=True)
+            self._trace_ref = None
+
+        # Wrap cpu._step so we can check the trace after each instruction
+        original_step = self.cpu._step
+        pysnes = self
+
+        def traced_step():
+            original_step()
+            pysnes._check_trace()
+
+        self.cpu._step = traced_step
+
+    def _format_trace_line(self) -> str:
+        """Format a CPU trace line matching bsnes format."""
+        pc = self.cpu.PC.d
+        # Use the last entry in trace_log (most recently executed)
+        if self.cpu.trace_log:
+            disasm = str(self.cpu.trace_log[-1])
         else:
-            self.stop_debug_display()
-            # Clear screen when disabling debug
-            self.debug_console.clear()
+            disasm = f"{pc:06x} ???"
+        p = self.cpu.P
+        flags = (
+            ("N" if p & 0x80 else ".")
+            + ("V" if p & 0x40 else ".")
+            + ("1" if p & 0x20 else ".")
+            + ("B" if p & 0x10 else ".")
+            + ("D" if p & 0x08 else ".")
+            + ("I" if p & 0x04 else ".")
+            + ("Z" if p & 0x02 else ".")
+            + ("C" if p & 0x01 else ".")
+        )
+        return (
+            f"{disasm:<30} "
+            f"A:{self.cpu.A.value:04X} X:{self.cpu.X.value:04X} Y:{self.cpu.Y.value:04X} "
+            f"S:{self.cpu.S.value:04X} D:{self.cpu.D.value:04X} DB:{self.cpu.DB.value:02X} "
+            f"{flags}"
+        )
 
-    def create_gui(self) -> None:
-        """Legacy method - now replaced with Rich debug display"""
-        # OLD ImGui code completely removed for performance!
-        # Now handled by update_debug_display() which is 10-20x faster
-        pass
+    def _check_trace(self):
+        """Write one trace line and compare against reference. Continues past divergence."""
+        if self._trace_count >= self._trace_limit:
+            return
+
+        pc = self.cpu.PC.d
+        self._trace_count += 1
+
+        if self._trace_file:
+            line = self._format_trace_line()
+            self._trace_file.write(line + "\n")
+
+            # Compare against reference (up to first divergence only)
+            if not self._trace_diverged and self._trace_ref:
+                ref_line = self._trace_ref.readline()
+                while ref_line and ref_line.startswith(".."):
+                    ref_line = self._trace_ref.readline()
+                if ref_line:
+                    ref_line = ref_line.rstrip()
+                    if line[:6].lower() != ref_line[:6].lower():
+                        print(f"\n*** TRACE DIVERGENCE at instruction {self._trace_count} ***", flush=True)
+                        print(f"  OUR: {line}", flush=True)
+                        print(f"  REF: {ref_line}", flush=True)
+                        self._trace_diverged = True
+                        self._trace_file.flush()
+
+        # Periodic PC report to spot infinite loops
+        if self._trace_count % 10_000 == 0:
+            print(f"[trace {self._trace_count}] PC=0x{pc:06X} MC={self.scheduler.master_clock}", flush=True)
+
+        if self._trace_count >= self._trace_limit:
+            print(f"Trace limit reached ({self._trace_limit} instructions).", flush=True)
+            apu = self.bus.apu
+            print(f"APU state: PC=0x{apu.PC:04X} A={apu.A:02X} X={apu.X:02X} Y={apu.Y:02X} S={apu.S:02X}", flush=True)
+            print(f"  ports_r={list(apu.ports_r)} ports_w={list(apu.ports_w)}", flush=True)
+            print(f"  last_synced_mc={apu._last_synced_mc} scheduler_mc={self.scheduler.master_clock}", flush=True)
+            if self._trace_file:
+                self._trace_file.flush()
 
     def main(self):
         """Main loop driven by the event scheduler."""
-        # One NTSC frame = 262 scanlines × 1364 master clocks
         MC_PER_FRAME: int = 262 * 1364
 
-        # Register CPU and PPU with the scheduler
         self.cpu.start(self.scheduler)
         self.ppu.start()
 
-        self.start_debug_display()
+        print(f"PID: {__import__('os').getpid()}", flush=True)
+
         frame_start = time.time()
 
         try:
             while self.running:
                 if not self.paused:
-                    # Advance the scheduler by exactly one frame worth of master clocks
                     frame_end = self.scheduler.master_clock + MC_PER_FRAME
                     self.scheduler.run_to(frame_end)
 
-                    # Present the frame rendered by the PPU during this period
                     self.video.draw_textures(self.ppu.main_bgs)
                     self.video.update_screen()
 
@@ -219,127 +201,63 @@ class PySNES:
                         self.frame_fps = 1 / self.frame_time
                     frame_start = time.time()
 
+                    self.video.set_window_title(f"PySNES - {self.rom_name} | {self.frame_fps:.1f} FPS")
+
+                # Handle signal-triggered actions
+                if self._screenshot_requested:
+                    self._screenshot_requested = False
+                    self._do_screenshot()
+                if self._dump_requested:
+                    self._dump_requested = False
+                    self._do_memory_dump()
+
                 self.process_inputs()
-                self.update_debug_display()
 
         finally:
-            self.stop_debug_display()
+            if self._trace_file:
+                self._trace_file.close()
+            if self._trace_ref:
+                self._trace_ref.close()
             self.video.teardown_sdl()
 
     def process_inputs(self):
-        # Capture inputs from keyboard using SDL
+        if not self.video.window:
+            return
         while sdl.SDL_PollEvent(byref(self.event)) != 0:
             if self.event.type == sdl.SDL_QUIT:
                 self.running = False
                 return
             elif self.event.type == sdl.SDL_KEYUP:
-                controller = self.controllers[0]
-                controller.pressed_keys.remove(self.event.key.keysym.sym)
+                self.controllers[0].pressed_keys.discard(self.event.key.keysym.sym)
             elif self.event.type == sdl.SDL_KEYDOWN:
-                controller = self.controllers[0]
-                controller.pressed_keys.add(self.event.key.keysym.sym)
-                
-                # Handle debug toggle
-                if self.event.key.keysym.sym == sdl.SDLK_F12:
-                    self.toggle_debug()
-                elif self.event.key.keysym.sym == sdl.SDLK_SPACE:
+                self.controllers[0].pressed_keys.add(self.event.key.keysym.sym)
+                if self.event.key.keysym.sym == sdl.SDLK_SPACE:
                     self.paused = not self.paused
-
-        # No more ImGui event processing - performance boost!
+                elif self.event.key.keysym.sym == sdl.SDLK_F11:
+                    self._screenshot_requested = True
+                elif self.event.key.keysym.sym == sdl.SDLK_F10:
+                    self._dump_requested = True
 
 
 def print_python_info():
-    """Print information about the Python interpreter being used"""
-    print(f"[blue]Python Information:[/blue]")
-    print(f"  Version: {sys.version}")
-    print(f"  Executable: {sys.executable}")
-    print(f"  Implementation: {platform.python_implementation()}")
-    print(f"  Compiler: {platform.python_compiler()}")
-    print(f"  Build: {platform.python_build()}")
-    print(f"  Platform: {platform.platform()}")
+    print(f"Python: {sys.version}")
+    print(f"Implementation: {platform.python_implementation()}")
     print()
 
 
 def main():
-    # Print Python interpreter information
     print_python_info()
 
-    rom = "roms/test_oam.smc"
-    # rom = "roms/snes_oam_test/1-random.smc"
-    # rom = "roms/snes_oam_test/2-low.smc"
-    # rom = "roms/snes_oam_test/3-high.smc"
-    # rom = "roms/snes_adc_sbc/test_adc.smc"
-    rom = "roms/SNES Test Program .smc"  # Lots of ppu tests
-    rom = "roms/SNES Test Program.sfc"
-    # rom = "submodules/snes-test-roms/jonasquinn-test-roms/test_oam/test_oam.smc"
-    # rom = "submodules/snes-test-roms/jonasquinn-test-roms/snes_adc_sbc/test_adc.smc"
-    # rom = "submodules/snes-test-roms/jonasquinn-test-roms/test_hdma/test_hdmasync.smc"
-    # rom = "submodules/snes-test-roms/jonasquinn-test-roms/test_dmatiming/demo.smc"
-
-    # rom = "submodules/SNES/CPUTest/CPU/ADC/CPUADC.sfc"
-    # rom = "submodules/SNES/CPUTest/CPU/AND/CPUAND.sfc"
-    # rom = "submodules/SNES/CPUTest/CPU/ASL/CPUASL.sfc"
-    # rom = "submodules/SNES/CPUTest/CPU/BIT/CPUBIT.sfc"
-    # rom = "submodules/SNES/CPUTest/CPU/BRA/CPUBRA.sfc"
-    # rom = "submodules/SNES/CPUTest/CPU/CMP/CPUCMP.sfc"
-    # rom = "submodules/SNES/CPUTest/CPU/DEC/CPUDEC.sfc"
-    # rom = "submodules/SNES/CPUTest/CPU/EOR/CPUEOR.sfc"
-    # rom = "submodules/SNES/CPUTest/CPU/INC/CPUINC.sfc"
-    # rom = "submodules/SNES/CPUTest/CPU/JMP/CPUJMP.sfc"
-    # rom = "submodules/SNES/CPUTest/CPU/LDR/CPULDR.sfc"
-    # rom = "submodules/SNES/CPUTest/CPU/LSR/CPULSR.sfc"
-    # rom = "submodules/SNES/CPUTest/CPU/MOV/CPUMOV.sfc"
-    # rom = "submodules/SNES/CPUTest/CPU/MSC/CPUMSC.sfc"
-    # rom = "submodules/SNES/CPUTest/CPU/ORA/CPUORA.sfc"
-    # rom = "submodules/SNES/CPUTest/CPU/PHL/CPUPHL.sfc"
-    # rom = "submodules/SNES/CPUTest/CPU/PSR/CPUPSR.sfc"
-    # rom = "submodules/SNES/CPUTest/CPU/RET/CPURET.sfc"
-    # rom = "submodules/SNES/CPUTest/CPU/ROL/CPUROL.sfc"
-    # rom = "submodules/SNES/CPUTest/CPU/ROR/CPUROR.sfc"
-    # rom = "submodules/SNES/CPUTest/CPU/SBC/CPUSBC.sfc"
-    # rom = "submodules/SNES/CPUTest/CPU/STR/CPUSTR.sfc"
-    # rom = "submodules/SNES/CPUTest/CPU/TRN/CPUTRN.sfc"
-
-    # rom = "submodules/SNES/CPUTest/SPC700/ADC/SPC700ADC.sfc"
-    # rom = "submodules/SNES/CPUTest/SPC700/AND/SPC700AND.sfc"
-    # rom = "submodules/SNES/CPUTest/SPC700/DEC/SPC700DEC.sfc"
-    # rom = "submodules/SNES/CPUTest/SPC700/EOR/SPC700EOR.sfc"
-    # rom = "submodules/SNES/CPUTest/SPC700/INC/SPC700INC.sfc"
-    # rom = "submodules/SNES/CPUTest/SPC700/ORA/SPC700ORA.sfc"
-    # rom = "submodules/SNES/CPUTest/SPC700/SBC/SPC700SBC.sfc"
-
-    # PeterLemon PPU tests
-    # rom = "submodules/SNES/PPU/BGMAP/8x8/2BPP/8x8BG1Map2BPP32x328PAL/8x8BG1Map2BPP32x328PAL.sfc"
-    # rom = "submodules/SNES/PPU/BGMAP/8x8/2BPP/8x8BG2Map2BPP32x328PAL/8x8BG2Map2BPP32x328PAL.sfc"
-    # rom = "submodules/SNES/PPU/BGMAP/8x8/2BPP/8x8BG3Map2BPP32x328PAL/8x8BG3Map2BPP32x328PAL.sfc"
-    # rom = "submodules/SNES/PPU/BGMAP/8x8/2BPP/8x8BG4Map2BPP32x328PAL/8x8BG4Map2BPP32x328PAL.sfc"
-    # rom = "submodules/SNES/PPU/BGMAP/8x8/4BPP/8x8BGMap4BPP32x328PAL/8x8BGMap4BPP32x328PAL.sfc"
-    # rom = "submodules/SNES/PPU/BGMAP/8x8/8BPP/32x32/8x8BGMap8BPP32x32.sfc"
-    # rom = "submodules/SNES/PPU/BGMAP/8x8/8BPP/32x64/8x8BGMap8BPP32x64.sfc"
-    # rom = "submodules/SNES/PPU/BGMAP/8x8/8BPP/64x32/8x8BGMap8BPP64x32.sfc"
-    # rom = "submodules/SNES/PPU/BGMAP/8x8/8BPP/64x64/8x8BGMap8BPP64x64.sfc"
-    # rom = "submodules/SNES/PPU/BGMAP/8x8/8BPP/TileFlip/8x8BGMapTileFlip.sfc"
-    # rom = "submodules/SNES/PPU/Mosaic/Mode3/MosaicMode3.sfc"
-
-    # rom = "roms/Super Mario World (U) [!].smc"
+    rom = "roms/Super Mario World (U) [!].smc"
+    # rom = "roms/SNES Test Program.sfc"
     # rom = "roms/Donkey Kong Country (U) (V1.2) [!].smc"
     # rom = "roms/Legend of Zelda, The - A Link to the Past (USA).sfc"
-    # rom = "roms/Super Bomberman 5 Gold Cartridge (J) [!].smc"
-    # rom = "roms/Final Fight (USA).sfc"
-    # rom = "roms/SimCity (USA).sfc"
-    # rom = "roms/Magical Quest Starring Mickey Mouse, The (USA).sfc"
 
     pysnes = PySNES(rom)
 
-    # add trace crosscheck
-    # trace_file = "submodules/snes-test-roms/PeterLemon/SNES-CPUTest-CPU/ADC/CPUADC-trace.log"
-    # with open(trace_file, "r") as f:
-    #     while line := f.readline():
-    #         check_trace_line(line, pysnes.cpu)
-    #         pysnes.tick()
-
-    # while pysnes.tick():
-    #     pass
+    # Enable CPU trace comparison against bsnes reference
+    ref_trace = f"roms/Super Mario World (U) [!]-trace.log"
+    pysnes.start_trace(ref_trace)
 
     pysnes.main()
 

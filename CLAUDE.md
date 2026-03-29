@@ -32,6 +32,33 @@ make clean
 make profile        # runs with cProfile
 ```
 
+## Debug Instrumentation
+
+The emulator has built-in debug tools controllable via Unix signals (no GUI required):
+
+```bash
+# Run emulator — PID is printed to stdout on startup
+uv run --python pypy@3.10 -m pysnes.pysnes &
+
+# Trigger screenshot → saves screenshot.bmp (Claude can read as image)
+kill -USR1 <pid>
+
+# Trigger memory dumps → saves vram_dump.bin, cgram_dump.bin, wram_dump.bin
+kill -USR2 <pid>
+```
+
+- **F11** / **SIGUSR1** → save `screenshot.bmp` (SDL2 framebuffer snapshot)
+- **F10** / **SIGUSR2** → save `vram_dump.bin`, `cgram_dump.bin`, `wram_dump.bin`
+- **SPACE** → pause/resume
+- FPS is shown in the window title bar
+
+### CPU Trace Comparison
+On startup, `pysnes.py` opens `cpu_trace.log` and compares CPU execution against the bsnes reference trace `roms/Super Mario World (U) [!]-trace.log`. The first divergence is printed to stdout. Limited to first 100k CPU instructions.
+
+### Reference Assets (`roms/`)
+- `Super Mario World (U) [!]-trace.log` — 1.25M line bsnes CPU+APU trace from reset vector
+- `Super Mario World (U) [!]-vram.bin` / `-cgram.bin` / `-wram.bin` / `-oam.bin` — bsnes memory snapshots at an unknown execution point (not directly comparable without matching frame count)
+
 ### Build System Notes
 - **Cython version is pinned to 3.1.1** — DO NOT upgrade to 3.1.2, it has a "multiple definitions of function" bug: https://stackoverflow.com/questions/79687815/cython-multiple-definitions-of-function
 - **Python version must be ~3.10** — ImGui (now removed but still in pyproject.toml) didn't compile in 3.11 with PyPy
@@ -102,6 +129,29 @@ pysnes/ppu/data_structures.py  Background and sprite data structures
 - SRAM / save states
 - PPU Mode 0-7 full support (only basic modes work)
 - Overscan mode (partially recognized)
+
+## Integration Testing (Mesen oracle)
+
+Mesen 2 is used as a reference oracle for integration tests. Binary is at `tools/Mesen` (git-ignored).
+Download from https://github.com/SourMesen/Mesen2/releases and place at `tools/Mesen` (chmod +x).
+
+```bash
+# Tier 1 — find first diverging frame (CPU/SPC registers + WRAM CRC32):
+DISPLAY=:0 uv run --python pypy@3.10 pytest pysnes/test_integration.py::test_frame_divergence -v -s
+
+# Tier 2 — find exact diverging CPU instruction:
+DISPLAY=:0 uv run --python pypy@3.10 pytest pysnes/test_integration.py::test_instruction_divergence -v -s
+
+# Custom ROM / frame count / instruction count:
+SNES_ROM="roms/mygame.sfc" DISPLAY=:0 uv run --python pypy@3.10 pytest pysnes/test_integration.py -v -s --frames 120 --instructions 200000
+
+# Skip integration tests in normal suite:
+uv run --python pypy@3.10 pytest pysnes/ -m "not integration"
+```
+
+- Mesen Lua scripts are in `scripts/mesen_oracle.lua` (Tier 1) and `scripts/mesen_trace.lua` (Tier 2)
+- Port is passed to Lua via `MESEN_PORT` env var; frame/instruction count via `MESEN_FRAMES`/`MESEN_INSTRUCTIONS`
+- `PYSNES_HEADLESS=1` suppresses SDL2 window during PySNES fixture runs
 
 ## Testing
 

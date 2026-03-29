@@ -6,7 +6,6 @@ import sdl2 as sdl
 import numpy as np
 import ctypes
 from typing import Optional
-from rich import print
 
 
 class SDL2Renderer:
@@ -130,6 +129,25 @@ class SDL2Renderer:
 
         # Present frame
         sdl.SDL_RenderPresent(self.renderer)
+
+    def save_screenshot(self, path: str = "screenshot.bmp") -> None:
+        """Save the current framebuffer to a BMP file."""
+        if not self.renderer:
+            return
+        surface = sdl.SDL_CreateRGBSurface(
+            0, self.width, self.height, 32,
+            0x000000FF, 0x0000FF00, 0x00FF0000, 0xFF000000
+        )
+        if not surface:
+            return
+        sdl.SDL_RenderReadPixels(
+            self.renderer, None,
+            sdl.SDL_PIXELFORMAT_RGBA8888,
+            surface.contents.pixels,
+            surface.contents.pitch
+        )
+        sdl.SDL_SaveBMP(surface, path.encode())
+        sdl.SDL_FreeSurface(surface)
 
     def cleanup(self) -> None:
         """Clean up SDL2 resources"""

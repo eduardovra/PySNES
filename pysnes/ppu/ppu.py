@@ -1,14 +1,20 @@
-from typing import TYPE_CHECKING
-
 from ctypes import c_uint8
-from typing import Optional, Union, Tuple
+from typing import Optional, Union, Tuple, TYPE_CHECKING
 
+import cython
 from sdl2 import *
 
-from .data_structures import *
+from .data_structures import Background, Object, Tilemap
 
 if TYPE_CHECKING:
-    from ..cpu import Cpu
+    from ..scheduler import Scheduler
+    from ..bus import Bus
+
+# NTSC scanline timing (master clocks)
+_MC_PER_SCANLINE: int = 1364        # master clocks per scanline
+_HBLANK_START_MC: int = 1096        # dot 274 * 4 mc/dot — when H-Blank begins
+_VBLANK_START_LINE: int = 225       # first V-Blank scanline (after 224 visible lines)
+_TOTAL_SCANLINES: int = 262         # total scanlines per frame (NTSC)
 
 # SNES default resolution (NTSC)
 SCREEN_WIDTH = 256
@@ -17,6 +23,7 @@ SCREEN_HEIGHT = 224
 # SCREEN_HEIGHT = 240
 
 
+@cython.cclass
 class Ppu:
     """
     Picture Processor Unit: 15-Bit
@@ -24,14 +31,14 @@ class Ppu:
 
     def __init__(
         self,
-        cpu: "Cpu",
         *,
         vram_dump: Optional[bytes] = None,
         cgram_dump: Optional[bytes] = None,
         oam_dump: Optional[bytes] = None,
     ) -> None:
-        # CPU ref is used to control NMI line on V-Blank
-        self.cpu = cpu
+        # Scheduler and bus are attached after construction via attach()
+        self.scheduler = None
+        self.bus = None
 
         # VRAM - Video RAM
         if vram_dump is None:
@@ -39,10 +46,10 @@ class Ppu:
         else:
             self.vram = bytearray(vram_dump)
         self.vmain = 0x00
-        self.vmaddl = c_uint8(0x00)
-        self.vmaddh = c_uint8(0x00)
-        self._vmdatal = c_uint8(0x00)
-        self._vmdatah = c_uint8(0x00)
+        self.vmaddl: cython.uchar = 0
+        self.vmaddh: cython.uchar = 0
+        self._vmdatal: cython.uchar = 0
+        self._vmdatah: cython.uchar = 0
 
         self.inidisp_set(0)
 
@@ -77,16 +84,11 @@ class Ppu:
         self.mosaic_enabled = [False, False, False, False]
         self.mosaic_size = 0
 
-        # Clock
-        self.ticks = 0
-        self.line_clocks = 0
-
         self.field = 0  # 0 for even frames, 1 for odd frames
-        self.h_counter = 0  # current dot beign drawn
-        self.v_counter = 0  # current scanline beign drawn
+        self.h_counter = 0  # current dot being drawn (updated at H-Blank / scanline start)
+        self.v_counter = 0  # current scanline being drawn
         self.frames = 0  # total frames rendered
 
-        self.vertices = []
         self.main_bgs = [0x00] * 256 * 262  # 262 was 239 before
 
     def inidisp_set(self, data: int) -> None:
@@ -128,37 +130,39 @@ class Ppu:
         """
 
     @property
-    def vmdatal(self) -> int:
-        return self._vmdatal.value
+    def vmdatal(self) -> cython.uchar:
+        return self._vmdatal
 
     @vmdatal.setter
-    def vmdatal(self, data: int) -> None:
-        self._vmdatal = c_uint8(data)
+    def vmdatal(self, data: cython.uchar) -> None:
+        self._vmdatal = data
         if not self.vmain_addr_increment_mode:
             self.write_vram()
 
     @property
-    def vmdatah(self) -> int:
-        return self._vmdatah.value
+    def vmdatah(self) -> cython.uchar:
+        return self._vmdatah
 
     @vmdatah.setter
-    def vmdatah(self, data: int) -> None:
-        self._vmdatah = c_uint8(data)
+    def vmdatah(self, data: cython.uchar) -> None:
+        self._vmdatah = data
         if self.vmain_addr_increment_mode:
             self.write_vram()
 
     def write_vram(self) -> None:
-        base_addr = (self.vmaddl.value | self.vmaddh.value << 8) * 2
-        self.vram[base_addr + 0] = self._vmdatal.value
-        self.vram[base_addr + 1] = self._vmdatah.value
+        base_addr = (self.vmaddl | self.vmaddh << 8) * 2
+        # base_addr &= 0xFFFF
+        assert base_addr < len(self.vram), f"VRAM write out of bounds: 0x{base_addr:06X}"
+        self.vram[base_addr + 0] = self._vmdatal
+        self.vram[base_addr + 1] = self._vmdatah
         self.increment_vmadd()
 
     def increment_vmadd(self) -> None:
         addr = (
-            self.vmaddl.value | self.vmaddh.value << 8
+            self.vmaddl | self.vmaddh << 8
         ) + self.vmain_addr_increment_amount
-        self.vmaddl.value = (addr >> 0) & 0xFF
-        self.vmaddh.value = (addr >> 8) & 0xFF
+        self.vmaddl = (addr >> 0) & 0xFF
+        self.vmaddh = (addr >> 8) & 0xFF
 
     @property
     def cgadd(self) -> int:
@@ -302,45 +306,55 @@ class Ppu:
         self.bg4.sub_screen_enable = bool(data >> 3 & 1)
         self.oam_sub_screen_enable = bool(data >> 4 & 1)
 
-    def tick(self, master_cycles: int = 2) -> None:
-        """
-        https://wiki.superfamicom.org/timing
+    # ------------------------------------------------------------------
+    # Scheduler integration
+    # ------------------------------------------------------------------
 
-        The SNES master clock runs at about 21.477MHz NTSC
-        The SNES runs 1 scanline every 1364 master cycles
-        Frames are 262 scanlines in non-interlace mode
-        There are always 340 dots ('pixels') per scanline
+    def attach(self, scheduler, bus) -> None:
+        """Attach the scheduler and bus after construction."""
+        self.scheduler = scheduler
+        self.bus = bus
 
-        For 60 frames/s:
-        Each frame should be drawn every 16.6ms
-        Each scanline should be drawn every 63.5us
-        """
-        self.line_clocks += master_cycles
-        self.h_counter = self.line_clocks // 4  # Each dot takes ~4 master cycles
+    def start(self) -> None:
+        """Schedule the first H-Blank event. Call once before the main loop."""
+        self.scheduler.add(_HBLANK_START_MC, self._hblank)
 
-        # Wrap H counter
-        if self.h_counter > 339:
+    def _hblank(self) -> None:
+        """Fired at dot 274 of each scanline (H-Blank start)."""
+        self.h_counter = 274
+        self.bus.hblank = True
+
+        if self.v_counter < _VBLANK_START_LINE:
             self.render_scanline()
-            # H counter range is 0-339, but visible part is 22-277
-            self.line_clocks = 0
-            self.h_counter = 0
-            self.v_counter += 1
 
-        # Wrap V counter
-        if self.v_counter == 262:
-            # V counter range is 0-261, but visible part is 1-224
-            self.v_counter = 0
-            # Flip even/odd frame
-            self.field ^= 1
-            # Increment frame counter
-            self.frames += 1
+        # Schedule end of scanline / start of next
+        self.scheduler.add(_MC_PER_SCANLINE - _HBLANK_START_MC, self._scanline_end)
 
-        # H-Blank is 62 dots
-        self.cpu.status.h_blank_on = not (22 <= self.h_counter <= 277)
-        # V-Blank is 38 scanlines
-        self.cpu.status.v_blank_on = not (1 <= self.v_counter <= 224)
-        # NMI line
-        self.cpu.status.nmi_line = self.cpu.status.v_blank_on
+    def _scanline_end(self) -> None:
+        """Fired at the end of each scanline."""
+        self.bus.hblank = False
+        self.h_counter = 0
+        self.v_counter += 1
+
+        if self.v_counter == _VBLANK_START_LINE:
+            self._vblank_start()
+        elif self.v_counter == _TOTAL_SCANLINES:
+            self._vblank_end()
+
+        # Schedule H-Blank for the next scanline
+        self.scheduler.add(_HBLANK_START_MC, self._hblank)
+
+    def _vblank_start(self) -> None:
+        self.bus.vblank = True
+        self.bus.raise_nmi()
+
+    def _vblank_end(self) -> None:
+        self.bus.vblank = False
+        self.bus.lower_nmi()
+        # Reset counters for next frame
+        self.v_counter = 0
+        self.field ^= 1
+        self.frames += 1
 
     def render_scanline(self):
         """
@@ -451,15 +465,16 @@ class Ppu:
             x_ndc = 2.0 * (scrx / SCREEN_WIDTH) - 1.0
             # y_ndc = 1.0 - 2.0 * (self.v_counter / SCREEN_HEIGHT)
 
-            self.vertices.extend([x_ndc, y_ndc, 0.0, r, g, b])
-
             x, y, width = scrx, self.v_counter, SCREEN_WIDTH
             self.main_bgs[y * width + x] = u32_color
 
-    def draw_background_scanline(self, bg: Background, bpp: int, priority_selector: bool) -> None:
+    # @cython.nogil
+    @cython.cfunc
+    # @cython.noexcept
+    def draw_background_scanline(self, bg: Background, bpp: cython.uchar, priority_selector: cython.bint):
         scanline = self.v_counter  # TODO move to method argument
 
-        assert bg.sub_screen_enable is False, "Sub screen not implemented"
+        # assert bg.sub_screen_enable is False, "Sub screen not implemented"
 
         if not bg.main_screen_enable:
             return
@@ -469,24 +484,27 @@ class Ppu:
         # Assuming 256 dots per scanline
         for dot in range(256):
             # Calculate the tilemap entry address in VRAM
-            scrx, scry = dot, scanline
+            # scrx, scry = dot, scanline
+            scrx: cython.uint = dot
+            scry: cython.uint = scanline
 
             # To find the tilemap word address for a particular tile (X and Y), you'd use a
             # formula something like this:
             # (Addr<<9) + ((Y&0x1f)<<5) + (X&0x1f) +
             #     (SY ? ((Y&0x20)<<(SX ? 6 : 5)) : 0) + (SX ? ((X&0x20)<<5) : 0)
 
-            bg_size_w = 32 << (bg.screen_size & 1)
-            bg_size_h = 32 << (bg.screen_size >> 1)
-            scroll_x = bg.hoffset
-            scroll_y = bg.voffset
+            screen_size: cython.uint = bg.screen_size
+            bg_size_w: cython.uint = 32 << (screen_size & 1)
+            bg_size_h: cython.uint = 32 << (screen_size >> 1)
+            scroll_x: cython.uint = bg.hoffset
+            scroll_y: cython.uint = bg.voffset
 
             orgx = scrx
             orgy = scry
-            scry = (scry + scroll_y) % (8 * bg_size_h)
-            scrx = (scrx + scroll_x) % (8 * bg_size_w)
+            scry: cython.uint = (scry + scroll_y) % (8 * bg_size_h)
+            scrx: cython.uint = (scrx + scroll_x) % (8 * bg_size_w)
 
-            offset = ((scry % 256 if bg_size_w == 64 else scry) // 8) * 32
+            offset: cython.uint = ((scry % 256 if bg_size_w == 64 else scry) // 8) * 32
             offset += ((scrx % 256) // 8)
             offset += (scrx // 256) * 0x400
             offset += (bg_size_w // 64) * ((scry // 256) * 0x800)
@@ -494,36 +512,44 @@ class Ppu:
             screen_addr = bg.screen_addr & 0xFFFF
             tilemap_addr = (screen_addr + offset) * 2 & 0xFFFF
 
-            tilemap = Tilemap.from_buffer(self.vram, tilemap_addr)
-            if tilemap.priority == priority_selector:
-                i = scry % 8
-                j = scrx % 8
-                v_shift = i + (-i + 7 - i) * tilemap.v_flip
-                h_shift = (7 - j) + (2 * j - 7) * tilemap.h_flip
+            # tilemap = Tilemap.from_buffer(self.vram, tilemap_addr)
+            low: cython.uint = self.vram[tilemap_addr]
+            high: cython.uint = self.vram[tilemap_addr + 1]
+            tilemap_addr: cython.uint = (high & 3) << 8 | low
+            tilemap_palette: cython.uint = (high >> 2) & 7
+            tilemap_priority: cython.bint = (high >> 5) & 1
+            tilemap_h_flip: cython.bint = (high >> 6) & 1
+            tilemap_v_flip: cython.bint = (high >> 7) & 1
+
+            if tilemap_priority == priority_selector:
+                i: cython.uint = scry % 8
+                j: cython.uint = scrx % 8
+                v_shift: cython.uint = i + (-i + 7 - i) * tilemap_v_flip
+                h_shift: cython.uint = (7 - j) + (2 * j - 7) * tilemap_h_flip
                 if bpp == 2:
-                    tile_address = (tilemap.addr * 8 + (bg.tiledata_addr * 2) + v_shift) * 2
-                    b_lo = self.vram[tile_address]
-                    b_hi = self.vram[tile_address + 1]
-                    v = ((b_lo >> h_shift) & 1) + (2 * ((b_hi >> h_shift) & 1))
+                    tile_address: cython.uint = (tilemap_addr * 8 + (bg.tiledata_addr * 2) + v_shift) * 2
+                    b_lo: cython.uint = self.vram[tile_address]
+                    b_hi: cython.uint = self.vram[tile_address + 1]
+                    v: cython.uint = ((b_lo >> h_shift) & 1) + (2 * ((b_hi >> h_shift) & 1))
                 elif bpp == 4:
-                    tile_address = (tilemap.addr * 16 + (bg.tiledata_addr * 2) + v_shift) * 2
-                    b_1 = self.vram[tile_address]
-                    b_2 = self.vram[tile_address + 1]
-                    b_3 = self.vram[tile_address + 16]
-                    b_4 = self.vram[tile_address + 17]
-                    v = ((b_1 >> h_shift) & 1) + (2 * ((b_2 >> h_shift) & 1)) + \
+                    tile_address: cython.uint = (tilemap_addr * 16 + (bg.tiledata_addr * 2) + v_shift) * 2
+                    b_1: cython.uint = self.vram[tile_address]
+                    b_2: cython.uint = self.vram[tile_address + 1]
+                    b_3: cython.uint = self.vram[tile_address + 16]
+                    b_4: cython.uint = self.vram[tile_address + 17]
+                    v: cython.uint = ((b_1 >> h_shift) & 1) + (2 * ((b_2 >> h_shift) & 1)) + \
                         (4 * ((b_3 >> h_shift) & 1)) + (8 * ((b_4 >> h_shift) & 1))
                 elif bpp == 8:
-                    tile_address = (tilemap.addr * 32 + (bg.tiledata_addr * 1) + v_shift) * 2
-                    b_1 = self.vram[tile_address]
-                    b_2 = self.vram[tile_address + 1]
-                    b_3 = self.vram[tile_address + 16]
-                    b_4 = self.vram[tile_address + 17]
-                    b_5 = self.vram[tile_address + 32]
-                    b_6 = self.vram[tile_address + 33]
-                    b_7 = self.vram[tile_address + 48]
-                    b_8 = self.vram[tile_address + 49]
-                    v = ((b_1 >> h_shift) & 1) + \
+                    tile_address: cython.uint = (tilemap_addr * 32 + (bg.tiledata_addr * 1) + v_shift) * 2
+                    b_1: cython.uint = self.vram[tile_address]
+                    b_2: cython.uint = self.vram[tile_address + 1]
+                    b_3: cython.uint = self.vram[tile_address + 16]
+                    b_4: cython.uint = self.vram[tile_address + 17]
+                    b_5: cython.uint = self.vram[tile_address + 32]
+                    b_6: cython.uint = self.vram[tile_address + 33]
+                    b_7: cython.uint = self.vram[tile_address + 48]
+                    b_8: cython.uint = self.vram[tile_address + 49]
+                    v: cython.uint = ((b_1 >> h_shift) & 1) + \
                         (2 * ((b_2 >> h_shift) & 1)) + \
                         (4 * ((b_3 >> h_shift) & 1)) + \
                         (8 * ((b_4 >> h_shift) & 1)) + \
@@ -537,16 +563,14 @@ class Ppu:
                 if v:
                     # Special case for BG2-BG4 in Mode 0
                     color_offset = bg.color_offset_mode_0 if self._bgmode == 0 else 0
-                    r, g, b = self.get_rbg_colors(bpp, tilemap.palette, v, color_offset)
+                    # r, g, b = self.get_rbg_colors(bpp, tilemap_palette, v, color_offset)
 
-                    x_ndc = 2.0 * (scrx / SCREEN_WIDTH) - 1.0
-                    y_ndc = 1.0 - 2.0 * (scry / SCREEN_HEIGHT)
+                    # x_ndc = 2.0 * (scrx / SCREEN_WIDTH) - 1.0
+                    # y_ndc = 1.0 - 2.0 * (scry / SCREEN_HEIGHT)
 
-                    self.vertices.extend([x_ndc, y_ndc, 0.0, r, g, b])
-
-                    u32_color = self.get_u32_color(bpp, tilemap.palette, v, color_offset)
-                    x, y, width = orgx, orgy, SCREEN_WIDTH
-                    self.main_bgs[y * width + x] = u32_color
+                    u32_color = self.get_u32_color(bpp, tilemap_palette, v, color_offset)
+                    # x, y, width = orgx, orgy, SCREEN_WIDTH
+                    self.main_bgs[orgy * SCREEN_WIDTH + orgx] = u32_color
 
                     if self.mosaic_enabled[bg.number - 1] and False:  # TODO implement mosaic
                         # for x in range(0, 256, size):
@@ -681,6 +705,7 @@ class Ppu:
         x: int,
         y: int,
     ) -> None:
+        # raise NotImplementedError("This method is not doing anything at the moment")
         # Bitplane handling
         # The first byte is composed of the first
         # 8 least significant bits of the pixel
@@ -699,7 +724,7 @@ class Ppu:
             l, h = tile_data[i + 16], tile_data[i + 17]
             color |= (h & mask) >> pixel << 3 | (l & mask) >> pixel << 2
 
-        # NOTE: I guess this is GL_RGB5?
+    # ...existing code...
 
         x_ndc = 2.0 * (x / SCREEN_WIDTH) - 1.0
         y_ndc = 1.0 - 2.0 * (y / SCREEN_HEIGHT)
@@ -719,9 +744,6 @@ class Ppu:
         if color:
             r, g, b = self.get_rbg_colors(bpp, palette, color)
 
-        # self.vertices = np.append(self.vertices, [x_ndc, y_ndc, 0.0, r, g, b])
-        self.vertices.extend([x_ndc, y_ndc, 0.0, r, g, b])
-
     def get_rbg_colors(self, bpp: int, palette: int, color: int, color_offset: int = 0) -> tuple:
         # 4 colors (2bpp palette) x 2 bytes each color
         palette_index = palette * (bpp ** 2)
@@ -738,7 +760,7 @@ class Ppu:
         g_8bit = (g_5bit * 255) // 31
         b_8bit = (b_5bit * 255) // 31
 
-        # normalize to [0, 1] for OpenGL
+    # ...existing code...
         r = r_8bit / 255
         g = g_8bit / 255
         b = b_8bit / 255
@@ -774,7 +796,7 @@ class Ppu:
         g_8bit = (g_5bit * 255) // 31
         b_8bit = (b_5bit * 255) // 31
 
-        # normalize to [0, 1] for OpenGL
+    # ...existing code...
         r = r_8bit / 255
         g = g_8bit / 255
         b = b_8bit / 255
@@ -918,7 +940,7 @@ def main():
         cgram_dump = f.read()
     with open(oam_file, "rb") as f:
         oam_dump = f.read()
-    ppu = Ppu(None, vram_dump=vram_dump, cgram_dump=cgram_dump, oam_dump=oam_dump)
+    ppu = Ppu(vram_dump=vram_dump, cgram_dump=cgram_dump, oam_dump=oam_dump)
 
     SDL_Init(SDL_INIT_VIDEO)
     window = SDL_CreateWindow(b"PySNES", 0, 0, 768, 768, SDL_WINDOW_SHOWN)
@@ -970,7 +992,7 @@ def main():
 
 
 if __name__ == "__main__":
-    import cProfile
+    # import cProfile
 
     # cProfile.run("main()", sort="cumulative")
     main()

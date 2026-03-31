@@ -28,6 +28,27 @@ python -m pysnes.pysnes
 uv run --python pypy3.10 -m pysnes.pysnes
 ```
 
+### Running tests with uv
+
+```
+uv run --python pypy3.10 pytest
+```
+
+
+## Building
+
+### Inplace
+
+```
+uv run --python pypy@3.10 setup.py build_ext --inplace
+```
+
+### Release
+
+```
+uv build
+```
+
 ## Overall architecture
 
 The main loop would be something like:

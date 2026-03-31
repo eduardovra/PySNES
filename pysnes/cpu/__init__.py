@@ -1,1 +1,1 @@
-from .v2.cpu import *
+from .cpu import *

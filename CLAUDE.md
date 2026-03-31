@@ -152,6 +152,7 @@ uv run --python pypy@3.10 pytest pysnes/ -m "not integration"
 - Mesen Lua scripts are in `scripts/mesen_oracle.lua` (Tier 1) and `scripts/mesen_trace.lua` (Tier 2)
 - Port is passed to Lua via `MESEN_PORT` env var; frame/instruction count via `MESEN_FRAMES`/`MESEN_INSTRUCTIONS`
 - `PYSNES_HEADLESS=1` suppresses SDL2 window during PySNES fixture runs
+- Alternative oracle: BizHawk (compiled binary at `/home/eduardovra/Downloads/BizHawk-2.11-linux-x64`); Lua API reference at https://tasvideos.org/Bizhawk/LuaFunctions
 
 ## Testing
 

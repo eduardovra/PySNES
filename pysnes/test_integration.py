@@ -35,22 +35,28 @@ DEFAULT_ROM = os.environ.get("SNES_ROM", "roms/Super Mario World (U) [!].smc")
 
 
 def get_mesen():
-    """Return path to Mesen binary. Checks MESEN_BIN env var, then tools/Mesen."""
-    env_path = os.environ.get("MESEN_BIN")
-    if env_path:
-        p = Path(env_path)
-        if p.exists():
-            return str(p)
-        pytest.skip(f"MESEN_BIN={env_path} not found")
+    """Return path to Mesen binary.
 
-    default = REPO_ROOT / "tools" / "Mesen"
-    if default.exists():
-        return str(default)
+    Search order:
+    1. MESEN_BIN environment variable
+    2. tools/Mesen relative to repo root
+    3. settings.json "mesen_bin" value (default: known install location)
+    """
+    from pysnes import settings as s  # noqa: PLC0415
+    cfg = s.load()
+
+    candidates = [
+        os.environ.get("MESEN_BIN"),
+        str(REPO_ROOT / "tools" / "Mesen"),
+        cfg.get("mesen_bin"),
+    ]
+    for path in candidates:
+        if path and Path(path).exists():
+            return path
 
     pytest.skip(
-        f"Mesen binary not found at {default}. "
-        "Download from https://github.com/SourMesen/Mesen2/releases and place at tools/Mesen, "
-        "or set MESEN_BIN=/path/to/Mesen"
+        "Mesen binary not found. Download from https://github.com/SourMesen/Mesen2/releases "
+        "and place at tools/Mesen, set MESEN_BIN env var, or set 'mesen_bin' in settings.json"
     )
 
 

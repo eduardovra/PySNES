@@ -4,6 +4,9 @@
 --
 -- Sends one trace line per CPU instruction over TCP in PySNES trace format.
 -- Format: "xxxxxx ???                     A:XXXX X:XXXX Y:XXXX S:XXXX D:XXXX DB:XX NVMXDIZC"
+--
+-- Note: emu.getState() returns a flat table with dotted string keys,
+-- e.g. state["cpu.pc"], NOT nested tables.
 
 local port = tonumber(os.getenv("MESEN_PORT"))
 local n_instructions = tonumber(os.getenv("MESEN_INSTRUCTIONS")) or 100000
@@ -44,15 +47,15 @@ emu.addMemoryCallback(function(address, value)
     count = count + 1
 
     local state = emu.getState()
-    local cpu = state.cpu
-    local em = cpu.emulationMode and 1 or 0
-    local pc_full = (cpu.k << 16) | cpu.pc
+    local em = state["cpu.emulationMode"] and 1 or 0
+    local pc_full = (state["cpu.k"] << 16) | state["cpu.pc"]
     local disasm = string.format("%06x ???", pc_full)
     local line = string.format(
         "%-30s A:%04X X:%04X Y:%04X S:%04X D:%04X DB:%02X %s",
         disasm,
-        cpu.a, cpu.x, cpu.y, cpu.sp, cpu.d, cpu.dbr,
-        flags_str(cpu.ps, em)
+        state["cpu.a"], state["cpu.x"], state["cpu.y"],
+        state["cpu.sp"], (state["cpu.d"] or 0), state["cpu.dbr"],
+        flags_str(state["cpu.ps"], em)
     )
     tcp:send(line .. "\n")
 

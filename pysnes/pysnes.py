@@ -16,6 +16,7 @@ from .apu import Apu
 from .ppu import Ppu
 from .controller import Controller
 from .video import Video
+from . import settings as settings_module
 
 if cython.compiled:
     print("Cython is enabled, using compiled modules.")
@@ -24,7 +25,11 @@ else:
 
 
 class PySNES:
-    def __init__(self, rom_file_path: str) -> None:
+    def __init__(self, rom_file_path: str, settings: dict | None = None) -> None:
+        if settings is None:
+            settings = settings_module.load()
+        self.settings = settings
+
         rom = Rom(rom_file_path)
         self.rom_name = rom.rom_file_name
         self.scheduler = Scheduler()
@@ -39,7 +44,7 @@ class PySNES:
         self.bus = bus
         self.video = Video()
 
-        self.video.initialize()
+        self.video.initialize(headless=settings.get("headless", False))
         self.video.set_window_title(f"PySNES - {self.rom_name}")
 
         self.event = sdl.SDL_Event()

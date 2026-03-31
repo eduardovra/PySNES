@@ -1,4 +1,3 @@
-import os
 import sdl2 as sdl
 try:
     from .video_sdl2 import SDL2Renderer
@@ -22,8 +21,8 @@ class Video:
         self.sdl2_renderer = None
         self.sdl2_calls = 0
 
-    def initialize(self) -> None:
-        if os.environ.get("PYSNES_HEADLESS") == "1":
+    def initialize(self, headless: bool = False) -> None:
+        if headless:
             self.window = None
             self.sdl2_renderer = None
             return

@@ -137,13 +137,13 @@ Download from https://github.com/SourMesen/Mesen2/releases and place at `tools/M
 
 ```bash
 # Tier 1 — find first diverging frame (CPU/SPC registers + WRAM CRC32):
-DISPLAY=:0 uv run --python pypy@3.10 pytest pysnes/test_integration.py::test_frame_divergence -v -s
+uv run --python pypy@3.10 pytest pysnes/test_integration.py::test_frame_divergence -v -s
 
 # Tier 2 — find exact diverging CPU instruction:
-DISPLAY=:0 uv run --python pypy@3.10 pytest pysnes/test_integration.py::test_instruction_divergence -v -s
+uv run --python pypy@3.10 pytest pysnes/test_integration.py::test_instruction_divergence -v -s
 
 # Custom ROM / frame count / instruction count:
-SNES_ROM="roms/mygame.sfc" DISPLAY=:0 uv run --python pypy@3.10 pytest pysnes/test_integration.py -v -s --frames 120 --instructions 200000
+SNES_ROM="roms/mygame.sfc" uv run --python pypy@3.10 pytest pysnes/test_integration.py -v -s --frames 120 --instructions 200000
 
 # Skip integration tests in normal suite:
 uv run --python pypy@3.10 pytest pysnes/ -m "not integration"

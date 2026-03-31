@@ -85,11 +85,21 @@ def _collect_lines(srv, timeout=120):
     return t, lines, error
 
 
+def _find_display() -> str:
+    """Return first available X display, falling back to :0."""
+    for lock in sorted(Path("/tmp").glob(".X[0-9]*-lock")):
+        num = lock.name.removeprefix(".X").removesuffix("-lock")
+        if num.isdigit():
+            return f":{num}"
+    return ":0"
+
+
 def _run_mesen(mesen, rom, lua_script, extra_env, timeout=300):
     """Spawn Mesen testrunner. Returns (stdout, stderr, returncode)."""
     env = os.environ.copy()
     env.update(extra_env)
-    env["DISPLAY"] = env.get("DISPLAY", ":0")
+    if "DISPLAY" not in env:
+        env["DISPLAY"] = _find_display()
     cmd = [mesen, "--testrunner", rom, lua_script]
     result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, env=env)
     return result.stdout, result.stderr, result.returncode
@@ -136,10 +146,9 @@ def pysnes_frames(request):
     if not Path(rom).exists():
         pytest.skip(f"ROM not found: {rom}")
 
-    os.environ["PYSNES_HEADLESS"] = "1"
     from pysnes.pysnes import PySNES  # noqa: PLC0415
 
-    pysnes = PySNES(rom)
+    pysnes = PySNES(rom, settings={"headless": True})
     pysnes.cpu.start(pysnes.scheduler)
     pysnes.ppu.start()
 
@@ -290,10 +299,9 @@ def pysnes_trace_lines(request):
     if not Path(rom).exists():
         pytest.skip(f"ROM not found: {rom}")
 
-    os.environ["PYSNES_HEADLESS"] = "1"
     from pysnes.pysnes import PySNES  # noqa: PLC0415
 
-    pysnes = PySNES(rom)
+    pysnes = PySNES(rom, settings={"headless": True})
     pysnes._trace_limit = n_instructions
     pysnes._trace_file = _LineCollector()
     pysnes._trace_ref = None

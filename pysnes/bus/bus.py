@@ -372,6 +372,10 @@ class Bus:
                 self.cpu.dma.hdmaen_set(data)
                 return
 
+            elif addr == 0x420D:  # MEMSEL - FastROM select
+                self.cpu.status.fast_rom = bool(data & 0x01)
+                return
+
             elif 0x4200 <= addr <= 0x44FF:
                 if addr == 0x4200:  # NMITIMEN
                     self.cpu.status.auto_joypad_read_enable = bool(data & 0x01)

@@ -202,3 +202,42 @@ def test_irq_flags_independent_of_nmi():
     assert cpu.status.nmi_enable is False
     assert cpu.status.hirq_enable is True
     assert cpu.status.irq_enable is True
+
+
+# ---------------------------------------------------------------------------
+# interrupt() cycle counting
+# ---------------------------------------------------------------------------
+
+def test_interrupt_advances_cycles_native_mode():
+    """interrupt() must count bus cycles (not return a flat 1 MC)."""
+    bus, cpu = make_bus()
+    cpu.EF = False  # native mode: 8 bus cycles (2 idle + push PBR/PCH/PCL/P + 2 vector reads)
+    cpu.S.w = 0x01FF
+    cycles_before = cpu.cycles
+    cpu.interrupt(0xFFEA)  # native NMI vector
+    elapsed_mc = cpu.cycles - cycles_before
+    # 2 idles (6 MC each) + 4 writes to stack in slow RAM (8 MC each) + 2 reads from ROM $FFxx (8 MC each)
+    # = 12 + 32 + 16 = 60 MC
+    assert elapsed_mc == 60, f"Expected 60 MC, got {elapsed_mc}"
+
+
+def test_interrupt_advances_cycles_emulation_mode():
+    """Emulation mode skips PBR push: 7 bus cycles total."""
+    bus, cpu = make_bus()
+    cpu.EF = True  # emulation mode: 7 bus cycles (2 idle + push PCH/PCL/P + 2 vector reads)
+    cpu.S.w = 0x01FF
+    cycles_before = cpu.cycles
+    cpu.interrupt(0xFFFA)  # emulation NMI vector
+    elapsed_mc = cpu.cycles - cycles_before
+    # 2 idles (6 MC each) + 3 writes to stack in slow RAM (8 MC each) + 2 reads from ROM $FFxx (8 MC each)
+    # = 12 + 24 + 16 = 52 MC
+    assert elapsed_mc == 52, f"Expected 52 MC, got {elapsed_mc}"
+
+
+def test_interrupt_returns_correct_mc_for_scheduler():
+    """_step() relies on interrupt() return value to reschedule itself."""
+    bus, cpu = make_bus()
+    cpu.EF = False
+    cpu.S.w = 0x01FF
+    mc = cpu.interrupt(0xFFEA)
+    assert mc == 60, f"interrupt() must return elapsed MC, got {mc}"

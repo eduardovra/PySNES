@@ -358,3 +358,43 @@ def test_nmitimen_read_fallthrough():
     bus, *_ = make_bus()
     bus.dma_ppu2_hw_registers[0x4200 - 0x4200] = 0x42
     assert bus[0x004200] == 0x42
+
+
+# ---------------------------------------------------------------------------
+# MEMSEL ($420D) — FastROM speed select (bit 0)
+# ---------------------------------------------------------------------------
+
+def test_memsel_fastrom_off_by_default():
+    """Banks $80-$BF/$C0-$FF use slow (8 MC) by default."""
+    bus, _rom, cpu, *_ = make_bus()
+    # Bank $C0, any address → slow without FastROM
+    assert cpu.get_clock_cycles(0xC00000) == 8
+
+
+def test_memsel_fastrom_on_sets_fast_speed():
+    """Writing 1 to $420D enables FastROM: banks $80-$BF/$C0-$FF use fast (6 MC)."""
+    bus, _rom, cpu, *_ = make_bus()
+    bus[0x00420D] = 0x01  # MEMSEL: enable FastROM
+    assert cpu.get_clock_cycles(0xC00000) == 6
+
+
+def test_memsel_fastrom_on_bank_80():
+    """FastROM also applies to banks $80-$BF."""
+    bus, _rom, cpu, *_ = make_bus()
+    bus[0x00420D] = 0x01
+    assert cpu.get_clock_cycles(0x808000) == 6
+
+
+def test_memsel_fastrom_off_bank_80():
+    """Without FastROM, banks $80-$BF are slow."""
+    bus, _rom, cpu, *_ = make_bus()
+    assert cpu.get_clock_cycles(0x808000) == 8
+
+
+def test_memsel_fastrom_toggle():
+    """FastROM can be disabled after being enabled."""
+    bus, _rom, cpu, *_ = make_bus()
+    bus[0x00420D] = 0x01
+    assert cpu.get_clock_cycles(0xC00000) == 6
+    bus[0x00420D] = 0x00
+    assert cpu.get_clock_cycles(0xC00000) == 8

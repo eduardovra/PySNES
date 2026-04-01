@@ -91,6 +91,9 @@ class CpuStatus:
 
     auto_joypad_read_enable: cython.bint = False
 
+    # MEMSEL ($420D) bit 0: 1 = FastROM (banks $80-$BF and $C0-$FF use 6 MC instead of 8)
+    fast_rom: cython.bint = False
+
 
 @cython.cclass
 class Cpu:
@@ -227,11 +230,15 @@ class Cpu:
         if (self.D.l):
             self.idle()
 
-    def idle4(self, x, y):
+    def idle4(self, x: cython.uint, y: cython.uint):
         """if(!XF || x >> 8 != y >> 8) idle();"""
+        if not self.XFlag or (x >> 8) != (y >> 8):
+            self.idle()
 
-    def idle6(self, address):
+    def idle6(self, address: cython.uint):
         """if(EF && PC.h != address >> 8) idle();"""
+        if self.EF and (self.PC.w >> 8) != (address >> 8):
+            self.idle()
 
     def idleBranch(self):
         pass
@@ -454,9 +461,9 @@ class Cpu:
             if 0x6000 <= addr <= 0x7FFF:
                 return slow
             if 0x8000 <= addr <= 0xFFFF:
-                return fast  # TODO check bit 1 of CPU register $420D
+                return fast if self.status.fast_rom else slow
         if 0xC0 <= bank <= 0xFF:
-            return fast  # TODO check bit 1 of CPU register $420D
+            return fast if self.status.fast_rom else slow
 
         return fast
 
@@ -477,29 +484,29 @@ class Cpu:
         self.NFlag = data & 0x80 > 0
 
     def interrupt(self, vector: int) -> int:
-        """
-        Interrupt handler.
-        This was copied from v1 without any understanding of what it does.
-        """
+        """NMI/IRQ handler. Returns elapsed master-clock cycles for the scheduler."""
+        self.prev_cycles = self.cycles
+        self.idle()
+        self.idle()
         # Bank
         if not self.EF:
-            self.bus.write(self.S.w, self.PC.b)
+            self.write(self.S.w, self.PC.b)
             self.S.w -= 1
         # High
-        self.bus.write(self.S.w, self.PC.h)
+        self.write(self.S.w, self.PC.h)
         self.S.w -= 1
         # Low
-        self.bus.write(self.S.w, self.PC.l)
+        self.write(self.S.w, self.PC.l)
         self.S.w -= 1
         # P register
         p = self.P
-        self.bus.write(self.S.w, p & ~0x10 if self.EF else p)
+        self.write(self.S.w, p & ~0x10 if self.EF else p)
         self.S.w -= 1
 
         self.IFlag = True
         self.DFlag = False
 
-        addr = self.bus.read(vector) | self.bus.read(vector + 1) << 8
+        addr = self.read(vector) | self.read(vector + 1) << 8
         self.PC.w = addr
 
-        return 1  # whatever
+        return self.cycles - self.prev_cycles

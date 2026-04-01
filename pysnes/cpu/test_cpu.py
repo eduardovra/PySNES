@@ -11,7 +11,17 @@ from .cpu import Cpu
 TESTS_PATH = "submodules/65816/v1"
 
 # Opcodes for which cycle counts are verified (expand as coverage grows).
-CYCLE_CHECK_OPCODES = {"ea", "1a", "3a", "18", "38"}
+# Branch opcodes: idle6 fires on emulation-mode page cross (adds 1 null cycle).
+# Index-page-cross opcodes: idle4 fires when XFlag=0 or base/indexed addresses cross pages.
+CYCLE_CHECK_OPCODES = {
+    "ea", "1a", "3a", "18", "38",
+    # Branches (idle6: page-cross penalty in emulation mode)
+    "10", "30", "50", "70", "80", "90", "b0", "d0", "f0",
+    # BankRead indexed (idle4: page-cross or 16-bit index penalty)
+    "bd", "bc",  # LDA abs,X  LDY abs,X
+    # IndirectIndexed (idle4: page-cross or 16-bit index penalty)
+    "b1", "d1", "f1", "11", "31", "51", "71", "91",  # LDA/CMP/SBC/ORA/AND/EOR/ADC/STA (dp),Y
+}
 
 def _load_case(file_path: str, index: int) -> dict:
     with open(file_path) as f:

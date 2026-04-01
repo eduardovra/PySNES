@@ -1,4 +1,3 @@
-from functools import partial
 from typing import Any, TYPE_CHECKING
 
 from rich import print
@@ -100,6 +99,36 @@ class CpuStatus:
 
 
 @cython.cclass
+class InstructionSlot:
+    """Replaces functools.partial for instruction dispatch.
+
+    Stores the addressing-mode function and up to two pre-bound arguments.
+    The call() method is a @cython.cfunc so that fetch_and_execute() can
+    reach it via a direct C vtable call (using cython.cast) instead of
+    going through partial.__call__ and its Python-level arg-tuple building.
+    """
+    _func = cython.declare(object)
+    _arg1 = cython.declare(object)
+    _arg2 = cython.declare(object)
+    _nargs = cython.declare(cython.uchar)
+
+    def __init__(self, func, arg1=None, arg2=None, nargs: cython.uchar = 0):
+        self._func = func
+        self._arg1 = arg1
+        self._arg2 = arg2
+        self._nargs = nargs
+
+    @cython.cfunc
+    def call(self, cpu: "Cpu"):
+        if self._nargs == 0:
+            self._func(cpu)
+        elif self._nargs == 1:
+            self._func(cpu, self._arg1)
+        else:
+            self._func(cpu, self._arg1, self._arg2)
+
+
+@cython.cclass
 class Cpu:
     CFlag = cython.declare(cython.bint, visibility="public")
     ZFlag = cython.declare(cython.bint, visibility="public")
@@ -182,7 +211,15 @@ class Cpu:
 
         # load instructions into main table and setup up debugging symbols
         for opcode, addr_mode, *args in INSTRUCTIONS:
-            self.instructions[opcode] = partial(addr_mode, self, *args)
+            # InstructionSlot stores addr_mode + extra args; cpu is passed at call time.
+            # This replaces functools.partial — see InstructionSlot.call().
+            if len(args) == 0:
+                slot = InstructionSlot(addr_mode, nargs=0)
+            elif len(args) == 1:
+                slot = InstructionSlot(addr_mode, args[0], nargs=1)
+            else:
+                slot = InstructionSlot(addr_mode, args[0], args[1], nargs=2)
+            self.instructions[opcode] = slot
             self.debug_symbols[opcode] = "{:02X} {}".format(opcode, addr_mode.__name__)
             if args:
                 if callable(args[0]):
@@ -365,8 +402,8 @@ class Cpu:
         self.prev_cycles = self.cycles
 
         opcode = self.fetch()
-        instruction = self.instructions[opcode]
-        instruction()
+        slot: InstructionSlot = cython.cast(InstructionSlot, self.instructions[opcode])
+        slot.call(self)
 
         # To determine the exact length of any CPU instruction,
         # you must examine its behavior for each cycle,

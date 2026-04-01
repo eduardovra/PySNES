@@ -1,6 +1,4 @@
-from functools import partial
 from typing import Any, TYPE_CHECKING
-from dataclasses import dataclass
 
 from rich import print
 import cython
@@ -78,21 +76,56 @@ class Reg:
         self.value = value & 0xFFFFFF
 
 
-@dataclass
 @cython.cclass
 class CpuStatus:
-    hirq_enable: cython.bint = False
-    virq_enable: cython.bint = False
-    irq_enable: cython.bint = False
-
+    hirq_enable = cython.declare(cython.bint, visibility="public")
+    virq_enable = cython.declare(cython.bint, visibility="public")
+    irq_enable = cython.declare(cython.bint, visibility="public")
     # nmi_line: set to True at V-Blank start by bus.raise_nmi(); read by bus at $4210
-    nmi_line: cython.bint = False
-    nmi_enable: cython.bint = False
-
-    auto_joypad_read_enable: cython.bint = False
-
+    nmi_line = cython.declare(cython.bint, visibility="public")
+    nmi_enable = cython.declare(cython.bint, visibility="public")
+    auto_joypad_read_enable = cython.declare(cython.bint, visibility="public")
     # MEMSEL ($420D) bit 0: 1 = FastROM (banks $80-$BF and $C0-$FF use 6 MC instead of 8)
-    fast_rom: cython.bint = False
+    fast_rom = cython.declare(cython.bint, visibility="public")
+
+    def __init__(self):
+        self.hirq_enable = False
+        self.virq_enable = False
+        self.irq_enable = False
+        self.nmi_line = False
+        self.nmi_enable = False
+        self.auto_joypad_read_enable = False
+        self.fast_rom = False
+
+
+@cython.cclass
+class InstructionSlot:
+    """Replaces functools.partial for instruction dispatch.
+
+    Stores the addressing-mode function and up to two pre-bound arguments.
+    The call() method is a @cython.cfunc so that fetch_and_execute() can
+    reach it via a direct C vtable call (using cython.cast) instead of
+    going through partial.__call__ and its Python-level arg-tuple building.
+    """
+    _func = cython.declare(object)
+    _arg1 = cython.declare(object)
+    _arg2 = cython.declare(object)
+    _nargs = cython.declare(cython.uchar)
+
+    def __init__(self, func, arg1=None, arg2=None, nargs: cython.uchar = 0):
+        self._func = func
+        self._arg1 = arg1
+        self._arg2 = arg2
+        self._nargs = nargs
+
+    @cython.cfunc
+    def call(self, cpu: "Cpu"):
+        if self._nargs == 0:
+            self._func(cpu)
+        elif self._nargs == 1:
+            self._func(cpu, self._arg1)
+        else:
+            self._func(cpu, self._arg1, self._arg2)
 
 
 @cython.cclass
@@ -178,7 +211,15 @@ class Cpu:
 
         # load instructions into main table and setup up debugging symbols
         for opcode, addr_mode, *args in INSTRUCTIONS:
-            self.instructions[opcode] = partial(addr_mode, self, *args)
+            # InstructionSlot stores addr_mode + extra args; cpu is passed at call time.
+            # This replaces functools.partial — see InstructionSlot.call().
+            if len(args) == 0:
+                slot = InstructionSlot(addr_mode, nargs=0)
+            elif len(args) == 1:
+                slot = InstructionSlot(addr_mode, args[0], nargs=1)
+            else:
+                slot = InstructionSlot(addr_mode, args[0], args[1], nargs=2)
+            self.instructions[opcode] = slot
             self.debug_symbols[opcode] = "{:02X} {}".format(opcode, addr_mode.__name__)
             if args:
                 if callable(args[0]):
@@ -218,23 +259,28 @@ class Cpu:
         if self.status.nmi_enable:
             self._nmi_pending = True
 
+    @cython.cfunc
     def idleIRQ(self):
         self.cycles += 6
         self.icycles += 1
 
+    @cython.cfunc
     def idle(self):
         self.cycles += 6
         self.icycles += 1
 
+    @cython.cfunc
     def idle2(self):
         if (self.D.l):
             self.idle()
 
+    @cython.cfunc
     def idle4(self, x: cython.uint, y: cython.uint):
         """if(!XF || x >> 8 != y >> 8) idle();"""
         if not self.XFlag or (x >> 8) != (y >> 8):
             self.idle()
 
+    @cython.cfunc
     def idle6(self, address: cython.uint):
         """if(EF && PC.h != address >> 8) idle();"""
         if self.EF and (self.PC.w >> 8) != (address >> 8):
@@ -252,19 +298,19 @@ class Cpu:
         # I changed to True to make test for opcode 0xCB (WAI) pass
         return True
 
-    @cython.ccall
+    @cython.cfunc
     def write(self, addr: cython.uint, data: cython.uchar):
         self.cycles += self.get_clock_cycles(addr)
         self.icycles += 1
         self.bus.write(addr, data)
 
-    @cython.ccall
+    @cython.cfunc
     def read(self, addr: cython.uint) -> cython.uchar:
         self.cycles += self.get_clock_cycles(addr)
         self.icycles += 1
         return self.bus.read(addr)
 
-    @cython.ccall
+    @cython.cfunc
     def readDirect(self, address: cython.uint) -> cython.uchar:
         # this is not part of bsnes implementation but it seems
         # tests expect the page to wrap around when in emulation mode
@@ -277,49 +323,48 @@ class Cpu:
             return self.read(self.D.w | address & 0xff)
         return self.read(self.D.w + address & 0xffff)
 
-    @cython.ccall
+    @cython.cfunc
     def writeDirect(self, address: cython.uint, data: cython.uchar):
         if self.EF and self.D.l == 0:
             self.write(self.D.w | address & 0xff, data)
         else:
             self.write(self.D.w + address & 0xffff, data)
 
-    @cython.ccall
+    @cython.cfunc
     def readDirectN(self, address: cython.uint) -> cython.uchar:
         return self.read(self.D.w + address & 0xffff)
 
-    @cython.ccall
+    @cython.cfunc
     def readBank(self, address: cython.uint) -> cython.uchar:
         return self.read((self.DB.l << 16) + address & 0xffffff)
 
-    @cython.ccall
+    @cython.cfunc
     def writeBank(self, address: cython.uint, data: cython.uchar):
         self.write((self.DB.l << 16) + address & 0xffffff, data)
 
-    @cython.ccall
+    @cython.cfunc
     def readLong(self, address: cython.uint) -> cython.uchar:
         return self.read(address & 0xffffff)
 
-    @cython.ccall
+    @cython.cfunc
     def writeLong(self, address: cython.uint, data: cython.uchar):
         self.write(address & 0xffffff, data)
 
-    @cython.ccall
+    @cython.cfunc
     def readStack(self, address: cython.uint) -> cython.uchar:
         return self.read(self.S.w + address & 0xffff)
 
-    @cython.ccall
+    @cython.cfunc
     def writeStack(self, address: cython.uint, data: cython.uchar):
         self.write(self.S.w + address & 0xffff, data)
 
-    @cython.ccall
+    @cython.cfunc
     def fetch(self) -> cython.uchar:
-        # data = self.read(self.PB.l << 16 | self.PC.w)
         data = self.read(self.PC.d)
         self.PC.w += 1
         return data
 
-    @cython.ccall
+    @cython.cfunc
     def pull(self) -> cython.uchar:
         if self.EF:
             self.S.l += 1
@@ -327,7 +372,7 @@ class Cpu:
             self.S.w += 1
         return self.read(self.S.w)
 
-    @cython.ccall
+    @cython.cfunc
     def push(self, data: cython.uchar):
         self.write(self.S.w, data)
         if self.EF:
@@ -335,12 +380,12 @@ class Cpu:
         else:
             self.S.w -= 1
 
-    @cython.ccall
+    @cython.cfunc
     def pullN(self) -> cython.uchar:
         self.S.w += 1
         return self.read(self.S.w)
 
-    @cython.ccall
+    @cython.cfunc
     def pushN(self, data: cython.uchar):
         self.write(self.S.w, data)
         self.S.w -= 1
@@ -357,8 +402,8 @@ class Cpu:
         self.prev_cycles = self.cycles
 
         opcode = self.fetch()
-        instruction = self.instructions[opcode]
-        instruction()
+        slot: InstructionSlot = cython.cast(InstructionSlot, self.instructions[opcode])
+        slot.call(self)
 
         # To determine the exact length of any CPU instruction,
         # you must examine its behavior for each cycle,

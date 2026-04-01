@@ -264,15 +264,24 @@ class Apu:
         large batch of ticks.  The remaining time is picked up on the next call.
         """
         elapsed = master_clock - self._last_synced_mc
-        apu_ticks = elapsed // self._APU_MC_PER_CLOCK
+        if elapsed <= 0:
+            return
+        # Target APU clock cycles to run (1 APU clock ≈ 21 master clocks).
+        # self.cycles counts actual APU clocks per instruction (reads + writes +
+        # idles), so we accumulate them and stop when the budget is spent.
+        target_apu_clocks = elapsed // self._APU_MC_PER_CLOCK
         self._ports_w_dirty = False
-        for i in range(apu_ticks):
+        apu_clocks_run = 0
+        while apu_clocks_run < target_apu_clocks:
             self.step_timers(1)
             self.fetch_and_execute()
+            apu_clocks_run += self.cycles
             if self._ports_w_dirty:
-                self._last_synced_mc += (i + 1) * self._APU_MC_PER_CLOCK
+                # The APU wrote a port — advance _last_synced_mc by only what
+                # we've run, even if it overshoots mc (the APU has "pre-run").
+                self._last_synced_mc += apu_clocks_run * self._APU_MC_PER_CLOCK
                 return
-        self._last_synced_mc += apu_ticks * self._APU_MC_PER_CLOCK
+        self._last_synced_mc += apu_clocks_run * self._APU_MC_PER_CLOCK
 
     def step_timers(self, clocks: int) -> None:
         for timer in self.timers:

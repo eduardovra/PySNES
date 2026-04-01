@@ -206,3 +206,21 @@ uv run --python pypy@3.10 pytest pysnes/test_cpu.py --opcode ea --mode n  # comb
 - ROM files are in `roms/` directory (not committed to git)
 - `run_pysnes.py` has hardcoded ROM paths — update as needed for testing
 - The `--load` flag in `run_pysnes.py` loads memory dumps from bsnes for rendering debug
+
+## Known Timing Issues (for future debugging)
+
+### APU sync granularity (Tier 2 divergence at instruction ~1992)
+
+**Symptom**: PySNES exits the APU handshake loop (CPU at 0x8082 `CMP $2140`) one iteration later than Mesen. Both are waiting for the SPC700 IPL ROM to write 0xBBAA to ports F4/F5.
+
+**Root cause**: `apu.sync_to(master_clock)` is called with `scheduler.master_clock`, which is the master clock at the **start** of the CPU instruction — not at the actual bus cycle where the APU port is read. For `CMP $2140` (16-bit), the port read happens ~24 MC into the instruction (after 3 × 8 MC opcode/address fetches). By syncing only to the instruction start, PySNES may see a stale port value when the APU write falls within those 24 MC.
+
+**What was tried**: Updating `scheduler.master_clock` progressively in `cpu.read()`/`write()`/`idle()` so each `sync_to` call reflects the actual physical time of the bus access. This moved the divergence the wrong way (too early) — possibly due to the APU being over-triggered on opcode fetches and write cycles that don't touch APU ports.
+
+**Next approach to try**: Only advance `scheduler.master_clock` by the elapsed cycles *before* calling `bus.read()` for APU port addresses (0x2140–0x2143), rather than for every bus cycle. Or: pass `scheduler.master_clock + elapsed_within_instruction` directly to `sync_to` in the bus handler, where `elapsed = cpu.cycles - cpu.prev_cycles` at the point of the read.
+
+**Timing reference**: APU writes 0xBBAA at ≈50484 master clocks after reset. CPU loop (CMP+BNE) costs 58 MC/iteration (36 MC CMP + 22 MC BNE-taken). Loop starts at ≈32930 MC. The 1-iteration miss is a ~24 MC window.
+
+**cycles vs icycles** (for reference):
+- `icycles`: counts bus transactions for the current instruction (each read/write/idle = +1). What SingleStepTests verify.
+- `cycles`: counts actual SNES master clock units elapsed (each bus cycle adds 6, 8, or 12 MC depending on memory region). What the scheduler uses.

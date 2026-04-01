@@ -127,7 +127,8 @@ class Bus:
                     # 0x2140 - 0x204C == 0xF4 [addr of PORT0]
                     if 0x2140 <= addr <= 0x2143:  # TODO ugly
                         self.apu.sync_to(self.scheduler.master_clock)
-                        return self.apu.ports_w[addr - 0x2140]
+                        val = self.apu.ports_w[addr - 0x2140]
+                        return val
                     return self.apu[addr - 0x204C]
 
             elif addr == 0x4016:  # JOYSER0

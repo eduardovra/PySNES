@@ -117,3 +117,33 @@ def test_d0_dont_take(apu: Apu):
     assert apu.Y == 0x00
     assert apu.S == 0xEF
     assert apu.PSW == 0x02  # ZF=True (initial state preserved)
+
+
+# ---------------------------------------------------------------------------
+# Control register ($F1) port reset — bits 4 and 5
+# ---------------------------------------------------------------------------
+
+def test_control_register_bit4_resets_ports_r_01(apu: Apu):
+    """Bit 4 of $F1 resets CPU→APU input ports 0 and 1 (ports_r only)."""
+    apu.ports_r[0] = 0xAA
+    apu.ports_r[1] = 0xBB
+    apu.ports_w[0] = 0x11
+    apu.ports_w[1] = 0x22
+    apu.control_register = 0x10  # bit 4 set
+    assert apu.ports_r[0] == 0x00
+    assert apu.ports_r[1] == 0x00
+    assert apu.ports_w[0] == 0x11  # output ports unchanged
+    assert apu.ports_w[1] == 0x22
+
+
+def test_control_register_bit5_resets_ports_r_23(apu: Apu):
+    """Bit 5 of $F1 resets CPU→APU input ports 2 and 3 (ports_r only)."""
+    apu.ports_r[2] = 0xCC
+    apu.ports_r[3] = 0xDD
+    apu.ports_w[2] = 0x33
+    apu.ports_w[3] = 0x44
+    apu.control_register = 0x20  # bit 5 set
+    assert apu.ports_r[2] == 0x00
+    assert apu.ports_r[3] == 0x00
+    assert apu.ports_w[2] == 0x33  # output ports unchanged
+    assert apu.ports_w[3] == 0x44

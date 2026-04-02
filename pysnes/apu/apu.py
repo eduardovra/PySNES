@@ -517,19 +517,13 @@ class Apu:
             timer2.stage2 = 0
             timer2.stage3 = 0
 
-        if data & 0x10:  # TODO not sure if r or w ports should be reset
+        if data & 0x10:  # reset CPU→APU input ports 0/1 (ports_r only)
             self.ports_r[0] = 0x00
             self.ports_r[1] = 0x00
-            self.ports_w[0] = 0x00
-            self.ports_w[1] = 0x00
-            self._ports_w_dirty = True
 
-        if data & 0x20:  # TODO not sure if r or w ports should be reset
+        if data & 0x20:  # reset CPU→APU input ports 2/3 (ports_r only)
             self.ports_r[2] = 0x00
             self.ports_r[3] = 0x00
-            self.ports_w[2] = 0x00
-            self.ports_w[3] = 0x00
-            self._ports_w_dirty = True
 
         self.ipl_rom_enable = bool(data & 0x80)
 

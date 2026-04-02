@@ -25,34 +25,26 @@ Missing features and Cython performance analysis for CPU, APU, and PPU.
 
 ## APU (`pysnes/apu/apu.py`)
 
-### Missing / Broken Features
+**Status: COMPLETE** (except DSP/audio synthesis — separate feature work)
 
-| Issue | Location | Impact |
-|---|---|---|
-| Timer `step()` hardcodes `clocks = 128`, ignoring the computed wait_states | apu.py:24–26 | Timer frequency always runs at divider 128, ignoring the Test Register (F0) wait-state bits |
-| `f8` / `f9` registers have no known purpose | apu.py:140–141 | Stored and returned as-is; no hardware behavior modeled |
-| DSP register writes (`$F2`/`$F3`) are no-ops | apu.py:348–350 | No audio DSP emulated; sound synthesis absent entirely |
-| Port reset uncertainty for bits 4/5 of control register | apu.py:474,481 | TODO: unclear whether `ports_r` or `ports_w` should be reset; current code resets both |
-| `A`, `X`, `Y`, `S`, `PC` setters have `assert isinstance()` + bounds checks | apu.py:500–547 | Python asserts run in hot register-write paths; should be removed or gated on debug flag |
-| `fetch()` has `assert isinstance(data, int)` | apu.py:216 | Assert in the innermost fetch loop |
-| `__setitem__` has 3 `assert` calls | apu.py:334–336 | Asserts on every memory write |
-| `fetch_and_execute()` wraps instruction call in try/except/finally | apu.py:233–251 | Exception handling has Python overhead even when no exception is raised; debug printing always allocates strings |
+### Resolved Items
 
-### Cython Performance Hot Spots
+| Issue | Resolution |
+|---|---|
+| Timer `step()` hardcoded `clocks = 128` | Fixed: uses passed `clocks` arg; `sync_to` passes `self.cycles` after each instruction |
+| `A`/`X`/`Y`/`S`/`PC` property setters with asserts | Removed — replaced property wrappers with plain attributes |
+| `fetch()` / `__setitem__` asserts | Removed |
+| `fetch_and_execute()` try/except/finally + always-allocated debug strings | Removed; debug printing gated on `print_debug` flag |
+| Port reset bits 4/5 reset both `ports_r` and `ports_w` | Fixed: only `ports_r` (CPU→APU input) is reset, matching bsnes hardware behavior |
+| `Apu` / `Timer` plain Python classes — all attrs dict-backed | Converted to `@cython.cclass` with `cython.declare()` fields; hot methods annotated `@cython.ccall` / `@cython.cfunc` |
+| `f8` / `f9` registers unknown purpose | Confirmed correct as-is — they are general-purpose RAM bytes with no special hardware behavior |
 
-| Score | Location | Problem |
-|---|---|---|
-| 79 | apu.py:437 `control_register.setter` | Pure Python property setter; no `@cython.cclass` on `Apu` means all attrs are dict-backed |
-| 75 | apu.py:418 `test_register.setter` | Same — untyped Python class |
-| 73 | apu.py:402 `YA.setter` | Python property with untyped int ops |
-| 72 | apu.py:387 `PSW.setter` | `bool()` calls on every flag set; untyped |
-| 68 | apu.py:323 `__setitem__` | Long if-elif chain without typed `addr` parameter; every branch is a Python integer comparison |
-| 57 | apu.py:281 `__getitem__` | Same problem as `__setitem__` |
-| 60 | apu.py:256 `sync_to` | Outer catch-up loop calls `fetch_and_execute()` which has try/except/finally overhead per instruction |
-| 56 | apu.py:23 `Timer.step` | `Timer` is a plain Python class; `self.apu.internal_wait_states` is a dict attribute lookup |
-| 55 | apu.py:504,514,524 `A`/`X`/`Y` setters | Assert + isinstance check on every register write |
+### Remaining (out of scope for this branch)
 
-**Root structural issue**: `Apu` and `Timer` are plain Python classes — no `@cython.cclass`. All attribute accesses go through the Python instance `__dict__`, which Cython cannot optimize. Compare with `Cpu` which uses `@cython.cclass` with `cython.declare()` for each field.
+| Issue | Impact |
+|---|---|
+| DSP register writes (`$F2`/`$F3`) are no-ops | No audio synthesis; sound absent entirely — separate feature |
+| `__getitem__`/`__setitem__` if-elif dispatch | Bottleneck; test patching requirement prevents moving to cfunc |
 
 ---
 
@@ -125,5 +117,5 @@ Missing features and Cython performance analysis for CPU, APU, and PPU.
 | Component | Game-Breaking Missing Features | Cython Bottleneck |
 |---|---|---|
 | **CPU** | ✅ Complete | ✅ Complete |
-| **APU** | No audio DSP, timer wait-states hardcoded, `assert` in hot paths, try/except in fetch loop | No `@cython.cclass` on `Apu`/`Timer` — all attrs dict-backed; typed memoryviews missing |
+| **APU** | ✅ Complete (DSP/audio out of scope) | ✅ Complete (`__getitem__`/`__setitem__` dispatch is remaining bottleneck) |
 | **PPU** | Modes 2/4/5/6/7 missing, `draw_point` discards output (sprites invisible), window/color-math absent, 16×16 tiles broken, 3× `NotImplementedError` getters | `main_bgs` Python list, `get_u32_color` untyped + `bpp**2`, `draw_tile` uses Python `zip`/`reversed`, NDC floats computed but unused |

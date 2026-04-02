@@ -233,23 +233,27 @@ def test_timers_enable_false_inhibits_all(apu: Apu):
 # Port reset via control register bits 4 and 5
 # ---------------------------------------------------------------------------
 
-def test_control_bit4_resets_ports_w_01(apu: Apu):
-    apu.ports_w[0] = 0xAA
-    apu.ports_w[1] = 0xBB
+def test_control_bit4_resets_ports_r_01(apu: Apu):
+    """Bit 4 resets CPU→APU input ports (ports_r); APU output ports (ports_w) unchanged."""
+    apu.ports_r[0] = 0xAA
+    apu.ports_r[1] = 0xBB
+    apu.ports_w[0] = 0x11
+    apu.ports_w[1] = 0x22
     apu[0x00F1] = 0x10  # bit 4
-    assert apu.ports_w[0] == 0x00
-    assert apu.ports_w[1] == 0x00
+    assert apu.ports_r[0] == 0x00
+    assert apu.ports_r[1] == 0x00
+    assert apu.ports_w[0] == 0x11
+    assert apu.ports_w[1] == 0x22
 
 
-def test_control_bit5_resets_ports_w_23(apu: Apu):
-    apu.ports_w[2] = 0xCC
-    apu.ports_w[3] = 0xDD
+def test_control_bit5_resets_ports_r_23(apu: Apu):
+    """Bit 5 resets CPU→APU input ports (ports_r); APU output ports (ports_w) unchanged."""
+    apu.ports_r[2] = 0xCC
+    apu.ports_r[3] = 0xDD
+    apu.ports_w[2] = 0x33
+    apu.ports_w[3] = 0x44
     apu[0x00F1] = 0x20  # bit 5
-    assert apu.ports_w[2] == 0x00
-    assert apu.ports_w[3] == 0x00
-
-
-def test_port_reset_sets_dirty_flag(apu: Apu):
-    apu._ports_w_dirty = False
-    apu[0x00F1] = 0x10
-    assert apu._ports_w_dirty is True
+    assert apu.ports_r[2] == 0x00
+    assert apu.ports_r[3] == 0x00
+    assert apu.ports_w[2] == 0x33
+    assert apu.ports_w[3] == 0x44

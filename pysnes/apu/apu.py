@@ -1,24 +1,39 @@
+# cython: auto_pickle=False
 from functools import partial
 from typing import Any
+
+import cython
 
 from .spc700.instructions_spc700 import INSTRUCTIONS
 
 
+@cython.cclass
 class Timer:
+    apu = cython.declare(object)
+    frequency = cython.declare(cython.uint)
+    stage0 = cython.declare(cython.uchar)
+    stage1 = cython.declare(cython.uchar)
+    stage2 = cython.declare(cython.uchar)
+    stage3 = cython.declare(cython.uchar)
+    stage3_shadow = cython.declare(cython.uchar)
+    line = cython.declare(cython.bint)
+    enable = cython.declare(cython.bint)
+    target = cython.declare(cython.uchar)
+
     def __init__(self, apu: "Apu", frequency: int) -> None:
         self.apu = apu
         self.frequency = frequency
-        self.stage0 = 0x00  # 8 bits
-        self.stage1 = 0x00  # 8 bits
-        self.stage2 = 0x00  # 8 bits
-        self.stage3 = 0x0  # 4 bits
-        self.stage3_shadow = 0x0  # last value read or written (for test final-state checks)
-
+        self.stage0 = 0x00
+        self.stage1 = 0x00
+        self.stage2 = 0x00
+        self.stage3 = 0x00
+        self.stage3_shadow = 0x00
         self.line = False
         self.enable = False
-        self.target = 0x00  # 8 bits
+        self.target = 0x00
 
-    def step(self, clocks: int) -> None:
+    @cython.cfunc
+    def step(self, clocks: cython.uint):
         # stage 0 increment
         self.stage0 = (self.stage0 + clocks) & 0xFF
         if self.stage0 < self.frequency:
@@ -26,11 +41,12 @@ class Timer:
         self.stage0 = (self.stage0 - self.frequency) & 0xFF
 
         # stage 1 increment
-        self.stage1 ^= 1  # Toogle
+        self.stage1 ^= 1
         self.syncronize_stage1()
 
-    def syncronize_stage1(self) -> None:
-        level = self.stage1
+    @cython.cfunc
+    def syncronize_stage1(self):
+        level: cython.bint = self.stage1
         if not self.apu.timers_enable:
             level = 0
         if self.apu.timers_disable:
@@ -50,7 +66,8 @@ class Timer:
         self.stage2 = 0
         self.stage3 = (self.stage3 + 1) & 0x0F
 
-    def lower(self, level) -> bool:
+    @cython.cfunc
+    def lower(self, level: cython.bint) -> cython.bint:
         if self.line and not level:
             self.line = False
             return True
@@ -59,7 +76,57 @@ class Timer:
         return False
 
 
+@cython.cclass
 class Apu:
+    # Registers
+    PC = cython.declare(cython.uint)
+    A = cython.declare(cython.uchar)
+    X = cython.declare(cython.uchar)
+    Y = cython.declare(cython.uchar)
+    S = cython.declare(cython.uchar)
+    # Flags
+    NF = cython.declare(cython.bint)
+    VF = cython.declare(cython.bint)
+    PF = cython.declare(cython.bint)
+    BF = cython.declare(cython.bint)
+    HF = cython.declare(cython.bint)
+    IF = cython.declare(cython.bint)
+    ZF = cython.declare(cython.bint)
+    CF = cython.declare(cython.bint)
+    # Timing
+    timers = cython.declare(object)
+    _last_synced_mc = cython.declare(cython.long)
+    _ports_w_dirty = cython.declare(cython.bint)
+    cycles = cython.declare(cython.uint)
+    # Registers (raw storage)
+    _control_register_raw = cython.declare(cython.uchar)
+    dsp_register_address = cython.declare(cython.uchar)
+    dsp_register_data = cython.declare(cython.uchar)
+    f8 = cython.declare(cython.uchar)
+    f9 = cython.declare(cython.uchar)
+    ipl_rom_enable = cython.declare(cython.bint)
+    # Test register ($F0) fields
+    timers_disable = cython.declare(cython.bint)
+    ram_writable = cython.declare(cython.bint)
+    ram_disable = cython.declare(cython.bint)
+    timers_enable = cython.declare(cython.bint)
+    external_wait_states = cython.declare(cython.uchar)
+    internal_wait_states = cython.declare(cython.uchar)
+    # Debug
+    address = cython.declare(cython.uint)
+    data = cython.declare(cython.uint)
+    breakpoint = cython.declare(object)
+    print_debug = cython.declare(cython.bint)
+    # Memory regions
+    memory = cython.declare(object)
+    ipl_rom = cython.declare(object)
+    page_0 = cython.declare(object)
+    page_1 = cython.declare(object)
+    ports_r = cython.declare(object)
+    ports_w = cython.declare(object)
+    # Instruction dispatch
+    instructions = cython.declare(object)
+    debug_symbols = cython.declare(object)
 
     def __init__(self) -> None:
         self.reset_registers()
@@ -177,7 +244,8 @@ class Apu:
                     self.debug_symbols[opcode] += f" {args}"
             self.debug_symbols[opcode] = self.debug_symbols[opcode].ljust(30)
 
-    def idle(self) -> None:
+    @cython.ccall
+    def idle(self):
         """One internal CPU cycle with no external memory access."""
         self.cycles += 1
 
@@ -185,31 +253,39 @@ class Apu:
         """Used for testing only"""
         self.ipl_rom = data
 
-    def write(self, addr, data):
+    @cython.ccall
+    def write(self, addr: cython.uint, data: cython.uint):
         self[addr] = data
 
-    def read(self, addr):
+    @cython.ccall
+    def read(self, addr: cython.uint) -> cython.uint:
         return self[addr]
 
-    def store(self, addr, data):
+    @cython.ccall
+    def store(self, addr: cython.uint, data: cython.uint):
         self[(self.PF << 8) | (addr & 0xFF)] = data
 
-    def load(self, addr):
+    @cython.ccall
+    def load(self, addr: cython.uint) -> cython.uint:
         return self[(self.PF << 8) | (addr & 0xFF)]
 
-    def pull(self):
+    @cython.ccall
+    def pull(self) -> cython.uint:
         self.S = (self.S + 1) & 0xFF
         return self.read(0x100 | self.S)
 
-    def push(self, data):
+    @cython.ccall
+    def push(self, data: cython.uint):
         self.write(0x100 | self.S, data & 0xFF)
         self.S = (self.S - 1) & 0xFF
 
-    def fetch(self):
-        data = self.read(self.PC)
+    @cython.ccall
+    def fetch(self) -> cython.uint:
+        data: cython.uint = self.read(self.PC)
         self.PC = (self.PC + 1) & 0xFFFF
         return data
 
+    @cython.ccall
     def fetch_and_execute(self):
         self.cycles = 0
         opcode = self.fetch()
@@ -253,9 +329,11 @@ class Apu:
                 return
         self._last_synced_mc += apu_clocks_run * self._APU_MC_PER_CLOCK
 
-    def step_timers(self, clocks: int) -> None:
-        for timer in self.timers:
-            timer.step(clocks)
+    @cython.cfunc
+    def step_timers(self, clocks: cython.uint):
+        cython.cast(Timer, self.timers[0]).step(clocks)
+        cython.cast(Timer, self.timers[1]).step(clocks)
+        cython.cast(Timer, self.timers[2]).step(clocks)
 
     def __getitem__(self, addr: int) -> int:
         self.cycles += 1
@@ -403,8 +481,9 @@ class Apu:
         self.external_wait_states = int(data >> 4 & 3)
         self.internal_wait_states = int(data >> 6 & 3)
 
-        for timer in self.timers:
-            timer.syncronize_stage1()
+        cython.cast(Timer, self.timers[0]).syncronize_stage1()
+        cython.cast(Timer, self.timers[1]).syncronize_stage1()
+        cython.cast(Timer, self.timers[2]).syncronize_stage1()
 
     @property
     def control_register(self) -> int:
@@ -414,25 +493,25 @@ class Apu:
     def control_register(self, data: int) -> None:
         self._control_register_raw = data
         # 0->1 transistion resets timers
-        timer0 = self.timers[0]
-        timer0_enable = timer0.enable
-        timer0_enable_flag = bool(data & 0x01)
+        timer0: Timer = cython.cast(Timer, self.timers[0])
+        timer0_enable: cython.bint = timer0.enable
+        timer0_enable_flag: cython.bint = bool(data & 0x01)
         timer0.enable = timer0_enable_flag
         if timer0_enable_flag and not timer0_enable:
             timer0.stage2 = 0
             timer0.stage3 = 0
 
-        timer1 = self.timers[1]
-        timer1_enable = timer1.enable
-        timer1_enable_flag = bool(data & 0x02)
+        timer1: Timer = cython.cast(Timer, self.timers[1])
+        timer1_enable: cython.bint = timer1.enable
+        timer1_enable_flag: cython.bint = bool(data & 0x02)
         timer1.enable = timer1_enable_flag
         if timer1_enable_flag and not timer1_enable:
             timer1.stage2 = 0
             timer1.stage3 = 0
 
-        timer2 = self.timers[2]
-        timer2_enable = timer2.enable
-        timer2_enable_flag = bool(data & 0x04)
+        timer2: Timer = cython.cast(Timer, self.timers[2])
+        timer2_enable: cython.bint = timer2.enable
+        timer2_enable_flag: cython.bint = bool(data & 0x04)
         timer2.enable = timer2_enable_flag
         if timer2_enable_flag and not timer2_enable:
             timer2.stage2 = 0

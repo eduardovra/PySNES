@@ -12,7 +12,7 @@ Test data: submodules/SingleStepTests_spc700/v1/
 """
 
 import os
-import json
+import ijson
 from collections import defaultdict
 from unittest.mock import patch
 
@@ -22,8 +22,11 @@ from .apu import Apu
 TESTS_PATH = "submodules/SingleStepTests_spc700/v1"
 
 def _load_case(file_path: str, index: int) -> dict:
-    with open(file_path) as f:
-        return json.load(f)[index]
+    with open(file_path, 'rb') as f:
+        for i, item in enumerate(ijson.items(f, 'item')):
+            if i == index:
+                return item
+    raise IndexError(f"{file_path}[{index}]")
 
 
 def _write_mem(apu: Apu, addr: int, value: int) -> None:
@@ -70,8 +73,8 @@ def get_test_cases(opcode_filter=None, max_per_opcode=None, mode=None):
     test_cases, test_ids = [], []
 
     for file_path in onlyfiles:
-        with open(file_path) as f:
-            for i, test_case in enumerate(json.load(f)):
+        with open(file_path, 'rb') as f:
+            for i, test_case in enumerate(ijson.items(f, 'item')):
                 test_id = test_case["name"].replace(" ", "_")
 
                 if limit > 0 and test_counter[test_id[:2]] >= limit:

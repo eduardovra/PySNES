@@ -5,8 +5,6 @@ from .spc700.instructions_spc700 import INSTRUCTIONS
 
 
 class Timer:
-    TIMER_WAIT_STATES = (2, 4, 8, 16)  # Clock dividers
-
     def __init__(self, apu: "Apu", frequency: int) -> None:
         self.apu = apu
         self.frequency = frequency
@@ -20,11 +18,7 @@ class Timer:
         self.enable = False
         self.target = 0x00  # 8 bits
 
-    def step(self, _clocks: int) -> None:
-        wait_states = self.apu.internal_wait_states  # TODO can be external
-        clocks = self.TIMER_WAIT_STATES[wait_states]
-        clocks = 128
-
+    def step(self, clocks: int) -> None:
         # stage 0 increment
         self.stage0 = (self.stage0 + clocks) & 0xFF
         if self.stage0 < self.frequency:
@@ -213,42 +207,18 @@ class Apu:
 
     def fetch(self):
         data = self.read(self.PC)
-        assert isinstance(data, int) and 0 <= data <= 0xFF
         self.PC = (self.PC + 1) & 0xFFFF
         return data
 
     def fetch_and_execute(self):
         self.cycles = 0
         opcode = self.fetch()
-
-        debug_str = "APU 0x{:04X} 0x{:02X} {}".format(
-            self.PC - 1,
-            opcode,
-            self.debug_symbols[opcode],
-        )
-        apu_str = str(self)
-
-        instruction = self.instructions[opcode]
-
-        try:
-            instruction()
-        except:
-            if not self.print_debug:
-                print("\033[93m{} [{:04X}] [{:02X}] {}\033[0m".format(
-                        debug_str,
-                        self.address,
-                        self.data,
-                        apu_str,
-                    ))
-            raise
-        finally:
-            if self.print_debug:
-                print("\033[93m{} [{:04X}] [{:02X}] {}\033[0m".format(
-                    debug_str,
-                    self.address,
-                    self.data,
-                    apu_str,
-                ))
+        if self.print_debug:
+            print("\033[93mAPU 0x{:04X} 0x{:02X} {} [{:04X}] [{:02X}] {}\033[0m".format(
+                self.PC - 1, opcode, self.debug_symbols[opcode],
+                self.address, self.data, str(self),
+            ))
+        self.instructions[opcode]()
 
     # Approximate master-clock-to-APU-clock ratio (integer division)
     _APU_MC_PER_CLOCK: int = 21  # 21477272 / 1024000 ≈ 20.979
@@ -273,8 +243,8 @@ class Apu:
         self._ports_w_dirty = False
         apu_clocks_run = 0
         while apu_clocks_run < target_apu_clocks:
-            self.step_timers(1)
             self.fetch_and_execute()
+            self.step_timers(self.cycles)
             apu_clocks_run += self.cycles
             if self._ports_w_dirty:
                 # The APU wrote a port — advance _last_synced_mc by only what
@@ -331,9 +301,6 @@ class Apu:
 
     def __setitem__(self, addr: int, value: int) -> None:
         self.cycles += 1
-        assert isinstance(addr, int)
-        assert isinstance(value, int)
-        assert 0x00 <= value <= 0xFF, f"Attemped to write value bigger than 1 byte: {hex(value)}"
 
         # if 0xF0 <= addr <= 0xF3:
         #    print(f"!!! Writing register {hex(addr)} <== {hex(value)}")
@@ -487,61 +454,3 @@ class Apu:
 
         self.ipl_rom_enable = bool(data & 0x80)
 
-    @property
-    def data(self):
-        return self._data
-
-    @data.setter
-    def data(self, value):
-        assert isinstance(value, int)
-        self._data = value
-
-    @property
-    def A(self):
-        return self._A
-
-    @A.setter
-    def A(self, value):
-        assert isinstance(value, int)
-        assert 0 <= value <= 0xFF
-        self._A = value
-
-    @property
-    def X(self):
-        return self._X
-
-    @X.setter
-    def X(self, value):
-        assert isinstance(value, int)
-        assert 0 <= value <= 0xFF
-        self._X = value
-
-    @property
-    def Y(self):
-        return self._Y
-
-    @Y.setter
-    def Y(self, value):
-        assert isinstance(value, int)
-        assert 0 <= value <= 0xFF
-        self._Y = value
-
-    @property
-    def S(self):
-        return self._S
-
-    @S.setter
-    def S(self, value):
-        assert isinstance(value, int)
-        assert 0 <= value <= 0xFF
-        self._S = value
-
-    @property
-    def PC(self):
-        return self._PC
-
-    @PC.setter
-    def PC(self, value):
-        assert isinstance(value, int)
-        assert 0 <= value <= 0xFFFF
-        self._PC = value

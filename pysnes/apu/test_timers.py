@@ -160,13 +160,13 @@ def _tick_until_overflow(apu: Apu, timer_idx: int, expected_hits: int) -> None:
     t.enable = True
     t.stage2 = 0
     t.stage3 = 0
-    # Each step advances stage0 by 128 (the hardcoded step size in Timer.step).
-    # Timer 0/1 have frequency=128, so one stage0 wrap = one stage1 toggle.
-    # Target N means stage3 increments every N stage1 pulses.
-    # We need 2 * target * expected_hits steps (×2 for high/low toggling).
+    # Each call passes t.frequency APU cycles so stage0 overflows exactly once per call.
+    # One overflow = one stage1 toggle. Two toggles = one falling edge = stage2 increment.
+    # stage3 increments every target stage2 increments.
+    # We need 2 * target * expected_hits toggles + 1.
     steps = 2 * t.target * expected_hits + 1
     for _ in range(steps):
-        apu.step_timers(1)
+        apu.step_timers(t.frequency)
 
 
 def test_timer0_counts_to_target_then_increments_stage3(apu: Apu):

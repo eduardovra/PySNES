@@ -170,6 +170,11 @@ uv run --python pypy@3.10 pytest pysnes/test_spc700.py
 # APU / timer / interrupt / scheduler unit tests
 uv run --python pypy@3.10 pytest pysnes/apu/test_apu.py pysnes/test_timers.py pysnes/test_interrupts.py pysnes/test_scheduler.py
 
+# PPU screenshot regression tests (requires reference PNGs in tests/ppu_references/)
+uv run --python pypy@3.10 pytest pysnes/ppu/test_ppu.py -m ppu
+# Generate/update reference PNGs from Mesen (run once, then commit the PNGs):
+uv run --python pypy@3.10 pytest pysnes/ppu/test_ppu.py -m ppu --update-refs
+
 # Filter options (apply to test_cpu.py and test_spc700.py)
 uv run --python pypy@3.10 pytest pysnes/test_cpu.py --opcode ea           # single opcode
 uv run --python pypy@3.10 pytest pysnes/test_spc700.py --opcode d0        # single opcode

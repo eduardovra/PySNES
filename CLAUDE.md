@@ -196,6 +196,10 @@ uv run --python pypy@3.10 pytest pysnes/test_cpu.py --opcode ea --mode n  # comb
 - `Profile.prof` exists in root — can be analyzed with pstats/snakeviz
 - `make profile` runs cProfile
 
+## Git Workflow
+- **Never rebase** unless explicitly instructed. Use `git merge` to integrate changes (e.g. `git merge origin/main` to resolve PR conflicts). Rebase rewrites history and requires force-push, which is destructive for shared branches.
+- **Never force push** unless explicitly instructed. Always use plain `git push`.
+
 ## Key Design Decisions
 - **Pure Python mode Cython**: No `.pyx` files — all `.py` files compiled by Cython. This allows running without a build step during development.
 - **PyPy + Cython**: Can run either way — PyPy JIT or Cython-compiled CPython. Cython build is the primary path.

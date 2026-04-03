@@ -253,16 +253,15 @@ def print_python_info():
 def main():
     print_python_info()
 
-    rom = "roms/Super Mario World (U) [!].smc"
-    # rom = "roms/SNES Test Program.sfc"
-    # rom = "roms/Donkey Kong Country (U) (V1.2) [!].smc"
-    # rom = "roms/Legend of Zelda, The - A Link to the Past (USA).sfc"
+    parser = argparse.ArgumentParser(description="PySNES - SNES emulator")
+    parser.add_argument("rom", help="Path to ROM file (.smc/.sfc)")
+    parser.add_argument("--trace", metavar="REF", help="Enable CPU trace comparison against reference log")
+    args = parser.parse_args()
 
-    pysnes = PySNES(rom)
+    pysnes = PySNES(args.rom)
 
-    # Enable CPU trace comparison against bsnes reference
-    ref_trace = f"roms/Super Mario World (U) [!]-trace.log"
-    pysnes.start_trace(ref_trace)
+    if args.trace:
+        pysnes.start_trace(args.trace)
 
     pysnes.main()
 

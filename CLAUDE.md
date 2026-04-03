@@ -22,8 +22,9 @@ uv sync --python pypy@3.10
 make build          # uses PyPy 3.10 by default
 
 # Run
-make run            # build + run
-uv run --python pypy3.10 -m pysnes.pysnes   # without Cython build
+make run            # build + run (uses default ROM path in Makefile)
+uv run --python pypy3.10 -m pysnes.pysnes roms/game.sfc           # without Cython build
+uv run --python pypy3.10 -m pysnes.pysnes roms/game.sfc --trace roms/game-trace.log  # with CPU trace
 
 # Clean build artifacts
 make clean
@@ -38,7 +39,7 @@ The emulator has built-in debug tools controllable via Unix signals (no GUI requ
 
 ```bash
 # Run emulator — PID is printed to stdout on startup
-uv run --python pypy@3.10 -m pysnes.pysnes &
+uv run --python pypy@3.10 -m pysnes.pysnes roms/game.sfc &
 
 # Trigger screenshot → saves screenshot.bmp (Claude can read as image)
 kill -USR1 <pid>
@@ -204,8 +205,8 @@ uv run --python pypy@3.10 pytest pysnes/test_cpu.py --opcode ea --mode n  # comb
 
 ## ROM for Testing
 - ROM files are in `roms/` directory (not committed to git)
-- `run_pysnes.py` has hardcoded ROM paths — update as needed for testing
-- The `--load` flag in `run_pysnes.py` loads memory dumps from bsnes for rendering debug
+- ROM path is passed as a positional CLI argument: `python -m pysnes.pysnes <rom>`
+- Optional `--trace <ref>` flag enables CPU trace comparison against a reference log
 
 ## Known Timing Issues (for future debugging)
 

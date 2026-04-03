@@ -1,30 +1,80 @@
-from functools import partial
+# cython: auto_pickle=False
 from typing import Any
+
+import cython
 
 from .spc700.instructions_spc700 import INSTRUCTIONS
 
 
+@cython.cclass
+class InstructionSlot:
+    """Replaces functools.partial for instruction dispatch.
+
+    Stores func + up to 4 extra args as individual C fields (no tuple).
+    cython.cast(InstructionSlot, slot).call() dispatches via C vtable,
+    bypassing Python's __call__ protocol overhead.
+    """
+    _func  = cython.declare(object)
+    _a0    = cython.declare(object)   # always the apu instance
+    _a1    = cython.declare(object)
+    _a2    = cython.declare(object)
+    _a3    = cython.declare(object)
+    _nargs = cython.declare(cython.int)
+
+    def __init__(self, func, a0, a1=None, a2=None, a3=None):
+        self._func  = func
+        self._a0    = a0
+        self._a1    = a1
+        self._a2    = a2
+        self._a3    = a3
+        if a3 is not None:
+            self._nargs = 4
+        elif a2 is not None:
+            self._nargs = 3
+        elif a1 is not None:
+            self._nargs = 2
+        else:
+            self._nargs = 1
+
+    @cython.ccall
+    def call(self):
+        if self._nargs == 1:
+            self._func(self._a0)
+        elif self._nargs == 2:
+            self._func(self._a0, self._a1)
+        elif self._nargs == 3:
+            self._func(self._a0, self._a1, self._a2)
+        else:
+            self._func(self._a0, self._a1, self._a2, self._a3)
+
+
+@cython.cclass
 class Timer:
-    TIMER_WAIT_STATES = (2, 4, 8, 16)  # Clock dividers
+    apu = cython.declare(object)
+    frequency = cython.declare(cython.uint)
+    stage0 = cython.declare(cython.uchar)
+    stage1 = cython.declare(cython.uchar)
+    stage2 = cython.declare(cython.uchar)
+    stage3 = cython.declare(cython.uchar)
+    stage3_shadow = cython.declare(cython.uchar)
+    line = cython.declare(cython.bint)
+    enable = cython.declare(cython.bint)
+    target = cython.declare(cython.uchar)
 
     def __init__(self, apu: "Apu", frequency: int) -> None:
         self.apu = apu
         self.frequency = frequency
-        self.stage0 = 0x00  # 8 bits
-        self.stage1 = 0x00  # 8 bits
-        self.stage2 = 0x00  # 8 bits
-        self.stage3 = 0x0  # 4 bits
-        self.stage3_shadow = 0x0  # last value read or written (for test final-state checks)
-
+        self.stage0 = 0x00
+        self.stage1 = 0x00
+        self.stage2 = 0x00
+        self.stage3 = 0x00
+        self.stage3_shadow = 0x00
         self.line = False
         self.enable = False
-        self.target = 0x00  # 8 bits
+        self.target = 0x00
 
-    def step(self, _clocks: int) -> None:
-        wait_states = self.apu.internal_wait_states  # TODO can be external
-        clocks = self.TIMER_WAIT_STATES[wait_states]
-        clocks = 128
-
+    @cython.cfunc
+    def step(self, clocks: cython.uint):
         # stage 0 increment
         self.stage0 = (self.stage0 + clocks) & 0xFF
         if self.stage0 < self.frequency:
@@ -32,11 +82,12 @@ class Timer:
         self.stage0 = (self.stage0 - self.frequency) & 0xFF
 
         # stage 1 increment
-        self.stage1 ^= 1  # Toogle
+        self.stage1 ^= 1
         self.syncronize_stage1()
 
-    def syncronize_stage1(self) -> None:
-        level = self.stage1
+    @cython.cfunc
+    def syncronize_stage1(self):
+        level: cython.bint = self.stage1
         if not self.apu.timers_enable:
             level = 0
         if self.apu.timers_disable:
@@ -56,7 +107,8 @@ class Timer:
         self.stage2 = 0
         self.stage3 = (self.stage3 + 1) & 0x0F
 
-    def lower(self, level) -> bool:
+    @cython.cfunc
+    def lower(self, level: cython.bint) -> cython.bint:
         if self.line and not level:
             self.line = False
             return True
@@ -65,7 +117,59 @@ class Timer:
         return False
 
 
+@cython.cclass
 class Apu:
+    # Registers
+    PC = cython.declare(cython.uint)
+    A = cython.declare(cython.uchar)
+    X = cython.declare(cython.uchar)
+    Y = cython.declare(cython.uchar)
+    S = cython.declare(cython.uchar)
+    # Flags
+    NF = cython.declare(cython.bint)
+    VF = cython.declare(cython.bint)
+    PF = cython.declare(cython.bint)
+    BF = cython.declare(cython.bint)
+    HF = cython.declare(cython.bint)
+    IF = cython.declare(cython.bint)
+    ZF = cython.declare(cython.bint)
+    CF = cython.declare(cython.bint)
+    # Timing
+    timers = cython.declare(object)
+    _last_synced_mc = cython.declare(cython.long)
+    _ports_w_dirty = cython.declare(cython.bint)
+    cycles = cython.declare(cython.uint)
+    # Registers (raw storage)
+    _control_register_raw = cython.declare(cython.uchar)
+    dsp_register_address = cython.declare(cython.uchar)
+    dsp_register_data = cython.declare(cython.uchar)
+    f8 = cython.declare(cython.uchar)
+    f9 = cython.declare(cython.uchar)
+    ipl_rom_enable = cython.declare(cython.bint)
+    # Test register ($F0) fields
+    timers_disable = cython.declare(cython.bint)
+    ram_writable = cython.declare(cython.bint)
+    ram_disable = cython.declare(cython.bint)
+    timers_enable = cython.declare(cython.bint)
+    external_wait_states = cython.declare(cython.uchar)
+    internal_wait_states = cython.declare(cython.uchar)
+    # Debug
+    address = cython.declare(cython.uint)
+    data = cython.declare(cython.uint)
+    breakpoint = cython.declare(object)
+    print_debug = cython.declare(cython.bint)
+    # Memory regions
+    memory = cython.declare(object)
+    ipl_rom = cython.declare(object)
+    page_0 = cython.declare(object)
+    page_1 = cython.declare(object)
+    ports_r = cython.declare(object)
+    ports_w = cython.declare(object)
+    # Instruction dispatch
+    instructions = cython.declare(object)
+    debug_symbols = cython.declare(object)
+    # Memory access tracing (None = disabled; set to [] in tests to capture accesses)
+    _mem_log = cython.declare(object)
 
     def __init__(self) -> None:
         self.reset_registers()
@@ -148,6 +252,7 @@ class Apu:
         self.data = 0  # Last accessed data
         self.breakpoint = None
         self.print_debug = False
+        self._mem_log = None
 
     def allocate_memory(self):
         # Init memory regions
@@ -174,7 +279,7 @@ class Apu:
         self.instructions: Any = [None] * 256
         self.debug_symbols: Any = [""] * 256
         for opcode, addr_mode, *args in INSTRUCTIONS:
-            self.instructions[opcode] = partial(addr_mode, self, *args)
+            self.instructions[opcode] = InstructionSlot(addr_mode, self, *args)
             self.debug_symbols[opcode] = f"{addr_mode.__name__}"
             if args:
                 if hasattr(args[0], "__name__"):
@@ -183,7 +288,8 @@ class Apu:
                     self.debug_symbols[opcode] += f" {args}"
             self.debug_symbols[opcode] = self.debug_symbols[opcode].ljust(30)
 
-    def idle(self) -> None:
+    @cython.ccall
+    def idle(self):
         """One internal CPU cycle with no external memory access."""
         self.cycles += 1
 
@@ -191,64 +297,124 @@ class Apu:
         """Used for testing only"""
         self.ipl_rom = data
 
-    def write(self, addr, data):
-        self[addr] = data
+    @cython.cfunc
+    def _read(self, addr: cython.uint) -> cython.uint:
+        self.cycles += 1
+        result: cython.uint
+        if addr <= 0x00EF:
+            result = self.page_0[addr]
+        elif addr == 0x00F0:
+            result = self.test_register
+        elif addr == 0x00F1:
+            result = self.control_register
+        elif addr == 0x00F2:
+            result = self.dsp_register_address
+        elif addr == 0x00F3:
+            result = self.dsp_register_data
+        elif addr <= 0x00F7:
+            result = self.ports_r[addr - 0x00F4]
+        elif addr == 0x00F8:
+            result = self.f8
+        elif addr == 0x00F9:
+            result = self.f9
+        elif addr <= 0x00FC:
+            result = cython.cast(Timer, self.timers[addr - 0x00FA]).target
+        elif addr <= 0x00FF:
+            timer: Timer = cython.cast(Timer, self.timers[addr - 0x00FD])
+            result = timer.stage3
+            timer.stage3_shadow = result
+            timer.stage3 = 0
+        elif addr <= 0x01FF:
+            result = self.page_1[addr - 0x0100]
+        elif addr <= 0xFFBF:
+            result = self.memory[addr - 0x0200]
+        else:
+            result = self.ipl_rom[addr - 0xFFC0]
+        if self._mem_log is not None:
+            self._mem_log.append((addr, result, "read"))
+        return result
 
-    def read(self, addr):
-        return self[addr]
+    @cython.cfunc
+    def _write(self, addr: cython.uint, value: cython.uint):
+        self.cycles += 1
+        if self._mem_log is not None:
+            self._mem_log.append((addr, value, "write"))
+        if addr <= 0x00EF:
+            self.page_0[addr] = value
+        elif addr == 0x00F0:
+            self.test_register = value
+        elif addr == 0x00F1:
+            self.control_register = value
+        elif addr == 0x00F2:
+            self.dsp_register_address = value
+        elif addr == 0x00F3:
+            self.dsp_register_data = value
+        elif addr <= 0x00F7:
+            self.ports_w[addr - 0x00F4] = value
+            self.ports_r[addr - 0x00F4] = value  # mirror so APU can read its own writes
+            self._ports_w_dirty = True
+        elif addr == 0x00F8:
+            self.f8 = value
+        elif addr == 0x00F9:
+            self.f9 = value
+        elif addr <= 0x00FC:
+            cython.cast(Timer, self.timers[addr - 0x00FA]).target = value
+        elif addr <= 0x00FF:
+            timer: Timer = cython.cast(Timer, self.timers[addr - 0x00FD])
+            timer.stage3 = value
+            timer.stage3_shadow = value
+        elif addr <= 0x01FF:
+            self.page_1[addr - 0x0100] = value
+        elif addr <= 0xFFBF:
+            self.memory[addr - 0x0200] = value
+        elif addr <= 0xFFFF:
+            if isinstance(self.ipl_rom, bytearray):
+                self.ipl_rom[addr - 0xFFC0] = value
+        else:
+            print("Error writting unmamped memory region: 0x{:04X} <== 0x{:04X}".format(addr, value))
 
-    def store(self, addr, data):
-        self[(self.PF << 8) | (addr & 0xFF)] = data
+    @cython.ccall
+    def write(self, addr: cython.uint, data: cython.uint):
+        self._write(addr, data)
 
-    def load(self, addr):
-        return self[(self.PF << 8) | (addr & 0xFF)]
+    @cython.ccall
+    def read(self, addr: cython.uint) -> cython.uint:
+        return self._read(addr)
 
-    def pull(self):
+    @cython.ccall
+    def store(self, addr: cython.uint, data: cython.uint):
+        self._write((self.PF << 8) | (addr & 0xFF), data)
+
+    @cython.ccall
+    def load(self, addr: cython.uint) -> cython.uint:
+        return self._read((self.PF << 8) | (addr & 0xFF))
+
+    @cython.ccall
+    def pull(self) -> cython.uint:
         self.S = (self.S + 1) & 0xFF
-        return self.read(0x100 | self.S)
+        return self._read(0x100 | self.S)
 
-    def push(self, data):
-        self.write(0x100 | self.S, data & 0xFF)
+    @cython.ccall
+    def push(self, data: cython.uint):
+        self._write(0x100 | self.S, data & 0xFF)
         self.S = (self.S - 1) & 0xFF
 
-    def fetch(self):
-        data = self.read(self.PC)
-        assert isinstance(data, int) and 0 <= data <= 0xFF
+    @cython.ccall
+    def fetch(self) -> cython.uint:
+        data: cython.uint = self._read(self.PC)
         self.PC = (self.PC + 1) & 0xFFFF
         return data
 
+    @cython.ccall
     def fetch_and_execute(self):
         self.cycles = 0
         opcode = self.fetch()
-
-        debug_str = "APU 0x{:04X} 0x{:02X} {}".format(
-            self.PC - 1,
-            opcode,
-            self.debug_symbols[opcode],
-        )
-        apu_str = str(self)
-
-        instruction = self.instructions[opcode]
-
-        try:
-            instruction()
-        except:
-            if not self.print_debug:
-                print("\033[93m{} [{:04X}] [{:02X}] {}\033[0m".format(
-                        debug_str,
-                        self.address,
-                        self.data,
-                        apu_str,
-                    ))
-            raise
-        finally:
-            if self.print_debug:
-                print("\033[93m{} [{:04X}] [{:02X}] {}\033[0m".format(
-                    debug_str,
-                    self.address,
-                    self.data,
-                    apu_str,
-                ))
+        if self.print_debug:
+            print("\033[93mAPU 0x{:04X} 0x{:02X} {} [{:04X}] [{:02X}] {}\033[0m".format(
+                self.PC - 1, opcode, self.debug_symbols[opcode],
+                self.address, self.data, str(self),
+            ))
+        cython.cast(InstructionSlot, self.instructions[opcode]).call()
 
     # Approximate master-clock-to-APU-clock ratio (integer division)
     _APU_MC_PER_CLOCK: int = 21  # 21477272 / 1024000 ≈ 20.979
@@ -273,8 +439,8 @@ class Apu:
         self._ports_w_dirty = False
         apu_clocks_run = 0
         while apu_clocks_run < target_apu_clocks:
-            self.step_timers(1)
             self.fetch_and_execute()
+            self.step_timers(self.cycles)
             apu_clocks_run += self.cycles
             if self._ports_w_dirty:
                 # The APU wrote a port — advance _last_synced_mc by only what
@@ -283,102 +449,17 @@ class Apu:
                 return
         self._last_synced_mc += apu_clocks_run * self._APU_MC_PER_CLOCK
 
-    def step_timers(self, clocks: int) -> None:
-        for timer in self.timers:
-            timer.step(clocks)
+    @cython.cfunc
+    def step_timers(self, clocks: cython.uint):
+        cython.cast(Timer, self.timers[0]).step(clocks)
+        cython.cast(Timer, self.timers[1]).step(clocks)
+        cython.cast(Timer, self.timers[2]).step(clocks)
 
     def __getitem__(self, addr: int) -> int:
-        self.cycles += 1
-
-        # if 0xF0 <= addr <= 0xF3:
-        #    print(f"!!! Reading register {hex(addr)}")
-
-        if 0x0000 <= addr <= 0x00EF:
-            return self.page_0[addr]
-        elif addr == 0x00F0:
-            return self.test_register
-        elif addr == 0x00F1:
-            return self.control_register
-        elif addr == 0x00F2:
-            return self.dsp_register_address
-        elif addr == 0x00F3:
-            return self.dsp_register_data
-        elif 0x00F4 <= addr <= 0x00F7:
-            # print(f"  APU read [{hex(addr)}] ==> {hex(self.ports_r[addr - 0x00F4])}")
-            return self.ports_r[addr - 0x00F4]
-        elif addr == 0x00F8:
-            return self.f8
-        elif addr == 0x00F9:
-            return self.f9
-        elif 0x00FA <= addr <= 0x00FC:
-            return self.timers[addr - 0x00FA].target
-        elif 0x00FD <= addr <= 0x00FF:
-            timer = self.timers[addr - 0x00FD]
-            data = timer.stage3
-            timer.stage3_shadow = data
-            timer.stage3 = 0
-            return data
-        elif 0x0100 <= addr <= 0x01FF:
-            return self.page_1[addr - 0x0100]
-        elif 0x0200 <= addr <= 0xFFBF:
-            return self.memory[addr - 0x0200]
-        elif 0xFFC0 <= addr <= 0xFFFF:
-            return self.ipl_rom[addr - 0xFFC0]
-
-        raise RuntimeError(
-            "Error reading unmamped memory region: 0x{:04X}".format(addr)
-        )
+        return self._read(addr)
 
     def __setitem__(self, addr: int, value: int) -> None:
-        self.cycles += 1
-        assert isinstance(addr, int)
-        assert isinstance(value, int)
-        assert 0x00 <= value <= 0xFF, f"Attemped to write value bigger than 1 byte: {hex(value)}"
-
-        # if 0xF0 <= addr <= 0xF3:
-        #    print(f"!!! Writing register {hex(addr)} <== {hex(value)}")
-
-        if 0x0000 <= addr <= 0x00EF:
-            self.page_0[addr] = value
-        elif addr == 0x00F0:
-            self.test_register = value
-        elif addr == 0x00F1:
-            self.control_register = value
-        elif addr == 0x00F2:
-            self.dsp_register_address = value
-        elif addr == 0x00F3:
-            self.dsp_register_data = value
-        elif 0x00F4 <= addr <= 0x00F7:
-            self.ports_w[addr - 0x00F4] = value
-            self.ports_r[addr - 0x00F4] = value  # mirror so APU can read its own writes
-            self._ports_w_dirty = True
-        elif addr == 0x00F8:
-            self.f8 = value
-        elif addr == 0x00F9:
-            self.f9 = value
-        elif 0x00FA <= addr <= 0x00FC:
-            timer = self.timers[addr - 0x00FA]
-            timer.target = value
-        elif 0x00FD <= addr <= 0x00FF:
-            timer = self.timers[addr - 0x00FD]
-            timer.stage3 = value
-            timer.stage3_shadow = value
-        elif 0x0100 <= addr <= 0x01FF:
-            self.page_1[addr - 0x0100] = value
-        elif 0x0200 <= addr <= 0xFFBF:
-            # print(f"[{hex(addr)}] <== {hex(value)}")
-            self.memory[addr - 0x0200] = value
-        elif 0xFFC0 <= addr <= 0xFFFF:
-            # IPL ROM range: writable only when ipl_rom has been made mutable
-            # (e.g. by _write_mem in instruction tests)
-            if isinstance(self.ipl_rom, bytearray):
-                self.ipl_rom[addr - 0xFFC0] = value
-        else:
-            print(
-                "Error writting unmamped memory region: 0x{:04X} <== 0x{:04X}".format(
-                    addr, value
-                )
-            )
+        self._write(addr, value)
 
     @property
     def PSW(self) -> int:
@@ -436,8 +517,9 @@ class Apu:
         self.external_wait_states = int(data >> 4 & 3)
         self.internal_wait_states = int(data >> 6 & 3)
 
-        for timer in self.timers:
-            timer.syncronize_stage1()
+        cython.cast(Timer, self.timers[0]).syncronize_stage1()
+        cython.cast(Timer, self.timers[1]).syncronize_stage1()
+        cython.cast(Timer, self.timers[2]).syncronize_stage1()
 
     @property
     def control_register(self) -> int:
@@ -447,101 +529,37 @@ class Apu:
     def control_register(self, data: int) -> None:
         self._control_register_raw = data
         # 0->1 transistion resets timers
-        timer0 = self.timers[0]
-        timer0_enable = timer0.enable
-        timer0_enable_flag = bool(data & 0x01)
+        timer0: Timer = cython.cast(Timer, self.timers[0])
+        timer0_enable: cython.bint = timer0.enable
+        timer0_enable_flag: cython.bint = bool(data & 0x01)
         timer0.enable = timer0_enable_flag
         if timer0_enable_flag and not timer0_enable:
             timer0.stage2 = 0
             timer0.stage3 = 0
 
-        timer1 = self.timers[1]
-        timer1_enable = timer1.enable
-        timer1_enable_flag = bool(data & 0x02)
+        timer1: Timer = cython.cast(Timer, self.timers[1])
+        timer1_enable: cython.bint = timer1.enable
+        timer1_enable_flag: cython.bint = bool(data & 0x02)
         timer1.enable = timer1_enable_flag
         if timer1_enable_flag and not timer1_enable:
             timer1.stage2 = 0
             timer1.stage3 = 0
 
-        timer2 = self.timers[2]
-        timer2_enable = timer2.enable
-        timer2_enable_flag = bool(data & 0x04)
+        timer2: Timer = cython.cast(Timer, self.timers[2])
+        timer2_enable: cython.bint = timer2.enable
+        timer2_enable_flag: cython.bint = bool(data & 0x04)
         timer2.enable = timer2_enable_flag
         if timer2_enable_flag and not timer2_enable:
             timer2.stage2 = 0
             timer2.stage3 = 0
 
-        if data & 0x10:  # TODO not sure if r or w ports should be reset
+        if data & 0x10:  # reset CPU→APU input ports 0/1 (ports_r only)
             self.ports_r[0] = 0x00
             self.ports_r[1] = 0x00
-            self.ports_w[0] = 0x00
-            self.ports_w[1] = 0x00
-            self._ports_w_dirty = True
 
-        if data & 0x20:  # TODO not sure if r or w ports should be reset
+        if data & 0x20:  # reset CPU→APU input ports 2/3 (ports_r only)
             self.ports_r[2] = 0x00
             self.ports_r[3] = 0x00
-            self.ports_w[2] = 0x00
-            self.ports_w[3] = 0x00
-            self._ports_w_dirty = True
 
         self.ipl_rom_enable = bool(data & 0x80)
 
-    @property
-    def data(self):
-        return self._data
-
-    @data.setter
-    def data(self, value):
-        assert isinstance(value, int)
-        self._data = value
-
-    @property
-    def A(self):
-        return self._A
-
-    @A.setter
-    def A(self, value):
-        assert isinstance(value, int)
-        assert 0 <= value <= 0xFF
-        self._A = value
-
-    @property
-    def X(self):
-        return self._X
-
-    @X.setter
-    def X(self, value):
-        assert isinstance(value, int)
-        assert 0 <= value <= 0xFF
-        self._X = value
-
-    @property
-    def Y(self):
-        return self._Y
-
-    @Y.setter
-    def Y(self, value):
-        assert isinstance(value, int)
-        assert 0 <= value <= 0xFF
-        self._Y = value
-
-    @property
-    def S(self):
-        return self._S
-
-    @S.setter
-    def S(self, value):
-        assert isinstance(value, int)
-        assert 0 <= value <= 0xFF
-        self._S = value
-
-    @property
-    def PC(self):
-        return self._PC
-
-    @PC.setter
-    def PC(self, value):
-        assert isinstance(value, int)
-        assert 0 <= value <= 0xFFFF
-        self._PC = value

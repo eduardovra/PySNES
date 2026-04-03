@@ -160,13 +160,13 @@ def _tick_until_overflow(apu: Apu, timer_idx: int, expected_hits: int) -> None:
     t.enable = True
     t.stage2 = 0
     t.stage3 = 0
-    # Each step advances stage0 by 128 (the hardcoded step size in Timer.step).
-    # Timer 0/1 have frequency=128, so one stage0 wrap = one stage1 toggle.
-    # Target N means stage3 increments every N stage1 pulses.
-    # We need 2 * target * expected_hits steps (×2 for high/low toggling).
+    # Each call passes t.frequency APU cycles so stage0 overflows exactly once per call.
+    # One overflow = one stage1 toggle. Two toggles = one falling edge = stage2 increment.
+    # stage3 increments every target stage2 increments.
+    # We need 2 * target * expected_hits toggles + 1.
     steps = 2 * t.target * expected_hits + 1
     for _ in range(steps):
-        apu.step_timers(1)
+        apu.step_timers(t.frequency)
 
 
 def test_timer0_counts_to_target_then_increments_stage3(apu: Apu):
@@ -233,23 +233,27 @@ def test_timers_enable_false_inhibits_all(apu: Apu):
 # Port reset via control register bits 4 and 5
 # ---------------------------------------------------------------------------
 
-def test_control_bit4_resets_ports_w_01(apu: Apu):
-    apu.ports_w[0] = 0xAA
-    apu.ports_w[1] = 0xBB
+def test_control_bit4_resets_ports_r_01(apu: Apu):
+    """Bit 4 resets CPU→APU input ports (ports_r); APU output ports (ports_w) unchanged."""
+    apu.ports_r[0] = 0xAA
+    apu.ports_r[1] = 0xBB
+    apu.ports_w[0] = 0x11
+    apu.ports_w[1] = 0x22
     apu[0x00F1] = 0x10  # bit 4
-    assert apu.ports_w[0] == 0x00
-    assert apu.ports_w[1] == 0x00
+    assert apu.ports_r[0] == 0x00
+    assert apu.ports_r[1] == 0x00
+    assert apu.ports_w[0] == 0x11
+    assert apu.ports_w[1] == 0x22
 
 
-def test_control_bit5_resets_ports_w_23(apu: Apu):
-    apu.ports_w[2] = 0xCC
-    apu.ports_w[3] = 0xDD
+def test_control_bit5_resets_ports_r_23(apu: Apu):
+    """Bit 5 resets CPU→APU input ports (ports_r); APU output ports (ports_w) unchanged."""
+    apu.ports_r[2] = 0xCC
+    apu.ports_r[3] = 0xDD
+    apu.ports_w[2] = 0x33
+    apu.ports_w[3] = 0x44
     apu[0x00F1] = 0x20  # bit 5
-    assert apu.ports_w[2] == 0x00
-    assert apu.ports_w[3] == 0x00
-
-
-def test_port_reset_sets_dirty_flag(apu: Apu):
-    apu._ports_w_dirty = False
-    apu[0x00F1] = 0x10
-    assert apu._ports_w_dirty is True
+    assert apu.ports_r[2] == 0x00
+    assert apu.ports_r[3] == 0x00
+    assert apu.ports_w[2] == 0x33
+    assert apu.ports_w[3] == 0x44

@@ -12,9 +12,8 @@ Test data: submodules/SingleStepTests_spc700/v1/
 """
 
 import os
-import json
+import ijson
 from collections import defaultdict
-from unittest.mock import patch
 
 from .apu import Apu
 
@@ -22,8 +21,11 @@ from .apu import Apu
 TESTS_PATH = "submodules/SingleStepTests_spc700/v1"
 
 def _load_case(file_path: str, index: int) -> dict:
-    with open(file_path) as f:
-        return json.load(f)[index]
+    with open(file_path, 'rb') as f:
+        for i, item in enumerate(ijson.items(f, 'item')):
+            if i == index:
+                return item
+    raise IndexError(f"{file_path}[{index}]")
 
 
 def _write_mem(apu: Apu, addr: int, value: int) -> None:
@@ -70,8 +72,8 @@ def get_test_cases(opcode_filter=None, max_per_opcode=None, mode=None):
     test_cases, test_ids = [], []
 
     for file_path in onlyfiles:
-        with open(file_path) as f:
-            for i, test_case in enumerate(json.load(f)):
+        with open(file_path, 'rb') as f:
+            for i, test_case in enumerate(ijson.items(f, 'item')):
                 test_id = test_case["name"].replace(" ", "_")
 
                 if limit > 0 and test_counter[test_id[:2]] >= limit:
@@ -118,26 +120,11 @@ def test_spc700(test_case):
     ]
     expected_cycle_count = len(expected_cycles)
 
-    performed_mem = []
-
-    real_getitem = Apu.__getitem__
-    real_setitem = Apu.__setitem__
-
-    def getitem(self, address):
-        value = real_getitem(self, address)
-        performed_mem.append((address, value, "read"))
-        return value
-
-    def setitem(self, address, value):
-        performed_mem.append((address, value, "write"))
-        return real_setitem(self, address, value)
-
-    with patch.object(Apu, "__getitem__", autospec=True) as mock_get, \
-         patch.object(Apu, "__setitem__", autospec=True) as mock_set:
-        mock_get.side_effect = getitem
-        mock_set.side_effect = setitem
-        apu.fetch_and_execute()
-        actual_cycle_count = apu.cycles  # capture before mock exits
+    apu._mem_log = []
+    apu.fetch_and_execute()
+    actual_cycle_count = apu.cycles
+    performed_mem = list(apu._mem_log)
+    apu._mem_log = None
 
     # ── Verify final register state ───────────────────────────────────────
     final = test_case["final"]

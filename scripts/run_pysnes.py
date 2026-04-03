@@ -17,6 +17,7 @@ import sdl2 as sdl
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Python SNES emulator.")
+    parser.add_argument('rom', nargs='?', help='Path to ROM file (.smc/.sfc)')
     parser.add_argument('-p', '--profile', action='store_true', help='Enable profiler mode')
     parser.add_argument('-l', '--load', action='store_true', help='Load memory dumps from bsnes to test rendering')
     args = parser.parse_args()
@@ -48,9 +49,7 @@ if __name__ == "__main__":
 
         pass
     elif args.load:
-        rom = "roms/Super Mario World (U) [!].smc"
-        #rom = "roms/test_oam.smc"
-
+        rom = args.rom or "roms/Super Mario World (U) [!].smc"
         pysnes = PySNES(rom)
 
         rom_file_name, rom_extension = rom.split(".")
@@ -85,4 +84,7 @@ if __name__ == "__main__":
         pysnes.ppu.render()
         sdl.SDL_Delay(5000)
     else:
+        if not args.rom:
+            parser.error("rom argument is required")
+        sys.argv = [sys.argv[0], args.rom]
         main()

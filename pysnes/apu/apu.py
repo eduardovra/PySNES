@@ -127,6 +127,8 @@ class Apu:
     # Instruction dispatch
     instructions = cython.declare(object)
     debug_symbols = cython.declare(object)
+    # Memory access tracing (None = disabled; set to [] in tests to capture accesses)
+    _mem_log = cython.declare(object)
 
     def __init__(self) -> None:
         self.reset_registers()
@@ -209,6 +211,7 @@ class Apu:
         self.data = 0  # Last accessed data
         self.breakpoint = None
         self.print_debug = False
+        self._mem_log = None
 
     def allocate_memory(self):
         # Init memory regions
@@ -253,35 +256,111 @@ class Apu:
         """Used for testing only"""
         self.ipl_rom = data
 
+    @cython.cfunc
+    def _read(self, addr: cython.uint) -> cython.uint:
+        self.cycles += 1
+        result: cython.uint
+        if addr <= 0x00EF:
+            result = self.page_0[addr]
+        elif addr == 0x00F0:
+            result = self.test_register
+        elif addr == 0x00F1:
+            result = self.control_register
+        elif addr == 0x00F2:
+            result = self.dsp_register_address
+        elif addr == 0x00F3:
+            result = self.dsp_register_data
+        elif addr <= 0x00F7:
+            result = self.ports_r[addr - 0x00F4]
+        elif addr == 0x00F8:
+            result = self.f8
+        elif addr == 0x00F9:
+            result = self.f9
+        elif addr <= 0x00FC:
+            result = cython.cast(Timer, self.timers[addr - 0x00FA]).target
+        elif addr <= 0x00FF:
+            timer: Timer = cython.cast(Timer, self.timers[addr - 0x00FD])
+            result = timer.stage3
+            timer.stage3_shadow = result
+            timer.stage3 = 0
+        elif addr <= 0x01FF:
+            result = self.page_1[addr - 0x0100]
+        elif addr <= 0xFFBF:
+            result = self.memory[addr - 0x0200]
+        else:
+            result = self.ipl_rom[addr - 0xFFC0]
+        if self._mem_log is not None:
+            self._mem_log.append((addr, result, "read"))
+        return result
+
+    @cython.cfunc
+    def _write(self, addr: cython.uint, value: cython.uint):
+        self.cycles += 1
+        if self._mem_log is not None:
+            self._mem_log.append((addr, value, "write"))
+        if addr <= 0x00EF:
+            self.page_0[addr] = value
+        elif addr == 0x00F0:
+            self.test_register = value
+        elif addr == 0x00F1:
+            self.control_register = value
+        elif addr == 0x00F2:
+            self.dsp_register_address = value
+        elif addr == 0x00F3:
+            self.dsp_register_data = value
+        elif addr <= 0x00F7:
+            self.ports_w[addr - 0x00F4] = value
+            self.ports_r[addr - 0x00F4] = value  # mirror so APU can read its own writes
+            self._ports_w_dirty = True
+        elif addr == 0x00F8:
+            self.f8 = value
+        elif addr == 0x00F9:
+            self.f9 = value
+        elif addr <= 0x00FC:
+            cython.cast(Timer, self.timers[addr - 0x00FA]).target = value
+        elif addr <= 0x00FF:
+            timer: Timer = cython.cast(Timer, self.timers[addr - 0x00FD])
+            timer.stage3 = value
+            timer.stage3_shadow = value
+        elif addr <= 0x01FF:
+            self.page_1[addr - 0x0100] = value
+        elif addr <= 0xFFBF:
+            self.memory[addr - 0x0200] = value
+        elif addr <= 0xFFFF:
+            if isinstance(self.ipl_rom, bytearray):
+                self.ipl_rom[addr - 0xFFC0] = value
+        else:
+            print("Error writting unmamped memory region: 0x{:04X} <== 0x{:04X}".format(addr, value))
+
     @cython.ccall
     def write(self, addr: cython.uint, data: cython.uint):
-        self[addr] = data
+        self._write(addr, data)
 
     @cython.ccall
     def read(self, addr: cython.uint) -> cython.uint:
-        return self[addr]
+        return self._read(addr)
 
     @cython.ccall
     def store(self, addr: cython.uint, data: cython.uint):
-        self[(self.PF << 8) | (addr & 0xFF)] = data
+        self._write((self.PF << 8) | (addr & 0xFF), data)
 
     @cython.ccall
     def load(self, addr: cython.uint) -> cython.uint:
-        return self[(self.PF << 8) | (addr & 0xFF)]
+        return self._read((self.PF << 8) | (addr & 0xFF))
 
     @cython.ccall
     def pull(self) -> cython.uint:
         self.S = (self.S + 1) & 0xFF
-        return self.read(0x100 | self.S)
+        return self._read(0x100 | self.S)
 
     @cython.ccall
     def push(self, data: cython.uint):
-        self.write(0x100 | self.S, data & 0xFF)
+        self._write(0x100 | self.S, data & 0xFF)
         self.S = (self.S - 1) & 0xFF
 
     @cython.ccall
     def fetch(self) -> cython.uint:
-        data: cython.uint = self.read(self.PC)
+        data: cython.uint = self._read(self.PC)
         self.PC = (self.PC + 1) & 0xFFFF
         return data
 
@@ -336,94 +415,10 @@ class Apu:
         cython.cast(Timer, self.timers[2]).step(clocks)
 
     def __getitem__(self, addr: int) -> int:
-        self.cycles += 1
-
-        # if 0xF0 <= addr <= 0xF3:
-        #    print(f"!!! Reading register {hex(addr)}")
-
-        if 0x0000 <= addr <= 0x00EF:
-            return self.page_0[addr]
-        elif addr == 0x00F0:
-            return self.test_register
-        elif addr == 0x00F1:
-            return self.control_register
-        elif addr == 0x00F2:
-            return self.dsp_register_address
-        elif addr == 0x00F3:
-            return self.dsp_register_data
-        elif 0x00F4 <= addr <= 0x00F7:
-            # print(f"  APU read [{hex(addr)}] ==> {hex(self.ports_r[addr - 0x00F4])}")
-            return self.ports_r[addr - 0x00F4]
-        elif addr == 0x00F8:
-            return self.f8
-        elif addr == 0x00F9:
-            return self.f9
-        elif 0x00FA <= addr <= 0x00FC:
-            return self.timers[addr - 0x00FA].target
-        elif 0x00FD <= addr <= 0x00FF:
-            timer = self.timers[addr - 0x00FD]
-            data = timer.stage3
-            timer.stage3_shadow = data
-            timer.stage3 = 0
-            return data
-        elif 0x0100 <= addr <= 0x01FF:
-            return self.page_1[addr - 0x0100]
-        elif 0x0200 <= addr <= 0xFFBF:
-            return self.memory[addr - 0x0200]
-        elif 0xFFC0 <= addr <= 0xFFFF:
-            return self.ipl_rom[addr - 0xFFC0]
-
-        raise RuntimeError(
-            "Error reading unmamped memory region: 0x{:04X}".format(addr)
-        )
+        return self._read(addr)
 
     def __setitem__(self, addr: int, value: int) -> None:
-        self.cycles += 1
-
-        # if 0xF0 <= addr <= 0xF3:
-        #    print(f"!!! Writing register {hex(addr)} <== {hex(value)}")
-
-        if 0x0000 <= addr <= 0x00EF:
-            self.page_0[addr] = value
-        elif addr == 0x00F0:
-            self.test_register = value
-        elif addr == 0x00F1:
-            self.control_register = value
-        elif addr == 0x00F2:
-            self.dsp_register_address = value
-        elif addr == 0x00F3:
-            self.dsp_register_data = value
-        elif 0x00F4 <= addr <= 0x00F7:
-            self.ports_w[addr - 0x00F4] = value
-            self.ports_r[addr - 0x00F4] = value  # mirror so APU can read its own writes
-            self._ports_w_dirty = True
-        elif addr == 0x00F8:
-            self.f8 = value
-        elif addr == 0x00F9:
-            self.f9 = value
-        elif 0x00FA <= addr <= 0x00FC:
-            timer = self.timers[addr - 0x00FA]
-            timer.target = value
-        elif 0x00FD <= addr <= 0x00FF:
-            timer = self.timers[addr - 0x00FD]
-            timer.stage3 = value
-            timer.stage3_shadow = value
-        elif 0x0100 <= addr <= 0x01FF:
-            self.page_1[addr - 0x0100] = value
-        elif 0x0200 <= addr <= 0xFFBF:
-            # print(f"[{hex(addr)}] <== {hex(value)}")
-            self.memory[addr - 0x0200] = value
-        elif 0xFFC0 <= addr <= 0xFFFF:
-            # IPL ROM range: writable only when ipl_rom has been made mutable
-            # (e.g. by _write_mem in instruction tests)
-            if isinstance(self.ipl_rom, bytearray):
-                self.ipl_rom[addr - 0xFFC0] = value
-        else:
-            print(
-                "Error writting unmamped memory region: 0x{:04X} <== 0x{:04X}".format(
-                    addr, value
-                )
-            )
+        self._write(addr, value)
 
     @property
     def PSW(self) -> int:

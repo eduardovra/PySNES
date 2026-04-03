@@ -111,6 +111,58 @@ Missing features and Cython performance analysis for CPU, APU, and PPU.
 
 5. **`vram` is untyped `bytearray`** — in Cython, `bytearray` indexing goes through Python without a typed memoryview declaration.
 
+### Testing Strategy
+
+Screenshot comparison against Mesen reference output. Each test:
+1. Runs PySNES for N frames on a known ROM
+2. Captures the framebuffer
+3. Compares pixel-by-pixel against a Mesen-generated reference PNG
+
+**Available test ROMs** (`submodules/SNES/PPU/` — PeterLemon collection, pre-built `.sfc` + reference `.png` per ROM):
+
+| Feature | ROM | Reference PNG |
+|---|---|---|
+| BG1 2BPP tilemap | `BGMAP/8x8/2BPP/8x8BG1Map2BPP32x328PAL/` | ✅ included |
+| BG2 2BPP tilemap | `BGMAP/8x8/2BPP/8x8BG2Map2BPP32x328PAL/` | ✅ included |
+| BG3 2BPP tilemap | `BGMAP/8x8/2BPP/8x8BG3Map2BPP32x328PAL/` | ✅ included |
+| BG4 2BPP tilemap | `BGMAP/8x8/2BPP/8x8BG4Map2BPP32x328PAL/` | ✅ included |
+| BG 4BPP tilemap | `BGMAP/8x8/4BPP/8x8BGMap4BPP32x328PAL/` | ✅ included |
+| BG 8BPP tilemap (multiple sizes) | `BGMAP/8x8/8BPP/*/` | ✅ included |
+| Tile flip | `BGMAP/8x8/8BPP/TileFlip/` | ✅ included |
+| Mode 7 rotation/zoom | `Mode7/RotZoom/` | — |
+| Mode 7 perspective | `Mode7/Perspective/` | — |
+| Window masking (HDMA) | `Window/WindowHDMA/` | — |
+| Mosaic (Mode 3) | `Mosaic/Mode3/` | — |
+| Mosaic (Mode 5) | `Mosaic/Mode5/` | — |
+| HDMA wave | `HDMA/WaveHDMA/` | — |
+| HiColor blend | `Blend/HiColor/*/` | — |
+| Interlace | `Interlace/*/` | — |
+
+**Coverage gaps** — no pre-built test ROMs available for:
+- BG modes 2, 4, 5, 6 (PeterLemon organises by BPP depth, not mode number)
+- Sprites / OAM rendering
+- Color math / CGADSUB sub-screen blending
+- 16×16 BG tiles
+- Backdrop transparency
+
+For these gaps, minimal test ROMs will need to be authored (65816 assembly using `ca65` or byte-array generation in Python).
+
+### Action Plan (ordered by impact)
+
+| Priority | Item | Test ROM available |
+|---|---|---|
+| 1 | Build screenshot comparison test harness (run ROM → capture framebuffer → diff vs reference) | infrastructure |
+| 2 | Fix `draw_point()` — writes pixel color but never stores to `main_bgs`; sprites and tiles are invisible | need to author |
+| 3 | Fix backdrop color — applied unconditionally; should only show for transparent pixels | BG tilemap ROMs |
+| 4 | Fix `bgmode` / `oamaddl` / `oamaddh` `NotImplementedError` getters | BG tilemap ROMs |
+| 5 | Fix VRAM address remapping crash (`assert remapping == 0`) | BG tilemap ROMs |
+| 6 | Implement BG modes 2, 4, 5, 6 | need to author |
+| 7 | Implement Mode 7 (rotation/scaling) | `Mode7/RotZoom.sfc` |
+| 8 | Implement window masking | `Window/WindowHDMA.sfc` |
+| 9 | Implement color math / sub-screen blending | need to author |
+| 10 | Fix 16×16 BG tiles | need to author |
+| 11 | Cython hot spots (`main_bgs`, `draw_tile`, `get_u32_color`, NDC floats, `vram` memoryview) | any BG tilemap ROM |
+
 ---
 
 ## Summary Table

@@ -1,10 +1,51 @@
 # cython: auto_pickle=False
-from functools import partial
 from typing import Any
 
 import cython
 
 from .spc700.instructions_spc700 import INSTRUCTIONS
+
+
+@cython.cclass
+class InstructionSlot:
+    """Replaces functools.partial for instruction dispatch.
+
+    Stores func + up to 4 extra args as individual C fields (no tuple).
+    cython.cast(InstructionSlot, slot).call() dispatches via C vtable,
+    bypassing Python's __call__ protocol overhead.
+    """
+    _func  = cython.declare(object)
+    _a0    = cython.declare(object)   # always the apu instance
+    _a1    = cython.declare(object)
+    _a2    = cython.declare(object)
+    _a3    = cython.declare(object)
+    _nargs = cython.declare(cython.int)
+
+    def __init__(self, func, a0, a1=None, a2=None, a3=None):
+        self._func  = func
+        self._a0    = a0
+        self._a1    = a1
+        self._a2    = a2
+        self._a3    = a3
+        if a3 is not None:
+            self._nargs = 4
+        elif a2 is not None:
+            self._nargs = 3
+        elif a1 is not None:
+            self._nargs = 2
+        else:
+            self._nargs = 1
+
+    @cython.ccall
+    def call(self):
+        if self._nargs == 1:
+            self._func(self._a0)
+        elif self._nargs == 2:
+            self._func(self._a0, self._a1)
+        elif self._nargs == 3:
+            self._func(self._a0, self._a1, self._a2)
+        else:
+            self._func(self._a0, self._a1, self._a2, self._a3)
 
 
 @cython.cclass
@@ -238,7 +279,7 @@ class Apu:
         self.instructions: Any = [None] * 256
         self.debug_symbols: Any = [""] * 256
         for opcode, addr_mode, *args in INSTRUCTIONS:
-            self.instructions[opcode] = partial(addr_mode, self, *args)
+            self.instructions[opcode] = InstructionSlot(addr_mode, self, *args)
             self.debug_symbols[opcode] = f"{addr_mode.__name__}"
             if args:
                 if hasattr(args[0], "__name__"):
@@ -373,7 +414,7 @@ class Apu:
                 self.PC - 1, opcode, self.debug_symbols[opcode],
                 self.address, self.data, str(self),
             ))
-        self.instructions[opcode]()
+        cython.cast(InstructionSlot, self.instructions[opcode]).call()
 
     # Approximate master-clock-to-APU-clock ratio (integer division)
     _APU_MC_PER_CLOCK: int = 21  # 21477272 / 1024000 ≈ 20.979

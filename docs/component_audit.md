@@ -17,7 +17,7 @@ Missing features and Cython performance analysis for CPU, APU, and PPU.
 | `get_clock_cycles()` ignored $420D FastROM | Wired through `CpuStatus.fast_rom` |
 | `CpuStatus` used `@dataclass` + `@cython.cclass` | Replaced with `cython.declare()` fields |
 | `ccall` on hot read/write methods | Changed to `@cython.cfunc` |
-| `functools.partial` instruction dispatch | Replaced with `InstructionSlot` cclass + `cython.cast` (+42% throughput: 9.78M → 13.89M instr/sec) |
+| `functools.partial` instruction dispatch | Replaced with `InstructionSlot` cclass + `cython.cast` (+28%: ~9.8M → 12.5M instr/sec) |
 | `idleBranch()` / `idleJump()` stubs | Confirmed correct as no-ops — `idle6` handles page-cross penalty; verified with 20+ test cases per branch opcode |
 | `synchronizing()` hardcoded `True` | Not a CPU bug — WAI/STP spin loop is scheduler design; correct for single-step tests |
 
@@ -38,13 +38,14 @@ Missing features and Cython performance analysis for CPU, APU, and PPU.
 | Port reset bits 4/5 reset both `ports_r` and `ports_w` | Fixed: only `ports_r` (CPU→APU input) is reset, matching bsnes hardware behavior |
 | `Apu` / `Timer` plain Python classes — all attrs dict-backed | Converted to `@cython.cclass` with `cython.declare()` fields; hot methods annotated `@cython.ccall` / `@cython.cfunc` |
 | `f8` / `f9` registers unknown purpose | Confirmed correct as-is — they are general-purpose RAM bytes with no special hardware behavior |
+| `__getitem__`/`__setitem__` if-elif dispatch | Replaced with `_read`/`_write` `@cython.cfunc`; `_mem_log` field replaces test patching (+10%: 16.3M → 17.9M instr/sec) |
+| `functools.partial` instruction dispatch | Replaced with `InstructionSlot` cclass + `cython.cast` (+48%: 17.9M → 26.5M instr/sec) |
 
 ### Remaining (out of scope for this branch)
 
 | Issue | Impact |
 |---|---|
 | DSP register writes (`$F2`/`$F3`) are no-ops | No audio synthesis; sound absent entirely — separate feature |
-| `__getitem__`/`__setitem__` if-elif dispatch | Bottleneck; test patching requirement prevents moving to cfunc |
 
 ---
 

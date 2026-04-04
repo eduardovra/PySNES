@@ -133,8 +133,8 @@ pysnes/ppu/data_structures.py  Background and sprite data structures
 
 ## Integration Testing (Mesen oracle)
 
-Mesen 2 is used as a reference oracle for integration tests. Binary is at `tools/Mesen` (git-ignored).
-Download from https://github.com/SourMesen/Mesen2/releases and place at `tools/Mesen` (chmod +x).
+Mesen 2 is used as a reference oracle for integration tests.
+Download from https://github.com/SourMesen/Mesen2/releases, then set `MESEN_BIN` env var or `"mesen_bin"` in `settings.json`.
 
 ```bash
 # Tier 1 — find first diverging frame (CPU/SPC registers + WRAM CRC32):
@@ -153,7 +153,7 @@ uv run --python pypy@3.10 pytest pysnes/ -m "not integration"
 - Mesen Lua scripts are in `scripts/mesen_oracle.lua` (Tier 1) and `scripts/mesen_trace.lua` (Tier 2)
 - Port is passed to Lua via `MESEN_PORT` env var; frame/instruction count via `MESEN_FRAMES`/`MESEN_INSTRUCTIONS`
 - `PYSNES_HEADLESS=1` suppresses SDL2 window during PySNES fixture runs
-- Alternative oracle: BizHawk (compiled binary at `/home/eduardovra/Downloads/BizHawk-2.11-linux-x64`); Lua API reference at https://tasvideos.org/Bizhawk/LuaFunctions
+- Alternative oracle: BizHawk; Lua API reference at https://tasvideos.org/Bizhawk/LuaFunctions
 
 ## Testing
 

@@ -14,7 +14,10 @@ Run:
     uv run --python pypy3.10 pytest pysnes/ppu/test_ppu.py -m ppu -v
 """
 
+import os
 import struct
+import subprocess
+import tempfile
 import zlib
 from pathlib import Path
 
@@ -28,6 +31,10 @@ ACTUALS_DIR  = REPO_ROOT / "tests" / "ppu_references"
 MC_PER_FRAME = 262 * 1364
 SCREEN_W     = 256
 SCREEN_H     = 224
+
+# Mesen getScreenBuffer() returns 256x239; visible 224 lines start at row 7.
+MESEN_BUF_H     = 239
+MESEN_ROW_OFFSET = 7
 
 
 # ---------------------------------------------------------------------------
@@ -107,16 +114,93 @@ def _run_pysnes(rom_path: Path, n_frames: int) -> list:
         frame_end = pysnes.scheduler.master_clock + MC_PER_FRAME
         pysnes.scheduler.run_to(frame_end)
 
-    # main_bgs is a flat list of u32 0xRRGGBB values, 256×262
+    # Apply INIDISP brightness (0-15) post-VBlank, matching Mesen's getScreenBuffer() behavior.
+    # main_bgs stores unbrightened 8-bit values; brightness is applied here at read time.
+    brightness = pysnes.ppu.display_brightness
     pixels = []
     for y in range(SCREEN_H):
         for x in range(SCREEN_W):
             u32 = pysnes.ppu.main_bgs[y * SCREEN_W + x]
-            r = (u32 >> 16) & 0xFF
-            g = (u32 >>  8) & 0xFF
-            b = (u32 >>  0) & 0xFF
+            r5 = (u32 >> 27) & 0x1F
+            g5 = (u32 >> 19) & 0x1F
+            b5 = (u32 >> 11) & 0x1F
+            r5 = (r5 * brightness) // 15
+            g5 = (g5 * brightness) // 15
+            b5 = (b5 * brightness) // 15
+            r = (r5 << 3) | (r5 >> 2)
+            g = (g5 << 3) | (g5 >> 2)
+            b = (b5 << 3) | (b5 >> 2)
             pixels.append((r, g, b))
     return pixels
+
+
+# ---------------------------------------------------------------------------
+# Mesen reference generation
+# ---------------------------------------------------------------------------
+
+def _mesen_bin(config) -> str:
+    """Return path to Mesen binary, or pytest.skip() if not found."""
+    from pysnes import settings as s  # noqa: PLC0415
+    cfg = s.load()
+    candidates = [
+        os.environ.get("MESEN_BIN"),
+        cfg.get("mesen_bin"),
+    ]
+    for path in candidates:
+        if path and Path(path).exists():
+            return path
+    pytest.skip(
+        "Mesen binary not found. Set MESEN_BIN env var or 'mesen_bin' in settings.json"
+    )
+
+
+def _generate_ref_png(mesen: str, rom_path: Path, ref_path: Path, n_frames: int) -> None:
+    """Run Mesen headlessly, capture framebuffer, save as reference PNG."""
+    lua_script = REPO_ROOT / "scripts" / "mesen_screenshot.lua"
+    with tempfile.NamedTemporaryFile(suffix=".bin", delete=False) as tf:
+        out_bin = tf.name
+
+    try:
+        env = os.environ.copy()
+        env["MESEN_FRAMES"] = str(n_frames)
+        env["MESEN_OUTPUT_BIN"] = out_bin
+
+        import time  # noqa: PLC0415
+        proc = subprocess.Popen(
+            [mesen, str(rom_path), "--headless", "--lua", str(lua_script)],
+            env=env,
+        )
+        # Wait for Mesen to finish writing the output file (it hangs after emu.stop())
+        expected_size = SCREEN_W * MESEN_BUF_H * 4
+        deadline = time.monotonic() + 30
+        while time.monotonic() < deadline:
+            if Path(out_bin).stat().st_size >= expected_size:
+                break
+            time.sleep(0.1)
+        proc.kill()
+        proc.wait()
+
+        raw = Path(out_bin).read_bytes()
+        count = len(raw) // 4
+        assert count == SCREEN_W * MESEN_BUF_H, (
+            f"Expected {SCREEN_W * MESEN_BUF_H} pixels, got {count}"
+        )
+        pixels_u32 = struct.unpack(f"<{count}I", raw)
+
+        # Extract visible 224 rows starting at MESEN_ROW_OFFSET
+        pixels = []
+        for row in range(SCREEN_H):
+            for col in range(SCREEN_W):
+                v = pixels_u32[(MESEN_ROW_OFFSET + row) * SCREEN_W + col]
+                r = (v >> 16) & 0xFF
+                g = (v >>  8) & 0xFF
+                b =  v        & 0xFF
+                pixels.append((r, g, b))
+
+        _write_png(ref_path, pixels, SCREEN_W, SCREEN_H)
+        print(f"  Saved reference: {ref_path}")
+    finally:
+        Path(out_bin).unlink(missing_ok=True)
 
 
 # ---------------------------------------------------------------------------
@@ -194,13 +278,19 @@ PPU_TEST_ROMS = [
     PPU_TEST_ROMS,
     ids=[t[0] for t in PPU_TEST_ROMS],
 )
-def test_ppu_screenshot(test_id, rom_rel, ref_rel, n_frames):
-    """Compare PySNES framebuffer against the PeterLemon reference PNG."""
+def test_ppu_screenshot(request, test_id, rom_rel, ref_rel, n_frames):
+    """Compare PySNES framebuffer against the Mesen reference PNG."""
     rom_path = PPU_ROMS / rom_rel
     ref_path = PPU_ROMS / ref_rel
 
     if not rom_path.exists():
         pytest.skip(f"ROM not found: {rom_path}")
+
+    if request.config.getoption("--update-refs"):
+        mesen = _mesen_bin(request.config)
+        _generate_ref_png(mesen, rom_path, ref_path, n_frames)
+        return
+
     if not ref_path.exists():
         pytest.skip(f"Reference PNG not found: {ref_path}")
 

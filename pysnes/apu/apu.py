@@ -562,4 +562,3 @@ class Apu:
             self.ports_r[3] = 0x00
 
         self.ipl_rom_enable = bool(data & 0x80)
-

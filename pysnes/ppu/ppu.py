@@ -80,6 +80,37 @@ class Ppu:
         self.latch_bgofs_ppu1 = 0
         self.latch_bgofs_ppu2 = 0
 
+        # Mode 7 matrix registers (0x211B-0x2120), 2-write latched
+        self._m7_latch: cython.uchar = 0
+        self.m7a: cython.int = 0
+        self.m7b: cython.int = 0
+        self.m7c: cython.int = 0
+        self.m7d: cython.int = 0
+        self.m7x: cython.int = 0
+        self.m7y: cython.int = 0
+
+        # Window registers (0x2123-0x212B)
+        self.w12sel: cython.uchar = 0
+        self.w34sel: cython.uchar = 0
+        self.wobjsel: cython.uchar = 0
+        self.wh0: cython.uchar = 0   # Window 1 left
+        self.wh1: cython.uchar = 0   # Window 1 right
+        self.wh2: cython.uchar = 0   # Window 2 left
+        self.wh3: cython.uchar = 0   # Window 2 right
+        self.wbglog: cython.uchar = 0
+        self.wobjlog: cython.uchar = 0
+
+        # Window screen disable (0x212E-0x212F)
+        self.tmw: cython.uchar = 0
+        self.tsw: cython.uchar = 0
+
+        # Color math registers (0x2130-0x2132)
+        self.cgwsel: cython.uchar = 0
+        self.cgadsub: cython.uchar = 0
+        self.coldata_r: cython.uchar = 0
+        self.coldata_g: cython.uchar = 0
+        self.coldata_b: cython.uchar = 0
+
         # Mosaic
         self.mosaic_enabled = [False, False, False, False]
         self.mosaic_size = 0
@@ -306,6 +337,37 @@ class Ppu:
         self.bg4.sub_screen_enable = bool(data >> 3 & 1)
         self.oam_sub_screen_enable = bool(data >> 4 & 1)
 
+    def m7_write(self, reg: int, data: int) -> None:
+        """Handle 2-write Mode 7 matrix registers (M7A-M7Y, 0x211B-0x2120)."""
+        value: cython.int = (data << 8) | self._m7_latch
+        self._m7_latch = data
+        if reg == 0x211B:
+            self.m7a = value
+        elif reg == 0x211C:
+            self.m7b = value
+        elif reg == 0x211D:
+            self.m7c = value
+        elif reg == 0x211E:
+            self.m7d = value
+        elif reg == 0x211F:
+            self.m7x = value & 0x1FFF  # 13-bit signed
+            if self.m7x >= 0x1000:
+                self.m7x -= 0x2000
+        elif reg == 0x2120:
+            self.m7y = value & 0x1FFF  # 13-bit signed
+            if self.m7y >= 0x1000:
+                self.m7y -= 0x2000
+
+    def coldata_set(self, data: int) -> None:
+        """COLDATA (0x2132) - Fixed color for color math."""
+        intensity: cython.uchar = data & 0x1F
+        if data & 0x20:
+            self.coldata_r = intensity
+        if data & 0x40:
+            self.coldata_g = intensity
+        if data & 0x80:
+            self.coldata_b = intensity
+
     # ------------------------------------------------------------------
     # Scheduler integration
     # ------------------------------------------------------------------
@@ -324,7 +386,7 @@ class Ppu:
         self.h_counter = 274
         self.bus.hblank = True
 
-        if self.v_counter < _VBLANK_START_LINE:
+        if 0 < self.v_counter < _VBLANK_START_LINE:
             self.render_scanline()
 
         # Schedule end of scanline / start of next
@@ -465,7 +527,7 @@ class Ppu:
             x_ndc = 2.0 * (scrx / SCREEN_WIDTH) - 1.0
             # y_ndc = 1.0 - 2.0 * (self.v_counter / SCREEN_HEIGHT)
 
-            x, y, width = scrx, self.v_counter, SCREEN_WIDTH
+            x, y, width = scrx, self.v_counter - 1, SCREEN_WIDTH
             self.main_bgs[y * width + x] = u32_color
 
     # @cython.nogil
@@ -500,7 +562,7 @@ class Ppu:
             scroll_y: cython.uint = bg.voffset
 
             orgx = scrx
-            orgy = scry
+            orgy = scry - 1
             scry: cython.uint = (scry + scroll_y) % (8 * bg_size_h)
             scrx: cython.uint = (scrx + scroll_x) % (8 * bg_size_w)
 
@@ -527,12 +589,12 @@ class Ppu:
                 v_shift: cython.uint = i + (-i + 7 - i) * tilemap_v_flip
                 h_shift: cython.uint = (7 - j) + (2 * j - 7) * tilemap_h_flip
                 if bpp == 2:
-                    tile_address: cython.uint = (tilemap_addr * 8 + (bg.tiledata_addr * 2) + v_shift) * 2
+                    tile_address: cython.uint = bg.tiledata_addr + tilemap_addr * 16 + v_shift * 2
                     b_lo: cython.uint = self.vram[tile_address]
                     b_hi: cython.uint = self.vram[tile_address + 1]
                     v: cython.uint = ((b_lo >> h_shift) & 1) + (2 * ((b_hi >> h_shift) & 1))
                 elif bpp == 4:
-                    tile_address: cython.uint = (tilemap_addr * 16 + (bg.tiledata_addr * 2) + v_shift) * 2
+                    tile_address: cython.uint = bg.tiledata_addr + tilemap_addr * 32 + v_shift * 2
                     b_1: cython.uint = self.vram[tile_address]
                     b_2: cython.uint = self.vram[tile_address + 1]
                     b_3: cython.uint = self.vram[tile_address + 16]
@@ -540,7 +602,7 @@ class Ppu:
                     v: cython.uint = ((b_1 >> h_shift) & 1) + (2 * ((b_2 >> h_shift) & 1)) + \
                         (4 * ((b_3 >> h_shift) & 1)) + (8 * ((b_4 >> h_shift) & 1))
                 elif bpp == 8:
-                    tile_address: cython.uint = (tilemap_addr * 32 + (bg.tiledata_addr * 1) + v_shift) * 2
+                    tile_address: cython.uint = bg.tiledata_addr + tilemap_addr * 64 + v_shift * 2
                     b_1: cython.uint = self.vram[tile_address]
                     b_2: cython.uint = self.vram[tile_address + 1]
                     b_3: cython.uint = self.vram[tile_address + 16]
@@ -756,9 +818,9 @@ class Ppu:
         g_5bit = data >> 5 & 0x1F
         b_5bit = data >> 10 & 0x1F
 
-        r_8bit = (r_5bit * 255) // 31
-        g_8bit = (g_5bit * 255) // 31
-        b_8bit = (b_5bit * 255) // 31
+        r_8bit = (r_5bit << 3) | (r_5bit >> 2)
+        g_8bit = (g_5bit << 3) | (g_5bit >> 2)
+        b_8bit = (b_5bit << 3) | (b_5bit >> 2)
 
     # ...existing code...
         r = r_8bit / 255
@@ -778,9 +840,9 @@ class Ppu:
         g_5bit = data >> 5 & 0x1F
         b_5bit = data >> 10 & 0x1F
 
-        r_8bit = (r_5bit * 255) // 31
-        g_8bit = (g_5bit * 255) // 31
-        b_8bit = (b_5bit * 255) // 31
+        r_8bit = (r_5bit << 3) | (r_5bit >> 2)
+        g_8bit = (g_5bit << 3) | (g_5bit >> 2)
+        b_8bit = (b_5bit << 3) | (b_5bit >> 2)
         a_8bit = 255 if color else 0  # 255 no transparency, 0 full transparency
 
         return (r_8bit << 24) | (g_8bit << 16) | (b_8bit << 8) | a_8bit
@@ -792,9 +854,9 @@ class Ppu:
         g_5bit = data >> 5 & 0x1F
         b_5bit = data >> 10 & 0x1F
 
-        r_8bit = (r_5bit * 255) // 31
-        g_8bit = (g_5bit * 255) // 31
-        b_8bit = (b_5bit * 255) // 31
+        r_8bit = (r_5bit << 3) | (r_5bit >> 2)
+        g_8bit = (g_5bit << 3) | (g_5bit >> 2)
+        b_8bit = (b_5bit << 3) | (b_5bit >> 2)
 
     # ...existing code...
         r = r_8bit / 255
@@ -809,9 +871,9 @@ class Ppu:
         g_5bit = data >> 5 & 0x1F
         b_5bit = data >> 10 & 0x1F
 
-        r_8bit = (r_5bit * 255) // 31
-        g_8bit = (g_5bit * 255) // 31
-        b_8bit = (b_5bit * 255) // 31
+        r_8bit = (r_5bit << 3) | (r_5bit >> 2)
+        g_8bit = (g_5bit << 3) | (g_5bit >> 2)
+        b_8bit = (b_5bit << 3) | (b_5bit >> 2)
         a_8bit = 255  # 255 no transparency, 0 full transparency
 
         return (r_8bit << 24) | (g_8bit << 16) | (b_8bit << 8) | a_8bit

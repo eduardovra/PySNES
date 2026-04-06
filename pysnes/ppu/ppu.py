@@ -525,19 +525,10 @@ class Ppu:
 
     def draw_scanline_backdrop(self) -> None:
         """Draw the backdrop color for the current scanline"""
-        r, g, b = self.get_rbg_backdrop_color()
         u32_color = self.get_u32_backdrop_color()
-
-        # x_ndc = 2.0 * (0 / SCREEN_WIDTH) - 1.0
-        y_ndc = 1.0 - 2.0 * (self.v_counter / SCREEN_HEIGHT)
-
-        # Assuming 256 dots per scanline
-        for scrx in range(SCREEN_WIDTH):
-            x_ndc = 2.0 * (scrx / SCREEN_WIDTH) - 1.0
-            # y_ndc = 1.0 - 2.0 * (self.v_counter / SCREEN_HEIGHT)
-
-            x, y, width = scrx, self.v_counter - 1, SCREEN_WIDTH
-            self.main_bgs[y * width + x] = u32_color
+        y = self.v_counter - 1
+        for x in range(SCREEN_WIDTH):
+            self.main_bgs[y * SCREEN_WIDTH + x] = u32_color
 
     # @cython.nogil
     @cython.cfunc
@@ -809,12 +800,6 @@ class Ppu:
         x: int,
         y: int,
     ) -> None:
-        # raise NotImplementedError("This method is not doing anything at the moment")
-        # Bitplane handling
-        # The first byte is composed of the first
-        # 8 least significant bits of the pixel
-        # and the second byte if composed of the
-        # 8 most significant bits
         mask = 1 << pixel
         assert bpp in (2, 4), bpp
 
@@ -828,25 +813,10 @@ class Ppu:
             l, h = tile_data[i + 16], tile_data[i + 17]
             color |= (h & mask) >> pixel << 3 | (l & mask) >> pixel << 2
 
-    # ...existing code...
-
-        x_ndc = 2.0 * (x / SCREEN_WIDTH) - 1.0
-        y_ndc = 1.0 - 2.0 * (y / SCREEN_HEIGHT)
-
-        """
-        https://sneslab.net/wiki/Backdrop_Color
-        A Backdrop Color is one that appears behind all other layers. The SNES has two backdrop colors:
-        one for the Main Screen and one for the Sub Screen.
-
-        The main screen's backdrop color is known as color 0 and is the very first entry of CGRAM.
-        The sub screen's backdrop color is known as the fixed color and is set via the 8-bit COLDATA port (2132h).[1][2]
-        """
-        # TODO this is incorrect. the backdrop color should only be used when all layers above are transparent
-        r, g, b = self.get_rbg_colors(bpp, 0, 0)
-
-        # 00 is considered transparent in all palettes
-        if color:
-            r, g, b = self.get_rbg_colors(bpp, palette, color)
+        # color == 0 is transparent — do not overwrite existing pixel
+        if color and 0 <= x < SCREEN_WIDTH:
+            u32_color = self.get_u32_color(bpp, palette, color)
+            self.main_bgs[(y - 1) * SCREEN_WIDTH + x] = u32_color
 
     def get_rbg_colors(self, bpp: int, palette: int, color: int, color_offset: int = 0) -> tuple:
         # 4 colors (2bpp palette) x 2 bytes each color
@@ -925,6 +895,9 @@ class Ppu:
         # they can move independently from the background and always use 4bpp
         # they can be 8x8, 16x16, 32x32 or 64x64 pixels in size
         # oam is the memory region where the objects properties are stored. each obj uses 34 bits
+
+        if not self.oam_main_screen_enable:
+            return
 
         for obj in self.oam.objects:
             # Draw object if it's within the visible area (256x224)

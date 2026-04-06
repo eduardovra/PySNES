@@ -175,8 +175,8 @@ Covered by `TestTilemapWordBits` in `test_ppu_scroll.py`.
 | ~~2~~ | ~~Fix tilemap word extraction~~ | ✅ verified correct, covered by TestTilemapWordBits |
 | ~~5~~ | ~~Implement window masking (`$2123–$212B`)~~ | ✅ window_hdma PASS |
 | ~~6~~ | ~~Implement mosaic effect (remove `and False` stub)~~ | ✅ mosaic_mode3 PASS at n_frames=2 (size=1 no-op path — full mosaic block replication not yet implemented) |
-| 3 | Fix `draw_point()` — writes pixel color but never stores to `main_bgs`; sprites invisible | need to author sprite ROM |
-| 4 | Fix backdrop color — applied unconditionally; should only show for transparent pixels | BG tilemap ROMs |
+| ~~3~~ | ~~Fix `draw_point()` — writes pixel color but never stores to `main_bgs`; sprites invisible~~ | ✅ `test_ppu_sprites.py` — 6 synthetic unit tests |
+| ~~4~~ | ~~Fix backdrop color — applied unconditionally; should only show for transparent pixels~~ | ✅ transparent pixel guard + `oam_main_screen_enable` check in `draw_objects()`; BG tests pass |
 | 7 | Implement Mode 7 (rotation/scaling) | `Mode7/RotZoom.sfc` |
 | 8 | Fix `bgmode` / `oamaddl` / `oamaddh` `NotImplementedError` getters | any BG tilemap ROM |
 | 9 | Fix VRAM address remapping crash (`assert remapping == 0`) | BG tilemap ROMs |

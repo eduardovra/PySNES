@@ -147,5 +147,3 @@ imgui.ini
 .claude/
 tools/
 
-# PPU test failure snapshots (auto-generated, not reference material)
-tests/ppu_references/

@@ -316,12 +316,12 @@ class Ppu:
         self.bg4.screen_addr = data >> 2 << 10  # Copied from bsnes
 
     def bg12nba_set(self, data: int) -> None:
-        self.bg1.tiledata_addr = (data >> 0 & 15) << 12
-        self.bg2.tiledata_addr = (data >> 4 & 15) << 12
+        self.bg1.tiledata_addr = (data >> 0 & 15) << 13
+        self.bg2.tiledata_addr = (data >> 4 & 15) << 13
 
     def bg34nba_set(self, data: int) -> None:
-        self.bg3.tiledata_addr = (data >> 0 & 15) << 12
-        self.bg4.tiledata_addr = (data >> 4 & 15) << 12
+        self.bg3.tiledata_addr = (data >> 0 & 15) << 13
+        self.bg4.tiledata_addr = (data >> 4 & 15) << 13
 
     def tm_set(self, data: int) -> None:
         self.bg1.main_screen_enable = bool(data >> 0 & 1)

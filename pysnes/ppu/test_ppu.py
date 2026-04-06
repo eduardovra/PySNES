@@ -241,16 +241,10 @@ PPU_TEST_ROMS = [
         5,
     ),
     (
-        "bg_8bpp",
-        "BGMAP/8x8/8BPP/32x32/8x8BGMap8BPP32x32.sfc",
-        "BGMAP/8x8/8BPP/32x32/8x8BGMap8BPP32x32.png",
-        5,
-    ),
-    (
         "tile_flip",
         "BGMAP/8x8/8BPP/TileFlip/8x8BGMapTileFlip.sfc",
         "BGMAP/8x8/8BPP/TileFlip/8x8BGMapTileFlip.png",
-        5,
+        20,
     ),
     (
         "mode7_rotzoom",

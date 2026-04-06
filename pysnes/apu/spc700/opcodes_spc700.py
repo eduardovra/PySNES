@@ -1,7 +1,3 @@
-
-from ctypes import c_uint8
-
-
 class SPC700Opcodes:
     """
     Opcodes implementation

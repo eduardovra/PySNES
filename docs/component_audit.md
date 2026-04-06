@@ -69,7 +69,7 @@ Missing features and Cython performance analysis for CPU, APU, and PPU.
 | `draw_point()` never writes to `main_bgs` | ppu.py:697–745 | Method computes pixel color but discards it — effectively dead code; `draw_tile()` / `draw_tiles()` path (used by sprites) produces no output |
 | Backdrop color applied to every pixel, not only transparent ones | ppu.py:740 | Layers that should show through to backdrop may be overdrawn incorrectly |
 | Mosaic effect disabled (`and False`) | ppu.py:575 | Code written but permanently disabled |
-| Window masking not implemented | bus.py:326–327 | $2123–$212B writes silently ignored; no window clipping |
+| Window masking W2 not implemented | ppu.py | W1 masking implemented; W2 and AND/OR logic not yet wired |
 | Color math / sub-screen blending not implemented | bus.py:337–338 | $2130–$2132 silently ignored; SNES transparency effects absent |
 | Sprite visibility uses `obj.y != 240` hack | ppu.py:831 | Should use proper X/Y bounds check with wrapping; sprites at wrong positions may be drawn or skipped |
 | OAM priority rotation (`_oam_priority_activation`) unused | ppu.py:229–231 | Sprite priority cycling on first sprite never applied |
@@ -127,16 +127,20 @@ Two-level approach:
 | bg4_2bpp | test_ppu.py | ✅ PASS | 5 frames, Mode 0 BG4 2BPP |
 | bg_4bpp | test_ppu.py | ✅ PASS | 5 frames, Mode 1 BG1 4BPP |
 | tile_flip | test_ppu.py | ✅ PASS | 20 frames, 8BPP with h/v flip (FadeIN completes at frame 15) |
-| scroll (10 cases) | test_ppu_scroll.py | ✅ PASS | synthetic: h/v scroll, sub-tile, wrap |
+| scroll (18 cases) | test_ppu_scroll.py | ✅ PASS | h/v scroll, sub-tile, wrap, tilemap bit extraction, palette/priority, window masking |
 | bg_8bpp | removed | — | ROM scrolls 1px/frame — timing sensitivity makes pixel-perfect comparison impossible |
 | mode7_rotzoom | test_ppu.py | ❌ NotImplementedError | Mode 7 render path not implemented |
-| window_hdma | test_ppu.py | ❌ 99.5% mismatch | Window masking not implemented |
-| mosaic_mode3 | test_ppu.py | ❌ 98.6% mismatch | Mosaic effect stubbed out (`and False`) |
+| window_hdma | test_ppu.py | ✅ PASS | 3 frames; HDMA + window masking implemented |
+| mosaic_mode3 | test_ppu.py | ✅ PASS | 2 frames (FadeIN brightness=2 matches reference) |
 
 **Key fixes made (ppu-improvements branch):**
 - `tiledata_addr` formula: `<< 12` → `<< 13` (8KB granularity, matching bsnes) in `bg12nba_set` / `bg34nba_set`
 - Scanline offset: `orgy = scry - 1` — framebuffer row N is written by `v_counter = N+1`
 - Bus registers: wired up missing BG scroll, BG tilemap/tiledata address, INIDISP, and other registers
+- HDMA engine implemented: `hdma_init()` per-frame, `hdma_scanline()` per H-blank, both do-not-repeat and do-repeat modes
+- HDMA timing: render-before-HDMA ordering in `_hblank()` — HDMA updates registers for the NEXT scanline, not current
+- HDMA repeat bit semantics (confirmed empirically from ROM binaries): **bit 7 = 0 = do-not-repeat** (pointer stays, same data each scanline — table format `[count][unit_bytes]`); **bit 7 = 1 = do-repeat** (pointer advances, fresh data each scanline — table format `[count|0x80][count×unit_bytes]`). This is the opposite of intuitive naming.
+- Window masking: BG1-BG4 W1 enable/invert decoded from W12SEL ($2123) / W34SEL ($2124) / TMW ($212E) and applied per-pixel in `draw_background_scanline()`
 
 **Tilemap word extraction (verified correct):**
 SNES tilemap word: bit 15=V-flip, 14=H-flip, 13=priority, 12:10=palette, 9:0=char.
@@ -169,10 +173,10 @@ Covered by `TestTilemapWordBits` in `test_ppu_scroll.py`.
 |---|---|---|
 | ~~1~~ | ~~Build screenshot comparison test harness~~ | ✅ done |
 | ~~2~~ | ~~Fix tilemap word extraction~~ | ✅ verified correct, covered by TestTilemapWordBits |
+| ~~5~~ | ~~Implement window masking (`$2123–$212B`)~~ | ✅ window_hdma PASS |
+| ~~6~~ | ~~Implement mosaic effect (remove `and False` stub)~~ | ✅ mosaic_mode3 PASS at n_frames=2 (size=1 no-op path — full mosaic block replication not yet implemented) |
 | 3 | Fix `draw_point()` — writes pixel color but never stores to `main_bgs`; sprites invisible | need to author sprite ROM |
 | 4 | Fix backdrop color — applied unconditionally; should only show for transparent pixels | BG tilemap ROMs |
-| 5 | Implement window masking (`$2123–$212B`) | `Window/WindowHDMA.sfc` |
-| 6 | Implement mosaic effect (remove `and False` stub) | `Mosaic/Mode3/MosaicMode3.sfc` |
 | 7 | Implement Mode 7 (rotation/scaling) | `Mode7/RotZoom.sfc` |
 | 8 | Fix `bgmode` / `oamaddl` / `oamaddh` `NotImplementedError` getters | any BG tilemap ROM |
 | 9 | Fix VRAM address remapping crash (`assert remapping == 0`) | BG tilemap ROMs |

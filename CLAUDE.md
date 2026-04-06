@@ -142,20 +142,23 @@ pysnes/ppu/data_structures.py  Background and sprite data structures
 | bg4_2bpp | BGMAP/8x8/2BPP/8x8BG4Map2BPP32x328PAL | 5 frames |
 | bg_4bpp | BGMAP/8x8/4BPP/8x8BGMap4BPP32x328PAL | 5 frames |
 | tile_flip | BGMAP/8x8/8BPP/TileFlip | 20 frames (FadeIN finishes at frame 15) |
-| scroll tests | synthetic (no ROM) | 10 unit tests in test_ppu_scroll.py |
+| window_hdma | Window/WindowHDMA | 3 frames (brightness=3 into FadeIN) |
+| mosaic_mode3 | Mosaic/Mode3 | 2 frames (brightness=2 into FadeIN) |
+| scroll tests | synthetic (no ROM) | 18 unit tests in test_ppu_scroll.py |
 
 ### Failing / Excluded
 | Test | Status | Root Cause |
 |------|--------|------------|
 | bg_8bpp | removed | ROM scrolls 1px/frame — any timing difference = totally different image |
 | mode7_rotzoom | NotImplementedError | Mode 7 matrix transform not implemented |
-| window_hdma | 99.5% mismatch | Window masking not implemented |
-| mosaic_mode3 | 98.6% mismatch | Mosaic effect stubbed out |
 
 ### Key PPU Fixes (this branch)
 - `tiledata_addr` formula: `<< 12` → `<< 13` (8KB steps, not 4KB) in `bg12nba_set` / `bg34nba_set`
 - Scanline offset: `orgy = scry - 1` correctly writes scanline N to row N-1 of framebuffer
 - Bus registers: implemented missing BG scroll, BG tilemap/tiledata address registers
+- HDMA engine: `hdma_init()` per-frame, `hdma_scanline()` per H-blank; render-before-HDMA ordering
+- HDMA bit 7 semantics: 0 = do-not-repeat (same data per scanline), 1 = do-repeat (fresh data per scanline)
+- Window masking: W1 enable/invert for BG1-BG4 via W12SEL/W34SEL/TMW applied per-pixel
 
 ## Integration Testing (Mesen oracle)
 

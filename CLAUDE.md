@@ -124,12 +124,39 @@ pysnes/ppu/data_structures.py  Background and sprite data structures
 - **HiROM**: LoROM is the primary target; HiROM may have mapping issues
 - **Window effects**: masking/windowing not implemented
 - **Color math**: SNES special effects processing not implemented
+- **Tilemap word extraction bug**: `tilemap_palette` uses wrong bit shift `(high >> 2) & 7` (should be `(high >> 3) & 7`) and `tilemap_priority` uses `(high >> 5) & 1` (should be `(high >> 2) & 1`). Currently harmless because all passing test ROMs have `high=0` in their tilemap entries. Will matter when palette or priority bits are non-zero.
 
 ### Not Implemented
 - Audio output (DSP registers are accessed but no actual sound synthesis)
 - SRAM / save states
 - PPU Mode 0-7 full support (only basic modes work)
 - Overscan mode (partially recognized)
+
+## PPU Test Status
+
+### Passing (ppu_improvements branch)
+| Test | ROM | Notes |
+|------|-----|-------|
+| bg1_2bpp | BGMAP/8x8/2BPP/8x8BG1Map2BPP32x328PAL | 5 frames |
+| bg2_2bpp | BGMAP/8x8/2BPP/8x8BG2Map2BPP32x328PAL | 5 frames |
+| bg3_2bpp | BGMAP/8x8/2BPP/8x8BG3Map2BPP32x328PAL | 5 frames |
+| bg4_2bpp | BGMAP/8x8/2BPP/8x8BG4Map2BPP32x328PAL | 5 frames |
+| bg_4bpp | BGMAP/8x8/4BPP/8x8BGMap4BPP32x328PAL | 5 frames |
+| tile_flip | BGMAP/8x8/8BPP/TileFlip | 20 frames (FadeIN finishes at frame 15) |
+| scroll tests | synthetic (no ROM) | 10 unit tests in test_ppu_scroll.py |
+
+### Failing / Excluded
+| Test | Status | Root Cause |
+|------|--------|------------|
+| bg_8bpp | removed | ROM scrolls 1px/frame — any timing difference = totally different image |
+| mode7_rotzoom | NotImplementedError | Mode 7 matrix transform not implemented |
+| window_hdma | 99.5% mismatch | Window masking not implemented |
+| mosaic_mode3 | 98.6% mismatch | Mosaic effect stubbed out |
+
+### Key PPU Fixes (this branch)
+- `tiledata_addr` formula: `<< 12` → `<< 13` (8KB steps, not 4KB) in `bg12nba_set` / `bg34nba_set`
+- Scanline offset: `orgy = scry - 1` correctly writes scanline N to row N-1 of framebuffer
+- Bus registers: implemented missing BG scroll, BG tilemap/tiledata address registers
 
 ## Integration Testing (Mesen oracle)
 
@@ -169,6 +196,9 @@ uv run --python pypy@3.10 pytest pysnes/test_spc700.py
 
 # APU / timer / interrupt / scheduler unit tests
 uv run --python pypy@3.10 pytest pysnes/apu/test_apu.py pysnes/test_timers.py pysnes/test_interrupts.py pysnes/test_scheduler.py
+
+# PPU scroll unit tests (synthetic, no ROM needed):
+uv run --python pypy@3.10 pytest pysnes/ppu/test_ppu_scroll.py -v
 
 # PPU screenshot regression tests (requires reference PNGs in tests/ppu_references/)
 uv run --python pypy@3.10 pytest pysnes/ppu/test_ppu.py -m ppu

@@ -256,13 +256,13 @@ PPU_TEST_ROMS = [
         "window_hdma",
         "Window/WindowHDMA/WindowHDMA.sfc",
         "Window/WindowHDMA/WindowHDMA.png",
-        5,
+        3,  # reference captured at brightness=3 (3 NMIs into FadeIN)
     ),
     (
         "mosaic_mode3",
         "Mosaic/Mode3/MosaicMode3.sfc",
         "Mosaic/Mode3/MosaicMode3.png",
-        5,
+        2,  # reference captured at brightness=2 (2 NMIs into FadeIN)
     ),
 ]
 

@@ -138,10 +138,11 @@ Two-level approach:
 - Scanline offset: `orgy = scry - 1` — framebuffer row N is written by `v_counter = N+1`
 - Bus registers: wired up missing BG scroll, BG tilemap/tiledata address, INIDISP, and other registers
 
-**Known bug — tilemap word extraction (not yet fixed):**
-- `tilemap_palette = (high >> 2) & 7` should be `(high >> 3) & 7` (bits 13:11 of the tilemap word)
-- `tilemap_priority = (high >> 5) & 1` should be `(high >> 2) & 1` (bit 10 of the tilemap word)
-- Currently harmless: all passing test ROMs have `high=0` in their tilemap entries (palette 0, priority 0). Will cause wrong palette/priority rendering when non-zero tilemap entries are used.
+**Tilemap word extraction (verified correct):**
+SNES tilemap word: bit 15=V-flip, 14=H-flip, 13=priority, 12:10=palette, 9:0=char.
+- `tilemap_palette = (high >> 2) & 7` ← correct (bits 12:10 = bits 4:2 of high byte)
+- `tilemap_priority = (high >> 5) & 1` ← correct (bit 13 = bit 5 of high byte)
+Covered by `TestTilemapWordBits` in `test_ppu_scroll.py`.
 
 **Available test ROMs** (`submodules/SNES/PPU/` — PeterLemon collection):
 
@@ -167,7 +168,7 @@ Two-level approach:
 | Priority | Item | Test available |
 |---|---|---|
 | ~~1~~ | ~~Build screenshot comparison test harness~~ | ✅ done |
-| 2 | Fix tilemap word extraction: palette bits `(high >> 3) & 7`, priority bit `(high >> 2) & 1` | existing BG tilemap ROMs |
+| ~~2~~ | ~~Fix tilemap word extraction~~ | ✅ verified correct, covered by TestTilemapWordBits |
 | 3 | Fix `draw_point()` — writes pixel color but never stores to `main_bgs`; sprites invisible | need to author sprite ROM |
 | 4 | Fix backdrop color — applied unconditionally; should only show for transparent pixels | BG tilemap ROMs |
 | 5 | Implement window masking (`$2123–$212B`) | `Window/WindowHDMA.sfc` |

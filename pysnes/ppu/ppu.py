@@ -386,8 +386,15 @@ class Ppu:
         self.h_counter = 274
         self.bus.hblank = True
 
+        # Render the current scanline first, then fire HDMA.
+        # On real hardware, H-blank occurs after active display ends, so HDMA
+        # updates registers for the NEXT scanline, not the current one.
         if 0 < self.v_counter < _VBLANK_START_LINE:
             self.render_scanline()
+
+        # HDMA fires at H-blank for each active scanline (including scanline 0)
+        if 0 <= self.v_counter < _VBLANK_START_LINE:
+            self.bus.cpu.dma.hdma_scanline()
 
         # Schedule end of scanline / start of next
         self.scheduler.add(_MC_PER_SCANLINE - _HBLANK_START_MC, self._scanline_end)
@@ -417,6 +424,8 @@ class Ppu:
         self.v_counter = 0
         self.field ^= 1
         self.frames += 1
+        # Initialize HDMA table pointers for the new frame
+        self.bus.cpu.dma.hdma_init()
 
     def render_scanline(self):
         """
@@ -541,6 +550,31 @@ class Ppu:
         if not bg.main_screen_enable:
             return
 
+        # Window masking setup for this BG.
+        # $212E TMW bit (bg.number-1): window masking enabled for this BG on main screen.
+        # $2123 W12SEL (for BG1/BG2) / $2124 W34SEL (for BG3/BG4):
+        #   bit pairs per BG: (enable, invert) for Window 1 and Window 2.
+        # For BG1: W12SEL bits 1:0 = (W1_enable, W1_invert).
+        # invert=0: pixels INSIDE [WH0,WH1] are in the mask zone (not drawn).
+        # invert=1: pixels OUTSIDE [WH0,WH1] are in the mask zone (not drawn).
+        bg_idx: cython.uint = bg.number - 1
+        window_active: cython.bint = bool(self.tmw & (1 << bg_idx))
+        w1_enable: cython.bint = False
+        w1_invert: cython.bint = False
+        if window_active:
+            if bg_idx == 0:
+                w1_enable = bool(self.w12sel >> 1 & 1)
+                w1_invert = bool(self.w12sel & 1)
+            elif bg_idx == 1:
+                w1_enable = bool(self.w12sel >> 5 & 1)
+                w1_invert = bool(self.w12sel >> 4 & 1)
+            elif bg_idx == 2:
+                w1_enable = bool(self.w34sel >> 1 & 1)
+                w1_invert = bool(self.w34sel & 1)
+            elif bg_idx == 3:
+                w1_enable = bool(self.w34sel >> 5 & 1)
+                w1_invert = bool(self.w34sel >> 4 & 1)
+
         # Find the tilemap entry for the requested screen position
 
         # Assuming 256 dots per scanline
@@ -561,8 +595,16 @@ class Ppu:
             scroll_x: cython.uint = bg.hoffset
             scroll_y: cython.uint = bg.voffset
 
-            orgx = scrx
-            orgy = scry - 1
+            orgx: cython.uint = dot   # screen X of this pixel (= dot before scroll)
+            orgy: cython.uint = scanline - 1   # screen Y (output row)
+
+            # Apply window masking: skip this pixel if it falls in the masked zone.
+            if window_active and w1_enable:
+                inside: cython.bint = (self.wh0 <= orgx <= self.wh1)
+                masked: cython.bint = inside ^ w1_invert  # invert=1 → outside is masked
+                if masked:
+                    continue
+
             scry: cython.uint = (scry + scroll_y) % (8 * bg_size_h)
             scrx: cython.uint = (scrx + scroll_x) % (8 * bg_size_w)
 

@@ -124,7 +124,6 @@ pysnes/ppu/data_structures.py  Background and sprite data structures
 - **HiROM**: LoROM is the primary target; HiROM may have mapping issues
 - **Window effects**: masking/windowing not implemented
 - **Color math**: SNES special effects processing not implemented
-- **Tilemap word extraction bug**: `tilemap_palette` uses wrong bit shift `(high >> 2) & 7` (should be `(high >> 3) & 7`) and `tilemap_priority` uses `(high >> 5) & 1` (should be `(high >> 2) & 1`). Currently harmless because all passing test ROMs have `high=0` in their tilemap entries. Will matter when palette or priority bits are non-zero.
 
 ### Not Implemented
 - Audio output (DSP registers are accessed but no actual sound synthesis)

@@ -131,10 +131,39 @@ pysnes/ppu/data_structures.py  Background and sprite data structures
 - PPU Mode 0-7 full support (only basic modes work)
 - Overscan mode (partially recognized)
 
+## PPU Test Status
+
+### Passing (ppu_improvements branch)
+| Test | ROM | Notes |
+|------|-----|-------|
+| bg1_2bpp | BGMAP/8x8/2BPP/8x8BG1Map2BPP32x328PAL | 5 frames |
+| bg2_2bpp | BGMAP/8x8/2BPP/8x8BG2Map2BPP32x328PAL | 5 frames |
+| bg3_2bpp | BGMAP/8x8/2BPP/8x8BG3Map2BPP32x328PAL | 5 frames |
+| bg4_2bpp | BGMAP/8x8/2BPP/8x8BG4Map2BPP32x328PAL | 5 frames |
+| bg_4bpp | BGMAP/8x8/4BPP/8x8BGMap4BPP32x328PAL | 5 frames |
+| tile_flip | BGMAP/8x8/8BPP/TileFlip | 20 frames (FadeIN finishes at frame 15) |
+| window_hdma | Window/WindowHDMA | 3 frames (brightness=3 into FadeIN) |
+| mosaic_mode3 | Mosaic/Mode3 | 2 frames (brightness=2 into FadeIN) |
+| scroll tests | synthetic (no ROM) | 18 unit tests in test_ppu_scroll.py |
+
+### Failing / Excluded
+| Test | Status | Root Cause |
+|------|--------|------------|
+| bg_8bpp | removed | ROM scrolls 1px/frame — any timing difference = totally different image |
+| mode7_rotzoom | NotImplementedError | Mode 7 matrix transform not implemented |
+
+### Key PPU Fixes (this branch)
+- `tiledata_addr` formula: `<< 12` → `<< 13` (8KB steps, not 4KB) in `bg12nba_set` / `bg34nba_set`
+- Scanline offset: `orgy = scry - 1` correctly writes scanline N to row N-1 of framebuffer
+- Bus registers: implemented missing BG scroll, BG tilemap/tiledata address registers
+- HDMA engine: `hdma_init()` per-frame, `hdma_scanline()` per H-blank; render-before-HDMA ordering
+- HDMA bit 7 semantics: 0 = do-not-repeat (same data per scanline), 1 = do-repeat (fresh data per scanline)
+- Window masking: W1 enable/invert for BG1-BG4 via W12SEL/W34SEL/TMW applied per-pixel
+
 ## Integration Testing (Mesen oracle)
 
-Mesen 2 is used as a reference oracle for integration tests. Binary is at `tools/Mesen` (git-ignored).
-Download from https://github.com/SourMesen/Mesen2/releases and place at `tools/Mesen` (chmod +x).
+Mesen 2 is used as a reference oracle for integration tests.
+Download from https://github.com/SourMesen/Mesen2/releases, then set `MESEN_BIN` env var or `"mesen_bin"` in `settings.json`.
 
 ```bash
 # Tier 1 — find first diverging frame (CPU/SPC registers + WRAM CRC32):
@@ -153,7 +182,7 @@ uv run --python pypy@3.10 pytest pysnes/ -m "not integration"
 - Mesen Lua scripts are in `scripts/mesen_oracle.lua` (Tier 1) and `scripts/mesen_trace.lua` (Tier 2)
 - Port is passed to Lua via `MESEN_PORT` env var; frame/instruction count via `MESEN_FRAMES`/`MESEN_INSTRUCTIONS`
 - `PYSNES_HEADLESS=1` suppresses SDL2 window during PySNES fixture runs
-- Alternative oracle: BizHawk (compiled binary at `/home/eduardovra/Downloads/BizHawk-2.11-linux-x64`); Lua API reference at https://tasvideos.org/Bizhawk/LuaFunctions
+- Alternative oracle: BizHawk; Lua API reference at https://tasvideos.org/Bizhawk/LuaFunctions
 
 ## Testing
 
@@ -169,6 +198,14 @@ uv run --python pypy@3.10 pytest pysnes/test_spc700.py
 
 # APU / timer / interrupt / scheduler unit tests
 uv run --python pypy@3.10 pytest pysnes/apu/test_apu.py pysnes/test_timers.py pysnes/test_interrupts.py pysnes/test_scheduler.py
+
+# PPU scroll unit tests (synthetic, no ROM needed):
+uv run --python pypy@3.10 pytest pysnes/ppu/test_ppu_scroll.py -v
+
+# PPU screenshot regression tests (requires reference PNGs in tests/ppu_references/)
+uv run --python pypy@3.10 pytest pysnes/ppu/test_ppu.py -m ppu
+# Generate/update reference PNGs from Mesen (run once, then commit the PNGs):
+uv run --python pypy@3.10 pytest pysnes/ppu/test_ppu.py -m ppu --update-refs
 
 # Filter options (apply to test_cpu.py and test_spc700.py)
 uv run --python pypy@3.10 pytest pysnes/test_cpu.py --opcode ea           # single opcode

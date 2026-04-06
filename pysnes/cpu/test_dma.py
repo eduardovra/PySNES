@@ -263,3 +263,101 @@ def test_hdmaen_clears_when_zero():
     bus[0x00420C] = 0x00
     for ch in cpu.dma.channels:
         assert ch.hdma_enable == 0
+
+
+# ---------------------------------------------------------------------------
+# HDMA scanline execution
+# ---------------------------------------------------------------------------
+
+def _setup_hdma_channel0(bus, rom, table_offset, table_bytes):
+    """Write an HDMA table at ROM[table_offset] and configure channel 0 (mode 1, target $2126)."""
+    for i, b in enumerate(table_bytes):
+        rom.rom[table_offset + i] = b
+    # source address = 0x8000 + table_offset (LoROM: bank 0 / $8000 region)
+    src = 0x8000 + table_offset
+    bus[0x004300] = 0x01   # DMAP0: mode=1 (2 bytes per unit), dir=A→B
+    bus[0x004301] = 0x26   # BBAD0: target $2126 (WH0)
+    bus[0x004302] = src & 0xFF   # A1T0L
+    bus[0x004303] = (src >> 8) & 0xFF  # A1T0H
+    bus[0x004304] = 0x00   # A1B0: bank 0
+    bus[0x00420C] = 0x01   # HDMAEN: enable channel 0
+
+
+def test_hdma_non_repeat_writes_bytes_to_target():
+    """Do-repeat entry (bit 7=1): each scanline gets fresh 2-byte data written to $2126/$2127."""
+    bus, rom, cpu = make_bus()
+    # Table: count=0x82 (do-repeat, 2 scanlines), data=[10,200], [20,210], end
+    _setup_hdma_channel0(bus, rom, 0x0000, [0x82, 10, 200, 20, 210, 0x00])
+    cpu.dma.hdma_init()
+
+    cpu.dma.hdma_scanline()           # scanline 1: WH0=10, WH1=200
+    assert bus.ppu.wh0 == 10
+    assert bus.ppu.wh1 == 200
+
+    cpu.dma.hdma_scanline()           # scanline 2: WH0=20, WH1=210
+    assert bus.ppu.wh0 == 20
+    assert bus.ppu.wh1 == 210
+
+
+def test_hdma_non_repeat_end_of_table_stops():
+    """After all entries consumed, further hdma_scanline() calls are no-ops."""
+    bus, rom, cpu = make_bus()
+    # Table: count=1, 1 unit, end
+    _setup_hdma_channel0(bus, rom, 0x0000, [0x01, 50, 100, 0x00])
+    cpu.dma.hdma_init()
+
+    bus.ppu.wh0 = 0
+    bus.ppu.wh1 = 0
+    cpu.dma.hdma_scanline()           # scanline 1: writes 50, 100
+    assert bus.ppu.wh0 == 50
+    assert bus.ppu.wh1 == 100
+
+    cpu.dma.hdma_scanline()           # scanline 2: table ended, no write
+    assert bus.ppu.wh0 == 50          # unchanged
+    assert bus.ppu.wh1 == 100
+
+
+def test_hdma_repeat_reuses_same_data():
+    """Do-not-repeat entry (bit 7=0): same 2 bytes written for all scanlines in entry."""
+    bus, rom, cpu = make_bus()
+    # Table: count=0x03 (do-not-repeat, 3 scanlines), data=[30, 150], end
+    _setup_hdma_channel0(bus, rom, 0x0000, [0x03, 30, 150, 0x00])
+    cpu.dma.hdma_init()
+
+    for _ in range(3):
+        cpu.dma.hdma_scanline()
+        assert bus.ppu.wh0 == 30
+        assert bus.ppu.wh1 == 150
+
+    cpu.dma.hdma_scanline()           # table ended, no write
+    assert bus.ppu.wh0 == 30          # unchanged
+
+
+def test_hdma_multiple_entries_sequential():
+    """Multiple table entries processed in order."""
+    bus, rom, cpu = make_bus()
+    # Entry 1: repeat, 1 scanline, WH0=0, WH1=0
+    # Entry 2: non-repeat, 1 scanline, WH0=64, WH1=192
+    # End
+    _setup_hdma_channel0(bus, rom, 0x0000, [0x81, 0, 0, 0x01, 64, 192, 0x00])
+    cpu.dma.hdma_init()
+
+    cpu.dma.hdma_scanline()           # entry 1: WH0=0, WH1=0
+    assert bus.ppu.wh0 == 0
+    assert bus.ppu.wh1 == 0
+
+    cpu.dma.hdma_scanline()           # entry 2: WH0=64, WH1=192
+    assert bus.ppu.wh0 == 64
+    assert bus.ppu.wh1 == 192
+
+
+def test_hdma_disabled_channel_does_nothing():
+    """Channel with hdma_enable=0 skips all HDMA execution."""
+    bus, rom, cpu = make_bus()
+    _setup_hdma_channel0(bus, rom, 0x0000, [0x01, 99, 99, 0x00])
+    bus[0x00420C] = 0x00   # disable all HDMA channels
+    cpu.dma.hdma_init()
+
+    bus.ppu.wh0 = 0
+    cpu.dma.hdma_scanline()
+    assert bus.ppu.wh0 == 0           # not written

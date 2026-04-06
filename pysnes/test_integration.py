@@ -39,15 +39,13 @@ def get_mesen():
 
     Search order:
     1. MESEN_BIN environment variable
-    2. tools/Mesen relative to repo root
-    3. settings.json "mesen_bin" value (default: known install location)
+    2. settings.json "mesen_bin" value
     """
     from pysnes import settings as s  # noqa: PLC0415
     cfg = s.load()
 
     candidates = [
         os.environ.get("MESEN_BIN"),
-        str(REPO_ROOT / "tools" / "Mesen"),
         cfg.get("mesen_bin"),
     ]
     for path in candidates:
@@ -56,7 +54,7 @@ def get_mesen():
 
     pytest.skip(
         "Mesen binary not found. Download from https://github.com/SourMesen/Mesen2/releases "
-        "and place at tools/Mesen, set MESEN_BIN env var, or set 'mesen_bin' in settings.json"
+        "and set MESEN_BIN env var or 'mesen_bin' in settings.json"
     )
 
 

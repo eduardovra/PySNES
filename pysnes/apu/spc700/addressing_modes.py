@@ -1,5 +1,6 @@
 from ctypes import c_int8
 
+
 class SPC700AddressingModes:
     """Addressing modes implementation (alphabetical order)"""
 

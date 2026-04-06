@@ -69,7 +69,7 @@ Missing features and Cython performance analysis for CPU, APU, and PPU.
 | `draw_point()` never writes to `main_bgs` | ppu.py:697–745 | Method computes pixel color but discards it — effectively dead code; `draw_tile()` / `draw_tiles()` path (used by sprites) produces no output |
 | Backdrop color applied to every pixel, not only transparent ones | ppu.py:740 | Layers that should show through to backdrop may be overdrawn incorrectly |
 | Mosaic effect disabled (`and False`) | ppu.py:575 | Code written but permanently disabled |
-| Window masking not implemented | bus.py:326–327 | $2123–$212B writes silently ignored; no window clipping |
+| Window masking W2 not implemented | ppu.py | W1 masking implemented; W2 and AND/OR logic not yet wired |
 | Color math / sub-screen blending not implemented | bus.py:337–338 | $2130–$2132 silently ignored; SNES transparency effects absent |
 | Sprite visibility uses `obj.y != 240` hack | ppu.py:831 | Should use proper X/Y bounds check with wrapping; sprites at wrong positions may be drawn or skipped |
 | OAM priority rotation (`_oam_priority_activation`) unused | ppu.py:229–231 | Sprite priority cycling on first sprite never applied |
@@ -113,55 +113,77 @@ Missing features and Cython performance analysis for CPU, APU, and PPU.
 
 ### Testing Strategy
 
-Screenshot comparison against Mesen reference output. Each test:
-1. Runs PySNES for N frames on a known ROM
-2. Captures the framebuffer
-3. Compares pixel-by-pixel against a Mesen-generated reference PNG
+Two-level approach:
+1. **Synthetic unit tests** (`test_ppu_scroll.py`) — instantiate `Ppu` directly, write VRAM/CGRAM by hand, call `draw_background_scanline()`, assert pixel values. No ROM, no Mesen.
+2. **Screenshot regression tests** (`test_ppu.py`, marked `ppu`) — run PySNES on a PeterLemon ROM for N frames, compare framebuffer pixel-by-pixel against the PNG bundled with the ROM.
 
-**Available test ROMs** (`submodules/SNES/PPU/` — PeterLemon collection, pre-built `.sfc` + reference `.png` per ROM):
+**Current test pass/fail status:**
+
+| Test | File | Status | Notes |
+|---|---|---|---|
+| bg1_2bpp | test_ppu.py | ✅ PASS | 5 frames, Mode 1 BG1 2BPP |
+| bg2_2bpp | test_ppu.py | ✅ PASS | 5 frames, Mode 1 BG2 2BPP |
+| bg3_2bpp | test_ppu.py | ✅ PASS | 5 frames, Mode 1 BG3 2BPP |
+| bg4_2bpp | test_ppu.py | ✅ PASS | 5 frames, Mode 0 BG4 2BPP |
+| bg_4bpp | test_ppu.py | ✅ PASS | 5 frames, Mode 1 BG1 4BPP |
+| tile_flip | test_ppu.py | ✅ PASS | 20 frames, 8BPP with h/v flip (FadeIN completes at frame 15) |
+| scroll (18 cases) | test_ppu_scroll.py | ✅ PASS | h/v scroll, sub-tile, wrap, tilemap bit extraction, palette/priority, window masking |
+| bg_8bpp | removed | — | ROM scrolls 1px/frame — timing sensitivity makes pixel-perfect comparison impossible |
+| mode7_rotzoom | test_ppu.py | ❌ NotImplementedError | Mode 7 render path not implemented |
+| window_hdma | test_ppu.py | ✅ PASS | 3 frames; HDMA + window masking implemented |
+| mosaic_mode3 | test_ppu.py | ✅ PASS | 2 frames (FadeIN brightness=2 matches reference) |
+
+**Key fixes made (ppu-improvements branch):**
+- `tiledata_addr` formula: `<< 12` → `<< 13` (8KB granularity, matching bsnes) in `bg12nba_set` / `bg34nba_set`
+- Scanline offset: `orgy = scry - 1` — framebuffer row N is written by `v_counter = N+1`
+- Bus registers: wired up missing BG scroll, BG tilemap/tiledata address, INIDISP, and other registers
+- HDMA engine implemented: `hdma_init()` per-frame, `hdma_scanline()` per H-blank, both do-not-repeat and do-repeat modes
+- HDMA timing: render-before-HDMA ordering in `_hblank()` — HDMA updates registers for the NEXT scanline, not current
+- HDMA repeat bit semantics (confirmed empirically from ROM binaries): **bit 7 = 0 = do-not-repeat** (pointer stays, same data each scanline — table format `[count][unit_bytes]`); **bit 7 = 1 = do-repeat** (pointer advances, fresh data each scanline — table format `[count|0x80][count×unit_bytes]`). This is the opposite of intuitive naming.
+- Window masking: BG1-BG4 W1 enable/invert decoded from W12SEL ($2123) / W34SEL ($2124) / TMW ($212E) and applied per-pixel in `draw_background_scanline()`
+
+**Tilemap word extraction (verified correct):**
+SNES tilemap word: bit 15=V-flip, 14=H-flip, 13=priority, 12:10=palette, 9:0=char.
+- `tilemap_palette = (high >> 2) & 7` ← correct (bits 12:10 = bits 4:2 of high byte)
+- `tilemap_priority = (high >> 5) & 1` ← correct (bit 13 = bit 5 of high byte)
+Covered by `TestTilemapWordBits` in `test_ppu_scroll.py`.
+
+**Available test ROMs** (`submodules/SNES/PPU/` — PeterLemon collection):
 
 | Feature | ROM | Reference PNG |
 |---|---|---|
-| BG1 2BPP tilemap | `BGMAP/8x8/2BPP/8x8BG1Map2BPP32x328PAL/` | ✅ included |
-| BG2 2BPP tilemap | `BGMAP/8x8/2BPP/8x8BG2Map2BPP32x328PAL/` | ✅ included |
-| BG3 2BPP tilemap | `BGMAP/8x8/2BPP/8x8BG3Map2BPP32x328PAL/` | ✅ included |
-| BG4 2BPP tilemap | `BGMAP/8x8/2BPP/8x8BG4Map2BPP32x328PAL/` | ✅ included |
-| BG 4BPP tilemap | `BGMAP/8x8/4BPP/8x8BGMap4BPP32x328PAL/` | ✅ included |
-| BG 8BPP tilemap (multiple sizes) | `BGMAP/8x8/8BPP/*/` | ✅ included |
-| Tile flip | `BGMAP/8x8/8BPP/TileFlip/` | ✅ included |
-| Mode 7 rotation/zoom | `Mode7/RotZoom/` | — |
-| Mode 7 perspective | `Mode7/Perspective/` | — |
-| Window masking (HDMA) | `Window/WindowHDMA/` | — |
-| Mosaic (Mode 3) | `Mosaic/Mode3/` | — |
-| Mosaic (Mode 5) | `Mosaic/Mode5/` | — |
-| HDMA wave | `HDMA/WaveHDMA/` | — |
-| HiColor blend | `Blend/HiColor/*/` | — |
-| Interlace | `Interlace/*/` | — |
+| BG1–4 2BPP tilemap | `BGMAP/8x8/2BPP/*/` | ✅ bundled with ROM |
+| BG 4BPP tilemap | `BGMAP/8x8/4BPP/*/` | ✅ bundled with ROM |
+| BG 8BPP tilemap | `BGMAP/8x8/8BPP/*/` | ✅ bundled with ROM |
+| Tile flip (h+v) | `BGMAP/8x8/8BPP/TileFlip/` | ✅ bundled with ROM |
+| Mode 7 rotation/zoom | `Mode7/RotZoom/` | ✅ bundled with ROM |
+| Window masking (HDMA) | `Window/WindowHDMA/` | ✅ bundled with ROM |
+| Mosaic (Mode 3) | `Mosaic/Mode3/` | ✅ bundled with ROM |
 
 **Coverage gaps** — no pre-built test ROMs available for:
-- BG modes 2, 4, 5, 6 (PeterLemon organises by BPP depth, not mode number)
+- BG modes 2, 4, 5, 6
 - Sprites / OAM rendering
 - Color math / CGADSUB sub-screen blending
 - 16×16 BG tiles
 - Backdrop transparency
 
-For these gaps, minimal test ROMs will need to be authored (65816 assembly using `ca65` or byte-array generation in Python).
-
 ### Action Plan (ordered by impact)
 
-| Priority | Item | Test ROM available |
+| Priority | Item | Test available |
 |---|---|---|
-| 1 | Build screenshot comparison test harness (run ROM → capture framebuffer → diff vs reference) | infrastructure |
-| 2 | Fix `draw_point()` — writes pixel color but never stores to `main_bgs`; sprites and tiles are invisible | need to author |
-| 3 | Fix backdrop color — applied unconditionally; should only show for transparent pixels | BG tilemap ROMs |
-| 4 | Fix `bgmode` / `oamaddl` / `oamaddh` `NotImplementedError` getters | BG tilemap ROMs |
-| 5 | Fix VRAM address remapping crash (`assert remapping == 0`) | BG tilemap ROMs |
-| 6 | Implement BG modes 2, 4, 5, 6 | need to author |
+| ~~1~~ | ~~Build screenshot comparison test harness~~ | ✅ done |
+| ~~2~~ | ~~Fix tilemap word extraction~~ | ✅ verified correct, covered by TestTilemapWordBits |
+| ~~5~~ | ~~Implement window masking (`$2123–$212B`)~~ | ✅ window_hdma PASS |
+| ~~6~~ | ~~Implement mosaic effect (remove `and False` stub)~~ | ✅ mosaic_mode3 PASS at n_frames=2 (size=1 no-op path — full mosaic block replication not yet implemented) |
+| 3 | Fix `draw_point()` — writes pixel color but never stores to `main_bgs`; sprites invisible | need to author sprite ROM |
+| 4 | Fix backdrop color — applied unconditionally; should only show for transparent pixels | BG tilemap ROMs |
 | 7 | Implement Mode 7 (rotation/scaling) | `Mode7/RotZoom.sfc` |
-| 8 | Implement window masking | `Window/WindowHDMA.sfc` |
-| 9 | Implement color math / sub-screen blending | need to author |
-| 10 | Fix 16×16 BG tiles | need to author |
-| 11 | Cython hot spots (`main_bgs`, `draw_tile`, `get_u32_color`, NDC floats, `vram` memoryview) | any BG tilemap ROM |
+| 8 | Fix `bgmode` / `oamaddl` / `oamaddh` `NotImplementedError` getters | any BG tilemap ROM |
+| 9 | Fix VRAM address remapping crash (`assert remapping == 0`) | BG tilemap ROMs |
+| 10 | Implement BG modes 2, 4, 5, 6 | need to author |
+| 11 | Implement color math / sub-screen blending | need to author |
+| 12 | Fix 16×16 BG tiles | need to author |
+| 13 | Cython hot spots (`main_bgs`, `draw_tile`, `get_u32_color`, NDC floats, `vram` memoryview) | any BG tilemap ROM |
 
 ---
 

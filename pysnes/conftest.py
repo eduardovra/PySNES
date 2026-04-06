@@ -43,6 +43,12 @@ def pytest_addoption(parser):
         choices=["e", "n"],
         help="65816 only: restrict to emulation (e) or native (n) mode tests",
     )
+    parser.addoption(
+        "--update-refs",
+        action="store_true",
+        default=False,
+        help="PPU tests: regenerate reference PNGs from Mesen instead of comparing",
+    )
 
 
 def pytest_generate_tests(metafunc):

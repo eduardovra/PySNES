@@ -49,6 +49,9 @@ class Bus:
         self.hblank = False
         self.vblank = False
 
+        # WRAM port address register (17-bit, 0x2181-0x2183)
+        self._wmadd = 0
+
     def raise_nmi(self) -> None:
         """Called by PPU at V-Blank start (rising NMI edge)."""
         self.cpu.status.nmi_line = True
@@ -165,8 +168,7 @@ class Bus:
 
                 return self.dma_ppu2_hw_registers[addr - 0x4200]
 
-        print(f"[yellow]Reading unmapped memory region: 0x{abs_addr:06X}[/yellow]")
-        return 0
+        raise RuntimeError(f"Reading unmapped memory region: 0x{abs_addr:06X}")
 
     def __getitem__(self, abs_addr: cython.uint) -> cython.uchar:
         return self.read(abs_addr)
@@ -312,8 +314,9 @@ class Bus:
                     self.ppu.m7sel = data
                     return
 
-                # if 0x211B <= addr <= 0x2120:  # M7A to M7Y
-                #     raise NotImplementedError(f"{addr:<#04x} register not implemented")
+                if 0x211B <= addr <= 0x2120:  # M7A to M7Y
+                    self.ppu.m7_write(addr, data)
+                    return
 
                 # CGRAM registers
                 if addr == 0x2121:  # CGADD
@@ -323,8 +326,33 @@ class Bus:
                     self.ppu.cgdata = data
                     return
 
-                # if 0x2123 <= addr <= 0x212B:
-                #     raise NotImplementedError(f"{addr:<#04x} register not implemented")
+                if addr == 0x2123:  # W12SEL
+                    self.ppu.w12sel = data
+                    return
+                if addr == 0x2124:  # W34SEL
+                    self.ppu.w34sel = data
+                    return
+                if addr == 0x2125:  # WOBJSEL
+                    self.ppu.wobjsel = data
+                    return
+                if addr == 0x2126:  # WH0
+                    self.ppu.wh0 = data
+                    return
+                if addr == 0x2127:  # WH1
+                    self.ppu.wh1 = data
+                    return
+                if addr == 0x2128:  # WH2
+                    self.ppu.wh2 = data
+                    return
+                if addr == 0x2129:  # WH3
+                    self.ppu.wh3 = data
+                    return
+                if addr == 0x212A:  # WBGLOG
+                    self.ppu.wbglog = data
+                    return
+                if addr == 0x212B:  # WOBJLOG
+                    self.ppu.wobjlog = data
+                    return
 
                 if addr == 0x212C:  # TM
                     self.ppu.tm_set(data)
@@ -334,8 +362,21 @@ class Bus:
                     self.ppu.ts_set(data)
                     return
 
-                # if 0x212E <= addr <= 0x2132:
-                #     raise NotImplementedError(f"{addr:<#04x} register not implemented")
+                if addr == 0x212E:  # TMW
+                    self.ppu.tmw = data
+                    return
+                if addr == 0x212F:  # TSW
+                    self.ppu.tsw = data
+                    return
+                if addr == 0x2130:  # CGWSEL
+                    self.ppu.cgwsel = data
+                    return
+                if addr == 0x2131:  # CGADSUB
+                    self.ppu.cgadsub = data
+                    return
+                if addr == 0x2132:  # COLDATA
+                    self.ppu.coldata_set(data)
+                    return
 
                 if addr == 0x2133:  # SETINI
                     # TODO 4 is overscan mode bit - display 239 lines instead of normal 224
@@ -354,6 +395,26 @@ class Bus:
                 if 0x2140 <= addr <= 0x2143:  # TODO ugly
                     self.apu.sync_to(self.scheduler.master_clock)
                     self.apu.ports_r[addr - 0x2140] = data
+                    return
+
+                if addr == 0x2180:  # WMDATA - write byte to WRAM at WMADD, increment
+                    wm_addr = self._wmadd & 0x1FFFF
+                    if wm_addr < 0x2000:
+                        self.low_ram[wm_addr] = data
+                    elif wm_addr < 0x8000:
+                        self.high_ram[wm_addr - 0x2000] = data
+                    else:
+                        self.extended_ram[wm_addr - 0x8000] = data
+                    self._wmadd = (self._wmadd + 1) & 0x1FFFF
+                    return
+                if addr == 0x2181:  # WMADDL
+                    self._wmadd = (self._wmadd & 0x1FF00) | data
+                    return
+                if addr == 0x2182:  # WMADDM
+                    self._wmadd = (self._wmadd & 0x100FF) | (data << 8)
+                    return
+                if addr == 0x2183:  # WMADDH (only bit 0 used - 17-bit address)
+                    self._wmadd = (self._wmadd & 0x0FFFF) | ((data & 1) << 16)
                     return
 
             elif addr == 0x4016:  # JOYSER0
@@ -408,7 +469,7 @@ class Bus:
             self.extended_ram[abs_addr - 0x7E8000] = data
             return
 
-        print(f"[yellow]Writting unmapped memory region: 0x{abs_addr:06X} = 0x{data:02X}[/yellow]")
+        raise RuntimeError(f"Writting unmapped memory region: 0x{abs_addr:06X} = 0x{data:02X}")
 
     def __setitem__(self, abs_addr: cython.uint, data: cython.uchar):
         self.write(abs_addr, data)

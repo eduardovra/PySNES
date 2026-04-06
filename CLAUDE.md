@@ -233,6 +233,15 @@ uv run --python pypy@3.10 pytest pysnes/test_cpu.py --opcode ea --mode n  # comb
 - `Profile.prof` exists in root — can be analyzed with pstats/snakeviz
 - `make profile` runs cProfile
 
+### Benchmarking Rule
+**Before and after every performance change, measure and record results.** Use the relevant benchmark for the component being optimized:
+- **CPU throughput**: `uv run --python pypy@3.10 pytest pysnes/test_cpu.py --opcode ea -s` — look for "instr/sec" in output
+- **APU throughput**: `uv run --python pypy@3.10 pytest pysnes/test_spc700.py --opcode 00 -s` — look for "instr/sec"
+- **FPS (full emulator)**: run with a ROM and read the FPS from the window title bar
+- **PPU rendering throughput**: `time uv run --python pypy@3.10 pytest pysnes/ppu/test_ppu.py -m ppu` — wall-clock time dominated by PPU rendering; fully automated and reproducible
+
+Document results in the PR/commit message as: `before: X instr/sec → after: Y instr/sec (+Z%)` or `before: Xs → after: Ys` for PPU.
+
 ## Git Workflow
 - **Always create a new branch off `main` before making changes.** Check `git branch` first; if already on a feature branch (not `main`), continue there. If on `main`, run `git checkout -b <descriptive-branch-name>` before editing any files.
 - **Never rebase** unless explicitly instructed. Use `git merge` to integrate changes (e.g. `git merge origin/main` to resolve PR conflicts). Rebase rewrites history and requires force-push, which is destructive for shared branches.

@@ -232,6 +232,7 @@ uv run --python pypy@3.10 pytest pysnes/test_cpu.py --opcode ea --mode n  # comb
 - Current FPS target: ~60 Hz; last measured around 21-22 FPS with SDL2
 - `Profile.prof` exists in root — can be analyzed with pstats/snakeviz
 - `make profile` runs cProfile
+- **Cython HTML annotation reports**: after `make build`, each `.py` file gets a `.html` counterpart (e.g. `ppu.html`). Open it in a browser — yellow-highlighted lines are slow paths that still go through the Python interpreter. Darker yellow = more interpreter calls. These are the primary indicator of Cython optimization bottlenecks: typed variables, `@cython.cfunc`, and avoiding Python builtins (`zip`, `reversed`, `**`) on hot paths eliminate the yellow.
 
 ### Benchmarking Rule
 **Before and after every performance change, measure and record results.** Use the relevant benchmark for the component being optimized:

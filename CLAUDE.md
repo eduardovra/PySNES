@@ -234,6 +234,7 @@ uv run --python pypy@3.10 pytest pysnes/test_cpu.py --opcode ea --mode n  # comb
 - `make profile` runs cProfile
 
 ## Git Workflow
+- **Always create a new branch off `main` before making changes.** Check `git branch` first; if already on a feature branch (not `main`), continue there. If on `main`, run `git checkout -b <descriptive-branch-name>` before editing any files.
 - **Never rebase** unless explicitly instructed. Use `git merge` to integrate changes (e.g. `git merge origin/main` to resolve PR conflicts). Rebase rewrites history and requires force-push, which is destructive for shared branches.
 - **Never force push** unless explicitly instructed. Always use plain `git push`.
 

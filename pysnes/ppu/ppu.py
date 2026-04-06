@@ -129,7 +129,7 @@ class Ppu:
 
     @property
     def bgmode(self) -> int:
-        raise NotImplementedError
+        return self._bgmode
 
     @bgmode.setter
     def bgmode(self, data: int) -> None:
@@ -151,7 +151,6 @@ class Ppu:
         self.vmain_addr_increment_mode = data >> 7
         self.vmain_addr_increment_amount = amounts[data & 0x03]
         self.vmain_addr_remapping = (data >> 2) & 0x03
-        assert self.vmain_addr_remapping == 0, hex(self.vmain_addr_remapping)
         """
         mm     = Address remapping
                     00 = No remapping
@@ -180,9 +179,21 @@ class Ppu:
         if self.vmain_addr_increment_mode:
             self.write_vram()
 
+    def _remap_vram_addr(self, addr: int) -> int:
+        """Apply $2115 VRAM address remapping to a 16-bit word address."""
+        m = self.vmain_addr_remapping
+        if m == 0:
+            return addr
+        elif m == 1:   # aaaaaaaaBBBccccc → aaaaaaaacccccBBB
+            return (addr & 0xFF00) | ((addr & 0x001F) << 3) | ((addr & 0x00E0) >> 5)
+        elif m == 2:   # aaaaaaaBBBcccccc → aaaaaaaccccccBBB
+            return (addr & 0xFE00) | ((addr & 0x003F) << 3) | ((addr & 0x01C0) >> 6)
+        else:          # aaaaaaBBBccccccc → aaaaaacccccccBBB
+            return (addr & 0xFC00) | ((addr & 0x007F) << 3) | ((addr & 0x0380) >> 7)
+
     def write_vram(self) -> None:
-        base_addr = (self.vmaddl | self.vmaddh << 8) * 2
-        # base_addr &= 0xFFFF
+        word_addr = self.vmaddl | self.vmaddh << 8
+        base_addr = self._remap_vram_addr(word_addr) * 2
         assert base_addr < len(self.vram), f"VRAM write out of bounds: 0x{base_addr:06X}"
         self.vram[base_addr + 0] = self._vmdatal
         self.vram[base_addr + 1] = self._vmdatah
@@ -245,7 +256,7 @@ class Ppu:
 
     @property
     def oamaddl(self) -> int:
-        raise NotImplementedError
+        return self._oamadd & 0xFF
 
     @oamaddl.setter
     def oamaddl(self, data: int) -> None:
@@ -254,7 +265,7 @@ class Ppu:
 
     @property
     def oamaddh(self) -> int:
-        raise NotImplementedError
+        return (int(self._oam_priority_activation) << 7) | ((self._oamadd >> 8) & 1)
 
     @oamaddh.setter
     def oamaddh(self, data: int) -> None:

@@ -178,8 +178,8 @@ Covered by `TestTilemapWordBits` in `test_ppu_scroll.py`.
 | ~~3~~ | ~~Fix `draw_point()` — writes pixel color but never stores to `main_bgs`; sprites invisible~~ | ✅ `test_ppu_sprites.py` — 6 synthetic unit tests |
 | ~~4~~ | ~~Fix backdrop color — applied unconditionally; should only show for transparent pixels~~ | ✅ transparent pixel guard + `oam_main_screen_enable` check in `draw_objects()`; BG tests pass |
 | 7 | Implement Mode 7 (rotation/scaling) | `Mode7/RotZoom.sfc` |
-| 8 | Fix `bgmode` / `oamaddl` / `oamaddh` `NotImplementedError` getters | any BG tilemap ROM |
-| 9 | Fix VRAM address remapping crash (`assert remapping == 0`) | BG tilemap ROMs |
+| ~~8~~ | ~~Fix `bgmode` / `oamaddl` / `oamaddh` `NotImplementedError` getters~~ | ✅ `test_ppu_registers.py` — getter round-trip tests |
+| ~~9~~ | ~~Fix VRAM address remapping crash (`assert remapping == 0`)~~ | ✅ `test_ppu_registers.py` — remapping mode 1/2/3 tests |
 | 10 | Implement BG modes 2, 4, 5, 6 | need to author |
 | 11 | Implement color math / sub-screen blending | need to author |
 | 12 | Fix 16×16 BG tiles | need to author |

@@ -1,3 +1,4 @@
+from __future__ import annotations
 from typing import Any, TYPE_CHECKING
 
 from rich import print
@@ -119,7 +120,7 @@ class InstructionSlot:
         self._nargs = nargs
 
     @cython.cfunc
-    def call(self, cpu: "Cpu"):
+    def call(self, cpu: Cpu):
         if self._nargs == 0:
             self._func(cpu)
         elif self._nargs == 1:

@@ -3,7 +3,6 @@
 from typing import List
 
 import cython
-from rich import print
 
 from ..rom import Rom
 from ..cpu import Cpu

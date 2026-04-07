@@ -1,8 +1,7 @@
 from ctypes import c_uint8
-from typing import Optional, Union, Tuple, TYPE_CHECKING
+from typing import Optional, Tuple, TYPE_CHECKING
 
 import cython
-from sdl2 import *
 
 from .data_structures import Background, Object, Tilemap
 
@@ -25,9 +24,7 @@ SCREEN_HEIGHT = 224
 
 @cython.cclass
 class Ppu:
-    """
-    Picture Processor Unit: 15-Bit
-    """
+    """Picture Processor Unit: 15-Bit"""
 
     def __init__(
         self,
@@ -37,8 +34,8 @@ class Ppu:
         oam_dump: Optional[bytes] = None,
     ) -> None:
         # Scheduler and bus are attached after construction via attach()
-        self.scheduler = None
-        self.bus = None
+        self.scheduler: Optional[Scheduler] = None
+        self.bus: Optional[Bus] = None
 
         # VRAM - Video RAM
         if vram_dump is None:
@@ -383,7 +380,7 @@ class Ppu:
     # Scheduler integration
     # ------------------------------------------------------------------
 
-    def attach(self, scheduler, bus) -> None:
+    def attach(self, scheduler: "Scheduler", bus: "Bus") -> None:
         """Attach the scheduler and bus after construction."""
         self.scheduler = scheduler
         self.bus = bus
@@ -541,9 +538,7 @@ class Ppu:
         for x in range(SCREEN_WIDTH):
             self.main_bgs[y * SCREEN_WIDTH + x] = u32_color
 
-    # @cython.nogil
     @cython.cfunc
-    # @cython.noexcept
     def draw_background_scanline(self, bg: Background, bpp: cython.uchar, priority_selector: cython.bint):
         scanline = self.v_counter  # TODO move to method argument
 
@@ -669,45 +664,16 @@ class Ppu:
                 if v:
                     # Special case for BG2-BG4 in Mode 0
                     color_offset = bg.color_offset_mode_0 if self._bgmode == 0 else 0
-                    # r, g, b = self.get_rbg_colors(bpp, tilemap_palette, v, color_offset)
-
-                    # x_ndc = 2.0 * (scrx / SCREEN_WIDTH) - 1.0
-                    # y_ndc = 1.0 - 2.0 * (scry / SCREEN_HEIGHT)
 
                     u32_color = self.get_u32_color(bpp, tilemap_palette, v, color_offset)
-                    # x, y, width = orgx, orgy, SCREEN_WIDTH
                     self.main_bgs[orgy * SCREEN_WIDTH + orgx] = u32_color
-
-                    if self.mosaic_enabled[bg.number - 1] and False:  # TODO implement mosaic
-                        # for x in range(0, 256, size):
-                        #     for y in range(0, 256, size):
-                        #         pos = y * 256 + x
-                        #         col = BG[pos]
-                        #         for a in range(size):
-                        #             for b in range(size):
-                        #                 if x + a < 256 and y + b < 256:
-                        #                     BG[min(y + b, 255) * 256 + min(x + a, 255)] = col
-                        mosaic_size_pixels = self.mosaic_size
-                        # pick color from the first pixel in the top left corner of the mosaic square size
-                        if scrx % mosaic_size_pixels == 0 and scry % mosaic_size_pixels == 0:
-                            # get the color of the first pixel in the mosaic square
-                            bg.mosaic_start_x = scrx
-                            bg.mosaic_start_y = scry
-                            color_map = getattr(bg, "mosaic_color_map", {})
-                            color_map[scrx] = u32_color
-                            setattr(bg, "mosaic_color_map", color_map)
-                            #print(f"{bg.number=} Setting mosaic color {u32_color} at ({scrx}, {scry}), {mosaic_size_pixels=}")
-                        # replace the color of the current pixel with the color of the first pixel in the mosaic square
-                        elif (scrx < (bg.mosaic_start_x + mosaic_size_pixels) and
-                              scry < (bg.mosaic_start_y + mosaic_size_pixels)):
-                            self.main_bgs[scry * SCREEN_WIDTH + scrx] = bg.mosaic_color_map[bg.mosaic_start_x]
 
     def draw_tiles(
         self,
         bpp: int,
         x_offset: int,
         y_offset: int,
-        tile: Union[Tilemap, Object],
+        tile: Tilemap | Object,
         tile_base_addr: int,
         tile_width: int,
         tile_height: int,
@@ -766,7 +732,7 @@ class Ppu:
 
     def draw_tile(
         self,
-        tile: Union[Tilemap, Object],
+        tile: Tilemap | Object,
         tile_data: bytes,
         tile_data_index: int,
         bpp: int,
@@ -829,29 +795,6 @@ class Ppu:
             u32_color = self.get_u32_color(bpp, palette, color)
             self.main_bgs[(y - 1) * SCREEN_WIDTH + x] = u32_color
 
-    def get_rbg_colors(self, bpp: int, palette: int, color: int, color_offset: int = 0) -> tuple:
-        # 4 colors (2bpp palette) x 2 bytes each color
-        palette_index = palette * (bpp ** 2)
-        color_index = palette_index + color
-        color_index += color_offset  # CGRAM offset for BG2, BG3, BG4 in mode 0
-        color_index *= 2  # 2 bytes per color
-        data = self.cgram[color_index] | self.cgram[color_index + 1] << 8
-
-        r_5bit = data >> 0 & 0x1F
-        g_5bit = data >> 5 & 0x1F
-        b_5bit = data >> 10 & 0x1F
-
-        r_8bit = (r_5bit << 3) | (r_5bit >> 2)
-        g_8bit = (g_5bit << 3) | (g_5bit >> 2)
-        b_8bit = (b_5bit << 3) | (b_5bit >> 2)
-
-    # ...existing code...
-        r = r_8bit / 255
-        g = g_8bit / 255
-        b = b_8bit / 255
-
-        return r, g, b
-
     def get_u32_color(self, bpp: int, palette: int, color: int, color_offset: int = 0) -> int:
         palette_index = palette * (bpp ** 2)
         color_index = palette_index + color
@@ -869,24 +812,6 @@ class Ppu:
         a_8bit = 255 if color else 0  # 255 no transparency, 0 full transparency
 
         return (r_8bit << 24) | (g_8bit << 16) | (b_8bit << 8) | a_8bit
-
-    def get_rbg_backdrop_color(self) -> tuple:
-        """Return backdrop color for the main screen. It is always the first color in CGRAM"""
-        data = self.cgram[0] | self.cgram[1] << 8
-        r_5bit = data >> 0 & 0x1F
-        g_5bit = data >> 5 & 0x1F
-        b_5bit = data >> 10 & 0x1F
-
-        r_8bit = (r_5bit << 3) | (r_5bit >> 2)
-        g_8bit = (g_5bit << 3) | (g_5bit >> 2)
-        b_8bit = (b_5bit << 3) | (b_5bit >> 2)
-
-    # ...existing code...
-        r = r_8bit / 255
-        g = g_8bit / 255
-        b = b_8bit / 255
-
-        return r, g, b
 
     def get_u32_backdrop_color(self) -> int:
         data = self.cgram[0] | self.cgram[1] << 8
@@ -1012,75 +937,3 @@ class OAM:
         obj.priority = (data >> 4) & 0x03
         obj.h_flip = bool(data & 0x40)
         obj.v_flip = bool(data & 0x80)
-
-
-def main():
-    # Memory dumps
-    # vram_file = "roms/test_oam-vram.bin"
-    # cgram_file = "roms/test_oam-cgram.bin"
-    # oam_file = "roms/test_oam-oam.bin"
-    vram_file = "roms/Super Mario World (U) [!]-vram.bin"
-    cgram_file = "roms/Super Mario World (U) [!]-cgram.bin"
-    oam_file = "roms/Super Mario World (U) [!]-oam.bin"
-    with open(vram_file, "rb") as f:
-        vram_dump = f.read()
-    with open(cgram_file, "rb") as f:
-        cgram_dump = f.read()
-    with open(oam_file, "rb") as f:
-        oam_dump = f.read()
-    ppu = Ppu(vram_dump=vram_dump, cgram_dump=cgram_dump, oam_dump=oam_dump)
-
-    SDL_Init(SDL_INIT_VIDEO)
-    window = SDL_CreateWindow(b"PySNES", 0, 0, 768, 768, SDL_WINDOW_SHOWN)
-    renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED)
-    SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND)
-    SDL_RenderSetScale(renderer, 2, 2)
-
-    # Setup registers
-    # Draw BG1, Mode 0 - test_oam.smc
-    # Bit Depth 2bpp
-    # Map Size 32x32
-    # Map Addr 0x0000 (comes from BG1SC)
-    # Tile Size 8x8
-    # Tile Addr 0x2000
-    #ppu.bgmode = 1
-    #ppu.bg1sc_set(0)
-    #ppu.bg2sc_set(0)
-    #ppu.bg12nba_set(0x01)
-    #ppu.bg34nba_set(0x00)
-
-    # Draw BG1, Mode 1 - Super Mario World
-    # Bit Depth 2bpp
-    # Map Size 32x32
-    # Map Addr 0x0000 (comes from BG1SC)
-    # Tile Size 8x8
-    # Tile Addr 0x2000
-    ppu.bgmode = 1
-    ppu.bg1sc_set(0x23)
-    ppu.bg2sc_set(0x33)
-    ppu.bg3sc_set(0x53)
-    ppu.bg12nba_set(0x00)
-    ppu.bg34nba_set(0x04)
-
-    # OAM base address 0xC000
-    ppu.obsel_set(0x03)  # base size 0
-    # ppu.obsel_set(0x23)  # base size 1
-    # ppu.obsel_set(0x43)  # base size 2
-    # ppu.obsel_set(0x63)  # base size 3
-
-    # Main/Sub screen enable
-    ppu.tm_set(0x11)
-    ppu.ts_set(0x11)
-
-    ppu.render()
-
-    SDL_Delay(5000)
-
-    return
-
-
-if __name__ == "__main__":
-    # import cProfile
-
-    # cProfile.run("main()", sort="cumulative")
-    main()

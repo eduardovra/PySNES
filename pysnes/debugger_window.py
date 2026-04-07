@@ -45,6 +45,7 @@ class DebuggerWindow:
 
         self._build_ui()
         self.refresh()
+        self._poll()  # start the notify-queue polling loop
 
     # ------------------------------------------------------------------
     # UI construction
@@ -126,7 +127,20 @@ class DebuggerWindow:
         return t
 
     # ------------------------------------------------------------------
-    # Refresh — called from main thread via root.after(0, self.refresh)
+    # Polling loop (Tkinter thread only) — checks emulator → window queue
+    # ------------------------------------------------------------------
+
+    def _poll(self) -> None:
+        """Called every 100 ms in the Tkinter thread to process refresh signals."""
+        if not self._debugger._notify_queue.empty():
+            # Drain all pending notifications; a single refresh is enough
+            while not self._debugger._notify_queue.empty():
+                self._debugger._notify_queue.get_nowait()
+            self.refresh()
+        self.root.after(100, self._poll)
+
+    # ------------------------------------------------------------------
+    # Refresh — always called from the Tkinter thread
     # ------------------------------------------------------------------
 
     def refresh(self) -> None:

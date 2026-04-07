@@ -56,7 +56,8 @@ class Debugger:
         self._instr_count: int = 0
 
         self._original_step = None
-        self._cmd_queue: queue.Queue = queue.Queue()
+        self._cmd_queue: queue.Queue = queue.Queue()   # Tkinter → emulator
+        self._notify_queue: queue.Queue = queue.Queue()  # emulator → Tkinter
         self._window = None
 
     def attach(self) -> None:
@@ -106,9 +107,9 @@ class Debugger:
             self._scheduler.run_one()
 
     def _notify_paused(self) -> None:
-        """Signal the Tkinter window to refresh. Called from the main thread."""
+        """Signal the Tkinter window to refresh. Thread-safe: puts to a queue."""
         if self._window is not None:
-            self._window.root.after(0, self._window.refresh)
+            self._notify_queue.put(True)
 
     def drain_commands(self) -> None:
         """Process commands from the Tkinter thread. Called every main loop iteration."""
@@ -162,12 +163,7 @@ class Debugger:
     def open_window(self) -> None:
         """Open the Tkinter debug window in a daemon thread (idempotent)."""
         if self._window is not None:
-            # Window already exists; try to raise it
-            try:
-                self._window.root.after(0, self._window.root.lift)
-            except Exception:
-                pass
-            return
+            return  # already open; window is managed by the daemon thread
 
         from .debugger_window import DebuggerWindow
 

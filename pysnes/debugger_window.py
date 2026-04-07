@@ -1,6 +1,8 @@
 """
 PySNES Debugger Window — Tkinter UI.
 Reads CPU/PPU/bus state directly (no copies) when the emulator is paused.
+All reads use direct Python attribute access — never bus.read() — to avoid
+hardware register side effects (e.g. OAM/CGRAM address auto-increment).
 """
 from __future__ import annotations
 
@@ -21,11 +23,19 @@ _REGIONS = ["WRAM", "VRAM", "CGRAM"]
 _HEX_COLS = 16
 
 
-def _flags_str(cpu) -> str:
+def _cpu_flags_str(cpu) -> str:
     p = cpu.P
     names = ("N", "V", "M", "X", "D", "I", "Z", "C")
     bits  = (0x80, 0x40, 0x20, 0x10, 0x08, 0x04, 0x02, 0x01)
     return "".join(n if p & b else n.lower() for n, b in zip(names, bits))
+
+
+def _apu_flags_str(apu) -> str:
+    flags = (
+        ("N", apu.NF), ("V", apu.VF), ("P", apu.PF), ("B", apu.BF),
+        ("H", apu.HF), ("I", apu.IF), ("Z", apu.ZF), ("C", apu.CF),
+    )
+    return "".join(n if v else n.lower() for n, v in flags)
 
 
 class DebuggerWindow:
@@ -55,12 +65,21 @@ class DebuggerWindow:
         root = self.root
         root.configure(bg="#1e1e1e")
 
-        # ── Top: registers + disassembly side by side ──────────────────
+        # ── Top: registers (tabbed) + disassembly side by side ─────────
         top = ttk.Frame(root)
         top.pack(fill="both", expand=True, padx=6, pady=(6, 3))
 
-        self._reg_text = self._make_text(top, width=42, height=6)
-        self._reg_text.pack(side="left", fill="both", expand=True, padx=(0, 4))
+        reg_notebook = ttk.Notebook(top)
+        reg_notebook.pack(side="left", fill="both", expand=True, padx=(0, 4))
+
+        for tab_name, attr in (("CPU", "_cpu_reg_text"),
+                                ("APU", "_apu_reg_text"),
+                                ("PPU", "_ppu_reg_text")):
+            frame = ttk.Frame(reg_notebook)
+            reg_notebook.add(frame, text=tab_name)
+            t = self._make_text(frame, width=44, height=12)
+            t.pack(fill="both", expand=True)
+            setattr(self, attr, t)
 
         self._disasm_text = self._make_text(top, width=62, height=12)
         self._disasm_text.pack(side="left", fill="both", expand=True)
@@ -81,7 +100,7 @@ class DebuggerWindow:
         addr_entry.pack(side="left")
         addr_entry.bind("<Return>", self._on_mem_addr_change)
 
-        self._mem_text = self._make_text(mid, width=80, height=10)
+        self._mem_text = self._make_text(mid, width=80, height=8)
         self._mem_text.pack(fill="both", expand=True, pady=(2, 0))
 
         # ── Bottom: breakpoints + controls ────────────────────────────
@@ -93,7 +112,7 @@ class DebuggerWindow:
 
         self._bp_list = tk.Listbox(bp_frame, bg="#252526", fg="#d4d4d4",
                                    selectbackground="#094771", font=("Courier", 10),
-                                   height=6, width=12)
+                                   height=5, width=12)
         self._bp_list.pack(side="left", fill="both", expand=True)
 
         bp_btns = ttk.Frame(bp_frame)
@@ -122,8 +141,6 @@ class DebuggerWindow:
         t.tag_configure("pc",      foreground="#569cd6", background="#094771")
         t.tag_configure("bp",      foreground="#f44747")
         t.tag_configure("history", foreground="#808080")
-        t.tag_configure("reg_label", foreground="#9cdcfe")
-        t.tag_configure("reg_val",   foreground="#ce9178")
         return t
 
     # ------------------------------------------------------------------
@@ -149,21 +166,91 @@ class DebuggerWindow:
 
         self._status_var.set("PAUSED" if paused else "Running")
 
-        self._refresh_registers(cpu)
+        self._refresh_cpu_tab(cpu)
         if paused:
+            self._refresh_apu_tab(self._debugger._pysnes.apu)
+            self._refresh_ppu_tab(self._ppu)
             self._refresh_disassembly(cpu)
             self._refresh_memory()
         self._refresh_breakpoints()
 
-    def _refresh_registers(self, cpu) -> None:
-        p = _flags_str(cpu)
+    # ── CPU tab ────────────────────────────────────────────────────────
+
+    def _refresh_cpu_tab(self, cpu) -> None:
+        p = _cpu_flags_str(cpu)
+        st = cpu.status
+        mc = self._debugger._scheduler.master_clock
         text = (
-            f" A: {cpu.A.w:04X}   X: {cpu.X.w:04X}   Y: {cpu.Y.w:04X}\n"
-            f" S: {cpu.S.w:04X}   D: {cpu.D.w:04X}  DB: {cpu.DB.l:02X}\n"
-            f"PC: {cpu.PC.d:06X}   P: {p}  EF: {int(cpu.EF)}\n"
-            f"MC: {self._debugger._scheduler.master_clock}\n"
+            f" A:{cpu.A.w:04X}  X:{cpu.X.w:04X}  Y:{cpu.Y.w:04X}  S:{cpu.S.w:04X}\n"
+            f" D:{cpu.D.w:04X}  DB:{cpu.DB.l:02X}  PC:{cpu.PC.d:06X}\n"
+            f" P:{p}  EF:{int(cpu.EF)}\n"
+            f"\n"
+            f" NMI en:{int(st.nmi_enable)}"
+            f"  IRQ en:{int(st.irq_enable)}\n"
+            f" AutoJoy:{int(st.auto_joypad_read_enable)}"
+            f"  FastROM:{int(st.fast_rom)}\n"
+            f" WAI:{int(cpu.wai)}  STP:{int(cpu.stp)}\n"
+            f"\n"
+            f" Cycles:{cpu.cycles}  MC:{mc}\n"
         )
-        self._set_text(self._reg_text, text)
+        self._set_text(self._cpu_reg_text, text)
+
+    # ── APU tab ────────────────────────────────────────────────────────
+
+    def _refresh_apu_tab(self, apu) -> None:
+        flags = _apu_flags_str(apu)
+        t0, t1, t2 = apu.timers[0], apu.timers[1], apu.timers[2]
+        pr = apu.ports_r
+        pw = apu.ports_w
+        text = (
+            f" PC:{apu.PC:04X}  A:{apu.A:02X}  X:{apu.X:02X}"
+            f"  Y:{apu.Y:02X}  S:{apu.S:02X}\n"
+            f" PSW:{flags}\n"
+            f"\n"
+            f" T0: en={int(t0.enable)} tgt={t0.target:02X}"
+            f" cnt={t0.stage2:02X}\n"
+            f" T1: en={int(t1.enable)} tgt={t1.target:02X}"
+            f" cnt={t1.stage2:02X}\n"
+            f" T2: en={int(t2.enable)} tgt={t2.target:02X}"
+            f" cnt={t2.stage2:02X}\n"
+            f"\n"
+            f" ports_r: {pr[0]:02X} {pr[1]:02X} {pr[2]:02X} {pr[3]:02X}\n"
+            f" ports_w: {pw[0]:02X} {pw[1]:02X} {pw[2]:02X} {pw[3]:02X}\n"
+        )
+        self._set_text(self._apu_reg_text, text)
+
+    # ── PPU tab ────────────────────────────────────────────────────────
+
+    def _refresh_ppu_tab(self, ppu) -> None:
+        vram_addr = (ppu.vmaddh << 8) | ppu.vmaddl
+        b1, b2, b3, b4 = ppu.bg1, ppu.bg2, ppu.bg3, ppu.bg4
+        text = (
+            f" Mode:{ppu._bgmode}  BG3Hi:{int(ppu._bgpriority)}"
+            f"  Bright:{ppu.display_brightness:02X}"
+            f"  Dis:{int(ppu.display_disable)}\n"
+            f" VRAM:{vram_addr:04X}"
+            f"  incr:{ppu.vmain_addr_increment_amount}"
+            f"  mode:{ppu.vmain_addr_increment_mode}\n"
+            f"\n"
+            f"     scr    td    hofs  vofs\n"
+            f" BG1:{b1.screen_addr:04X}  {b1.tiledata_addr:04X}"
+            f"  {b1.hoffset:04X}  {b1.voffset:04X}\n"
+            f" BG2:{b2.screen_addr:04X}  {b2.tiledata_addr:04X}"
+            f"  {b2.hoffset:04X}  {b2.voffset:04X}\n"
+            f" BG3:{b3.screen_addr:04X}  {b3.tiledata_addr:04X}"
+            f"  {b3.hoffset:04X}  {b3.voffset:04X}\n"
+            f" BG4:{b4.screen_addr:04X}  {b4.tiledata_addr:04X}"
+            f"  {b4.hoffset:04X}  {b4.voffset:04X}\n"
+            f"\n"
+            f" OAM addr:{ppu._oamadd:03X}"
+            f"  td:{ppu.oam_tiledata_address:04X}"
+            f"  size:{ppu.oam_base_size}\n"
+            f" H:{ppu.h_counter:03d}  V:{ppu.v_counter:03d}"
+            f"  Frame:{ppu.frames}\n"
+        )
+        self._set_text(self._ppu_reg_text, text)
+
+    # ── Disassembly ────────────────────────────────────────────────────
 
     def _refresh_disassembly(self, cpu) -> None:
         current_pc = cpu.PC.d
@@ -191,6 +278,8 @@ class DebuggerWindow:
             self._disasm_text.insert("end", prefix + line[:38] + "\n", tag)
 
         self._disasm_text.configure(state="disabled")
+
+    # ── Memory view ────────────────────────────────────────────────────
 
     def _refresh_memory(self) -> None:
         region = self._mem_region.get()
@@ -228,11 +317,15 @@ class DebuggerWindow:
             return bytes(self._ppu.cgram[base:end])
         return b"\x00" * length
 
+    # ── Breakpoints ────────────────────────────────────────────────────
+
     def _refresh_breakpoints(self) -> None:
         bps = sorted(self._debugger._breakpoints)
         self._bp_list.delete(0, "end")
         for addr in bps:
             self._bp_list.insert("end", f"{addr:06X}")
+
+    # ── Helpers ────────────────────────────────────────────────────────
 
     def _set_text(self, widget: tk.Text, content: str) -> None:
         widget.configure(state="normal")

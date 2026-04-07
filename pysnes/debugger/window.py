@@ -11,10 +11,10 @@ from tkinter import ttk
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from .debugger import Debugger
-    from .cpu.cpu import Cpu
-    from .bus.bus import Bus
-    from .ppu.ppu import Ppu
+    from . import Debugger
+    from ..cpu.cpu import Cpu
+    from ..bus.bus import Bus
+    from ..ppu.ppu import Ppu
 
 # Memory regions selectable in the memory view
 _REGIONS = ["WRAM", "VRAM", "CGRAM"]

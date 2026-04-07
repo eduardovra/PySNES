@@ -9,7 +9,7 @@ import threading
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from .pysnes import PySNES
+    from ..pysnes import PySNES
 
 
 # Maps disassembler addressing-mode method names to byte lengths.
@@ -165,7 +165,7 @@ class Debugger:
         if self._window is not None:
             return  # already open; window is managed by the daemon thread
 
-        from .debugger_window import DebuggerWindow
+        from .window import DebuggerWindow
 
         def _run():
             win = DebuggerWindow(self._cpu, self._bus, self._ppu, self)

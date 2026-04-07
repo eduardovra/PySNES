@@ -203,6 +203,10 @@ class Cpu:
         # NMI pending flag — set by nmi_rising_edge(), checked in _step()
         self._nmi_pending: bool = False
 
+        # Temporary debug counter
+        self._debug_step_count: int = 0
+        self._debug_symbols: dict = {}
+
     def load_instructions(self):
         from .wdc65816.instructions import INSTRUCTIONS
 
@@ -251,6 +255,13 @@ class Cpu:
             mc = self.interrupt(vector)
         else:
             mc = self.fetch_and_execute()
+        # Temporary debug: print PC every 100k instructions
+        self._debug_step_count += 1
+        if self._debug_step_count % 100_000 == 0:
+            pc = self.PC.d
+            label = self._debug_symbols.get(pc, "")
+            label_str = f" [{label}]" if label else ""
+            print(f"[step {self._debug_step_count}] PC=0x{pc:06X}{label_str} MC={self.scheduler.master_clock}", flush=True)
         # mc is in master clocks; schedule the next step that many clocks ahead
         self.scheduler.add(mc, self._step)
 

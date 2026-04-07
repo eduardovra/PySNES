@@ -24,6 +24,44 @@ else:
     print("Cython is not enabled, using pure Python modules.")
 
 
+def _load_sym_file(rom) -> dict:
+    """Load a no$sns symbol file matching the ROM, if available.
+
+    Symbol files live in <repo_root>/symbols/ named after the ROM title, e.g.
+    SMW_U.sym for Super Mario World (U).  Returns addr→label dict, empty if not found.
+    """
+    import os
+    # Map known ROM checksums to symbol file names
+    _CHECKSUM_TO_SYM = {
+        218: "SMW_U.sym",  # Super Mario World (U) checksum
+    }
+    sym_name = _CHECKSUM_TO_SYM.get(rom.snes_header.get("checksum"))
+    if sym_name is None:
+        return {}
+    sym_path = os.path.join(os.path.dirname(__file__), "..", "symbols", sym_name)
+    sym_path = os.path.normpath(sym_path)
+    if not os.path.exists(sym_path):
+        return {}
+    symbols: dict = {}
+    with open(sym_path) as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith(";"):
+                continue
+            # Format: "XXXXXXXX :label"  or  "XXXXXXXX label"
+            parts = line.split(None, 1)
+            if len(parts) != 2:
+                continue
+            try:
+                addr = int(parts[0], 16)
+            except ValueError:
+                continue
+            label = parts[1].lstrip(":")
+            symbols[addr] = label
+    print(f"Loaded {len(symbols)} symbols from {sym_name}", flush=True)
+    return symbols
+
+
 class PySNES:
     def __init__(self, rom_file_path: str, settings: dict | None = None) -> None:
         if settings is None:
@@ -40,6 +78,7 @@ class PySNES:
         bus = Bus(rom, self.cpu, self.apu, self.ppu, self.controllers, self.scheduler)
         self.cpu.attach(bus)
         self.cpu.trace_enabled = False
+        self.cpu._debug_symbols = _load_sym_file(rom)
         self.ppu.attach(self.scheduler, bus)
         self.bus = bus
         self.video = Video()

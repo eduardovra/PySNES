@@ -129,7 +129,10 @@ class Bus:
                 if 0x2140 <= addr <= 0x217F:
                     # 0x2140 - 0x204C == 0xF4 [addr of PORT0]
                     if 0x2140 <= addr <= 0x2143:  # TODO ugly
-                        self.apu.sync_to(self.scheduler.master_clock)
+                        # Use elapsed MC within the current instruction so the APU
+                        # is advanced to the actual bus cycle time, not instruction start.
+                        elapsed_mc = self.cpu.cycles - self.cpu.prev_cycles
+                        self.apu.sync_to(self.scheduler.master_clock + elapsed_mc)
                         val = self.apu.ports_w[addr - 0x2140]
                         return val
                     return self.apu[addr - 0x204C]
@@ -393,7 +396,8 @@ class Bus:
                     return  # Not writable
 
                 if 0x2140 <= addr <= 0x2143:  # TODO ugly
-                    self.apu.sync_to(self.scheduler.master_clock)
+                    elapsed_mc = self.cpu.cycles - self.cpu.prev_cycles
+                    self.apu.sync_to(self.scheduler.master_clock + elapsed_mc)
                     self.apu.ports_r[addr - 0x2140] = data
                     return
 

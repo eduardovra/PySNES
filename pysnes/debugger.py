@@ -111,7 +111,7 @@ class Debugger:
             self._window.root.after(0, self._window.refresh)
 
     def drain_commands(self) -> None:
-        """Process commands from the Tkinter thread. Call only when paused."""
+        """Process commands from the Tkinter thread. Called every main loop iteration."""
         while not self._cmd_queue.empty():
             try:
                 cmd = self._cmd_queue.get_nowait()
@@ -176,7 +176,8 @@ class Debugger:
             self._window = win
             self._cpu.trace_enabled = True   # populate trace_log for disasm history
             win.root.mainloop()
-            self._cpu.trace_enabled = False  # restore when window is closed
+            win.root.destroy()               # destroy in daemon (Tkinter) thread
+            self._cpu.trace_enabled = False
             self._window = None
 
         t = threading.Thread(target=_run, daemon=True)

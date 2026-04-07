@@ -265,4 +265,4 @@ class DebuggerWindow:
         self._debugger._cmd_queue.put(("pause",))
 
     def _on_close(self) -> None:
-        self.root.destroy()
+        self.root.quit()  # stops mainloop; destroy() is called in the daemon thread

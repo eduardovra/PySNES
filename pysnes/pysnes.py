@@ -219,8 +219,7 @@ class PySNES:
                     self._dump_requested = False
                     self._do_memory_dump()
 
-                if self.paused:
-                    self.debugger.drain_commands()
+                self.debugger.drain_commands()
 
                 self.process_inputs()
 

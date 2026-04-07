@@ -147,9 +147,7 @@ class Cpu:
     def __init__(self, hardware_vectors: dict) -> None:
         self.reset_registers()
         self.load_instructions()
-        # self.build_clock_cycles_table()
 
-        # NOTE shoehorned to make v2 compatible with v1
         self.status = CpuStatus()
 
         from .wdc65816.disassembler import Disassembler

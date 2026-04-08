@@ -43,6 +43,10 @@ _MODE_LENGTHS: dict[str, int] = {
 }
 
 
+class BreakpointHit(Exception):
+    pass
+
+
 class Debugger:
     def __init__(self, pysnes: PySNES) -> None:
         self._pysnes = pysnes
@@ -52,7 +56,6 @@ class Debugger:
         self._scheduler = pysnes.scheduler
 
         self._breakpoints: set[int] = set()
-        self._step_mode: bool = False
         self._instr_count: int = 0
 
         self._original_step = None
@@ -67,7 +70,7 @@ class Debugger:
 
     def _install_hooks(self) -> None:
         """Install or remove the step wrapper based on whether it is needed."""
-        if self._breakpoints or self._step_mode:
+        if self._breakpoints:
             self._cpu._step = self._hooked_step
         else:
             self._cpu._step = self._original_step
@@ -78,16 +81,9 @@ class Debugger:
             # Execute the instruction, then pause (PC now points to the next instruction)
             self._original_step()
             self._pysnes.paused = True
-            self._step_mode = False
             self._install_hooks()
             self._notify_paused()
-            return
-        if self._step_mode:
-            self._step_mode = False
-            self._original_step()
-            self._instr_count += 1
-            self._install_hooks()
-            return
+            raise BreakpointHit()
         self._original_step()
         self._instr_count += 1
 
@@ -99,12 +95,21 @@ class Debugger:
         self._install_hooks()
 
     def step_one_instruction(self) -> None:
-        """Execute exactly one CPU instruction (including PPU/APU events)."""
-        self._step_mode = True
-        self._install_hooks()
-        target = self._instr_count + 1
-        while self._instr_count < target:
-            self._scheduler.run_one()
+        """Execute exactly one CPU instruction.
+
+        The scheduler queue may hold a stale reference to _original_step captured
+        before any hook was installed.  Firing it via run_one() would bypass the
+        hook entirely and execute an extra untracked instruction.  Instead we pop
+        that stale event (if present), call _original_step() directly, and let
+        the CPU reschedule itself — net zero change to the CPU event count.
+        """
+        q = self._scheduler._queue
+        for i, entry in enumerate(q):
+            if entry[-1] is self._original_step:
+                q.pop(i)
+                break
+        self._original_step()
+        self._instr_count += 1
 
     def _notify_paused(self) -> None:
         """Signal the Tkinter window to refresh. Thread-safe: puts to a queue."""
@@ -123,8 +128,9 @@ class Debugger:
                 self.toggle_breakpoint(cmd[1])
                 self._notify_paused()
             elif action == "step":
+                done_event = cmd[1]
                 self.step_one_instruction()
-                self._notify_paused()
+                done_event.set()  # unblocks Tkinter thread so it can refresh immediately
             elif action == "continue":
                 self._pysnes.paused = False
             elif action == "pause":

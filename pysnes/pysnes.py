@@ -16,7 +16,7 @@ from .apu import Apu
 from .ppu import Ppu
 from .controller import Controller
 from .video import Video
-from .debugger import Debugger
+from .debugger import Debugger, BreakpointHit
 from . import settings as settings_module
 
 if cython.compiled:
@@ -199,7 +199,10 @@ class PySNES:
             while self.running:
                 if not self.paused:
                     frame_end = self.scheduler.master_clock + MC_PER_FRAME
-                    self.scheduler.run_to(frame_end)
+                    try:
+                        self.scheduler.run_to(frame_end)
+                    except BreakpointHit:
+                        pass  # paused=True already set; skip draw, next iteration checks paused
 
                     self.video.draw_textures(self.ppu.main_bgs)
                     self.video.update_screen()

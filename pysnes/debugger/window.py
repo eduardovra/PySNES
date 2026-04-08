@@ -6,6 +6,7 @@ hardware register side effects (e.g. OAM/CGRAM address auto-increment).
 """
 from __future__ import annotations
 
+import threading
 import tkinter as tk
 from tkinter import ttk
 from typing import TYPE_CHECKING
@@ -49,8 +50,7 @@ class DebuggerWindow:
         self.root.title("PySNES Debugger")
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
 
-        self._mem_region = tk.StringVar(value="WRAM")
-        self._mem_addr_var = tk.StringVar(value="0000")
+        self._mem_region_val: str = "WRAM"
         self._mem_addr: int = 0
 
         self._build_ui()
@@ -92,13 +92,19 @@ class DebuggerWindow:
         mem_ctrl.pack(fill="x")
 
         ttk.Label(mem_ctrl, text="Region:").pack(side="left")
+        self._region_buttons: dict[str, ttk.Radiobutton] = {}
         for r in _REGIONS:
-            ttk.Radiobutton(mem_ctrl, text=r, variable=self._mem_region, value=r,
-                            command=self._on_mem_region_change).pack(side="left", padx=2)
+            btn = ttk.Radiobutton(mem_ctrl, text=r, value=r,
+                                  command=lambda region=r: self._on_mem_region_change(region))
+            btn.pack(side="left", padx=2)
+            if r == self._mem_region_val:
+                btn.state(["selected"])
+            self._region_buttons[r] = btn
         ttk.Label(mem_ctrl, text="  Addr:").pack(side="left")
-        addr_entry = ttk.Entry(mem_ctrl, textvariable=self._mem_addr_var, width=6)
-        addr_entry.pack(side="left")
-        addr_entry.bind("<Return>", self._on_mem_addr_change)
+        self._addr_entry = ttk.Entry(mem_ctrl, width=6)
+        self._addr_entry.insert(0, "0000")
+        self._addr_entry.pack(side="left")
+        self._addr_entry.bind("<Return>", self._on_mem_addr_change)
 
         self._mem_text = self._make_text(mid, width=80, height=8)
         self._mem_text.pack(fill="both", expand=True, pady=(2, 0))
@@ -129,9 +135,8 @@ class DebuggerWindow:
         ttk.Button(ctrl, text="Pause",        command=self._cmd_pause).pack(fill="x", pady=2, padx=6)
 
         # ── Status bar ────────────────────────────────────────────────
-        self._status_var = tk.StringVar(value="Running")
-        ttk.Label(root, textvariable=self._status_var, anchor="w").pack(
-            fill="x", padx=6, pady=(0, 4))
+        self._status_label = ttk.Label(root, text="Running", anchor="w")
+        self._status_label.pack(fill="x", padx=6, pady=(0, 4))
 
     def _make_text(self, parent, **kwargs) -> tk.Text:
         t = tk.Text(parent, bg="#1e1e1e", fg="#d4d4d4",
@@ -164,7 +169,7 @@ class DebuggerWindow:
         cpu = self._cpu
         paused = self._debugger._pysnes.paused
 
-        self._status_var.set("PAUSED" if paused else "Running")
+        self._status_label.config(text="PAUSED" if paused else "Running")
 
         self._refresh_cpu_tab(cpu)
         if paused:
@@ -282,7 +287,7 @@ class DebuggerWindow:
     # ── Memory view ────────────────────────────────────────────────────
 
     def _refresh_memory(self) -> None:
-        region = self._mem_region.get()
+        region = self._mem_region_val
         base = self._mem_addr
         data = self._read_memory(region, base, _HEX_COLS * 8)
 
@@ -337,17 +342,20 @@ class DebuggerWindow:
     # Event handlers / button commands
     # ------------------------------------------------------------------
 
-    def _on_mem_region_change(self) -> None:
+    def _on_mem_region_change(self, region: str) -> None:
+        self._mem_region_val = region
         self._mem_addr = 0
-        self._mem_addr_var.set("0000")
+        self._addr_entry.delete(0, "end")
+        self._addr_entry.insert(0, "0000")
         self._refresh_memory()
 
     def _on_mem_addr_change(self, _event=None) -> None:
         try:
-            self._mem_addr = int(self._mem_addr_var.get(), 16)
+            self._mem_addr = int(self._addr_entry.get(), 16)
         except ValueError:
             self._mem_addr = 0
-            self._mem_addr_var.set("0000")
+            self._addr_entry.delete(0, "end")
+            self._addr_entry.insert(0, "0000")
         self._refresh_memory()
 
     def _cmd_toggle_bp_at_pc(self) -> None:
@@ -362,11 +370,14 @@ class DebuggerWindow:
         self._debugger._cmd_queue.put(("toggle_bp", addr))
 
     def _cmd_step(self) -> None:
-        self._debugger._cmd_queue.put(("step",))
+        done = threading.Event()
+        self._debugger._cmd_queue.put(("step", done))
+        done.wait()   # blocks Tkinter thread until main thread finishes the step
+        self.refresh()
 
     def _cmd_continue(self) -> None:
         self._debugger._cmd_queue.put(("continue",))
-        self._status_var.set("Running")
+        self._status_label.config(text="Running")
 
     def _cmd_pause(self) -> None:
         self._debugger._cmd_queue.put(("pause",))

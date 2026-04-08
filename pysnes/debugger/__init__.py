@@ -1,3 +1,3 @@
-from .debugger import Debugger
+from .debugger import Debugger, BreakpointHit
 
-__all__ = ["Debugger"]
+__all__ = ["Debugger", "BreakpointHit"]

@@ -222,9 +222,13 @@ class Apu:
 
         self.timers = [Timer(self, 128), Timer(self, 128), Timer(self, 16)]
 
-        # Catchup clock tracking: master clock value at last APU sync
-        # APU runs at ~1.024 MHz; 1 APU clock ≈ 21 master clocks (21477272/1024000)
-        self._last_synced_mc: int = 0
+        # Catchup clock tracking: master clock value at last APU sync.
+        # APU runs at ~1.024 MHz; 1 APU clock ≈ 21 master clocks (21477272/1024000).
+        # Start 2 APU bus cycles ahead of master-clock 0 to model the SPC700 reset
+        # vector fetch that Mesen performs (Spc::Reset -> ReadWord(ResetVector))
+        # before any IPL ROM instruction runs.  Without this the APU trails by ~42 MC
+        # and the SMW main-CPU↔APU handshake loop exits one iteration late.
+        self._last_synced_mc: int = -(2 * 21477272 // 1024000)
         # Set when APU writes to ports_w; causes sync_to to yield so the CPU
         # can observe each intermediate port value before the APU runs further.
         self._ports_w_dirty: bool = False

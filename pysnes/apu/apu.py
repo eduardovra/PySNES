@@ -354,8 +354,10 @@ class Apu:
         elif addr == 0x00F3:
             self.dsp_register_data = value
         elif addr <= 0x00F7:
+            # $F4-$F7 from SPC side: writing updates the SPC→CPU latch (ports_w).
+            # The CPU→SPC latch (ports_r) is separate hardware; do NOT mirror — the
+            # SPC reads back whatever the main CPU last wrote, not its own writes.
             self.ports_w[addr - 0x00F4] = value
-            self.ports_r[addr - 0x00F4] = value  # mirror so APU can read its own writes
             self._ports_w_dirty = True
         elif addr == 0x00F8:
             self.f8 = value

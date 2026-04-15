@@ -69,6 +69,7 @@ class Ppu:
 
         # Background
         self._bgmode = 0x00
+        self._bgpriority = 0
         self.bg1 = Background(number=1, color_offset_mode_0=0x00)
         self.bg2 = Background(number=2, color_offset_mode_0=0x20)
         self.bg3 = Background(number=3, color_offset_mode_0=0x40)

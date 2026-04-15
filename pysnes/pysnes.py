@@ -16,6 +16,7 @@ from .apu import Apu
 from .ppu import Ppu
 from .controller import Controller
 from .video import Video
+from .debugger import Debugger, BreakpointHit
 from . import settings as settings_module
 
 if cython.compiled:
@@ -42,6 +43,8 @@ class PySNES:
         self.cpu.trace_enabled = False
         self.ppu.attach(self.scheduler, bus)
         self.bus = bus
+        self.debugger = Debugger(self)
+        self.debugger.attach()
         self.video = Video()
 
         self.video.initialize(headless=settings.get("headless", False))
@@ -196,7 +199,10 @@ class PySNES:
             while self.running:
                 if not self.paused:
                     frame_end = self.scheduler.master_clock + MC_PER_FRAME
-                    self.scheduler.run_to(frame_end)
+                    try:
+                        self.scheduler.run_to(frame_end)
+                    except BreakpointHit:
+                        pass  # paused=True already set; skip draw, next iteration checks paused
 
                     self.video.draw_textures(self.ppu.main_bgs)
                     self.video.update_screen()
@@ -215,6 +221,8 @@ class PySNES:
                 if self._dump_requested:
                     self._dump_requested = False
                     self._do_memory_dump()
+
+                self.debugger.drain_commands()
 
                 self.process_inputs()
 
@@ -238,10 +246,14 @@ class PySNES:
                 self.controllers[0].pressed_keys.add(self.event.key.keysym.sym)
                 if self.event.key.keysym.sym == sdl.SDLK_SPACE:
                     self.paused = not self.paused
+                    if self.paused:
+                        self.debugger._notify_paused()
                 elif self.event.key.keysym.sym == sdl.SDLK_F11:
                     self._screenshot_requested = True
                 elif self.event.key.keysym.sym == sdl.SDLK_F10:
                     self._dump_requested = True
+                elif self.event.key.keysym.sym == sdl.SDLK_F12:
+                    self.debugger.open_window()
 
 
 def print_python_info():

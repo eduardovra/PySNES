@@ -773,17 +773,19 @@ class Ppu:
         # tile width/height can be 8x8 or 16x16 pixels for backgrounds
         # objects can have larger sizes though
 
-        for tile_pos_v in range(1):
-            for tile_pos_h in range(1):
+        h_tiles = tile_width // 8
+        v_tiles = tile_height // 8
+        for tile_pos_v in range(v_tiles):
+            for tile_pos_h in range(h_tiles):
                 # compute x, y positions
                 if tile.h_flip:
-                    x = x_offset + tile_width - 8 - tile_pos_h * 8
+                    x = x_offset + (h_tiles - 1 - tile_pos_h) * 8
                 else:
-                    x = x_offset + tile_pos_h * tile_width
+                    x = x_offset + tile_pos_h * 8
                 if tile.v_flip:
-                    y = y_offset + tile_height - 8 - tile_pos_v * 8
+                    y = y_offset + (v_tiles - 1 - tile_pos_v) * 8
                 else:
-                    y = y_offset + tile_pos_v * tile_height
+                    y = y_offset + tile_pos_v * 8
 
                 # used when drawing objects...
                 if tile_character is not None:

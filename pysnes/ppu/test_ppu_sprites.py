@@ -213,3 +213,134 @@ class TestSpriteRendering:
 
         for x in range(SCREEN_W):
             assert _pixel(ppu, x, 9) == BLACK, f"Expected backdrop at ({x}, 9)"
+
+
+# ---------------------------------------------------------------------------
+# 16x16 multi-tile sprite tests
+# ---------------------------------------------------------------------------
+
+# 5-bit red: r5=31 → r8 = 255
+RED = (255, 0, 0)
+BLUE = (0, 0, 255)
+
+
+def _setup_16x16_sprite(ppu: Ppu) -> None:
+    """Place one 16x16 sprite at (x=20, y=10) with distinct solid tiles.
+
+    A 16x16 sprite is composed of 4 adjacent 8x8 tiles arranged:
+      [char+0]  [char+1]      top-left   top-right
+      [char+16] [char+17]     bot-left   bot-right
+
+    SNES OBJ tile numbering: H offset +1, V offset +16.
+
+    oam_base_size=0 → small=8x8, large=16x16.
+    obj.size=True → use the large (16x16) size.
+    """
+    TILE_BASE = 0x200  # oam_tiledata_address = 0x100 → byte addr = 0x200
+    TILE_SIZE_4BPP = 32
+
+    # Tile 0 (top-left) = GREEN
+    _write_4bpp_solid_tile(ppu, TILE_BASE + 0 * TILE_SIZE_4BPP, color_index=1)
+    # Tile 1 (top-right) = RED
+    _write_4bpp_solid_tile(ppu, TILE_BASE + 1 * TILE_SIZE_4BPP, color_index=2)
+    # Tile 16 (bottom-left) = BLUE
+    _write_4bpp_solid_tile(ppu, TILE_BASE + 16 * TILE_SIZE_4BPP, color_index=3)
+    # Tile 17 (bottom-right) = GREEN again
+    _write_4bpp_solid_tile(ppu, TILE_BASE + 17 * TILE_SIZE_4BPP, color_index=1)
+
+    # CGRAM: sprite palette 8 (color indices 129-131)
+    _write_cgram(ppu, 0,   0,  0,  0)   # backdrop = black
+    _write_cgram(ppu, 129, 0, 31,  0)   # color 1 = GREEN
+    _write_cgram(ppu, 130, 31, 0,  0)   # color 2 = RED
+    _write_cgram(ppu, 131, 0,  0, 31)   # color 3 = BLUE
+
+    ppu.oam_tiledata_address = 0x100
+    ppu.oam_base_size = 0  # 8x8 and 16x16
+
+    for obj in ppu.oam.objects:
+        obj.y = 240
+
+    obj = ppu.oam.objects[0]
+    obj.x = 20
+    obj.y = 10
+    obj.character = 0
+    obj.palette = 8
+    obj.priority = 0
+    obj.h_flip = False
+    obj.v_flip = False
+    obj.size = True  # large = 16x16
+
+
+class TestMultiTileSprite:
+    """16x16 sprites must render all four 8x8 sub-tiles, not just the top-left."""
+
+    def test_16x16_top_left_tile(self):
+        """Scanline through the top-left tile (y=10, pixels x=20..27) → GREEN."""
+        ppu = _make_ppu()
+        _setup_16x16_sprite(ppu)
+
+        ppu.v_counter = 11  # output row = 10
+        ppu.draw_scanline_backdrop()
+        ppu.draw_objects()
+
+        for x in range(20, 28):
+            assert _pixel(ppu, x, 10) == GREEN, f"top-left at ({x},10)"
+
+    def test_16x16_top_right_tile(self):
+        """Scanline through the top-right tile (y=10, pixels x=28..35) → RED."""
+        ppu = _make_ppu()
+        _setup_16x16_sprite(ppu)
+
+        ppu.v_counter = 11
+        ppu.draw_scanline_backdrop()
+        ppu.draw_objects()
+
+        for x in range(28, 36):
+            assert _pixel(ppu, x, 10) == RED, f"top-right at ({x},10)"
+
+    def test_16x16_bottom_left_tile(self):
+        """Scanline through the bottom-left tile (y=18, pixels x=20..27) → BLUE."""
+        ppu = _make_ppu()
+        _setup_16x16_sprite(ppu)
+
+        ppu.v_counter = 19  # output row = 18
+        ppu.draw_scanline_backdrop()
+        ppu.draw_objects()
+
+        for x in range(20, 28):
+            assert _pixel(ppu, x, 18) == BLUE, f"bottom-left at ({x},18)"
+
+    def test_16x16_bottom_right_tile(self):
+        """Scanline through the bottom-right tile (y=18, pixels x=28..35) → GREEN."""
+        ppu = _make_ppu()
+        _setup_16x16_sprite(ppu)
+
+        ppu.v_counter = 19
+        ppu.draw_scanline_backdrop()
+        ppu.draw_objects()
+
+        for x in range(28, 36):
+            assert _pixel(ppu, x, 18) == GREEN, f"bottom-right at ({x},18)"
+
+    def test_16x16_no_bleed_right(self):
+        """Pixel at x=36 (right of sprite) must be backdrop."""
+        ppu = _make_ppu()
+        _setup_16x16_sprite(ppu)
+
+        ppu.v_counter = 11
+        ppu.draw_scanline_backdrop()
+        ppu.draw_objects()
+
+        assert _pixel(ppu, 36, 10) == BLACK, "right of 16x16 sprite"
+
+    def test_16x16_no_bleed_below(self):
+        """Row 26 (below bottom of sprite) must be backdrop."""
+        ppu = _make_ppu()
+        _setup_16x16_sprite(ppu)
+
+        ppu.v_counter = 27  # output row = 26
+        ppu.draw_scanline_backdrop()
+        ppu.draw_objects()
+
+        for x in range(20, 36):
+            assert _pixel(ppu, x, 26) == BLACK, f"below sprite at ({x},26)"

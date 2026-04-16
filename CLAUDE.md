@@ -164,7 +164,7 @@ pysnes/debugger/debugger.py    Debugger + live UI window
 ## Integration Testing (Mesen oracle)
 
 Mesen 2 is used as a reference oracle for integration tests.
-Download from https://github.com/SourMesen/Mesen2/releases, then set `MESEN_BIN` env var or `"mesen_bin"` in `settings.json`.
+It lives as a git submodule at `submodules/Mesen2/`. Build it with `make -C submodules/Mesen2` (requires .NET 8 SDK, SDL2, and clang/gcc with C++17 support). The default `mesen_bin` path in `settings.py` points to the submodule build output. Override with `MESEN_BIN` env var or `"mesen_bin"` in `settings.json` if needed.
 
 ```bash
 # Tier 1 — find first diverging frame (CPU/SPC registers + WRAM CRC32):

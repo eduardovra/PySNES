@@ -10,3 +10,6 @@
 [submodule "submodules/SingleStepTests_spc700"]
 	path = submodules/SingleStepTests_spc700
 	url = git@github.com:SingleStepTests/spc700.git
+[submodule "submodules/Mesen2"]
+	path = submodules/Mesen2
+	url = https://github.com/SourMesen/Mesen2.git

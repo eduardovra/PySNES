@@ -4,7 +4,7 @@
 
 A SNES emulator written in Python, targeting real-time emulation speed while keeping elegant Python syntax. The performance strategy is Cython (pure Python mode) compiled with PyPy 3.10, or a combination of both.
 
-The codebase is in active development. CPU and SPC700 instruction tests pass against the SingleStepTests suite.
+The codebase is in active development. CPU and SPC700 instruction tests pass against the SingleStepTests suite. Super Mario World boots past the SPC700 IPL handshake and second-stage audio upload and renders the animated title screen (branch `apu-sync-timing-fixes`).
 
 ## Build & Run
 
@@ -72,20 +72,21 @@ On startup, `pysnes.py` opens `cpu_trace.log` and compares CPU execution against
 ## Architecture
 
 ```
-pysnes/pysnes.py          Main emulator class (PySNES) + entry point
-pysnes/bus.py             Memory bus - routes reads/writes to all peripherals
-pysnes/rom.py             ROM parser (LoROM/HiROM, header, vectors)
-pysnes/controller.py      SNES controller input (keyboard mapping)
-pysnes/video.py           Video renderer wrapper
-pysnes/video_sdl2.py      SDL2 2D rendering engine (hardware-accelerated)
-pysnes/register_types.py  Register type definitions
-pysnes/trace_matcher.py   CPU instruction trace verification tool
-pysnes/cpu/cpu.py         WDC65816 CPU core
-pysnes/cpu/wdc65816/      65816 instruction set, opcodes, addressing modes, disassembler
-pysnes/apu/apu.py         SPC700 audio CPU core
-pysnes/apu/spc700/        SPC700 instructions, opcodes, addressing modes
-pysnes/ppu/ppu.py         Picture Processing Unit (~900 lines, main graphics pipeline)
+pysnes/pysnes.py               Main emulator class (PySNES) + entry point
+pysnes/bus/bus.py              Memory bus - routes reads/writes to all peripherals
+pysnes/rom.py                  ROM parser (LoROM/HiROM, header, vectors)
+pysnes/controller/controller.py  SNES controller input (keyboard mapping)
+pysnes/video/video.py          Video renderer wrapper
+pysnes/video/video_sdl2.py     SDL2 2D rendering engine (hardware-accelerated)
+pysnes/scheduler/scheduler.py  Event-driven master-clock scheduler
+pysnes/cpu/cpu.py              WDC65816 CPU core
+pysnes/cpu/dma.py              DMA/HDMA engine
+pysnes/cpu/wdc65816/           65816 instruction set, opcodes, addressing modes, disassembler
+pysnes/apu/apu.py              SPC700 audio CPU core + APU port I/O
+pysnes/apu/spc700/             SPC700 instructions, opcodes, addressing modes
+pysnes/ppu/ppu.py              Picture Processing Unit (main graphics pipeline)
 pysnes/ppu/data_structures.py  Background and sprite data structures
+pysnes/debugger/debugger.py    Debugger + live UI window
 ```
 
 ### Main Loop (scanline-based)
@@ -191,13 +192,13 @@ uv run --python pypy@3.10 pytest pysnes/ -m "not integration"
 uv run --python pypy@3.10 pytest pysnes/
 
 # CPU tests (TomHarte's ProcessorTests / SingleStepTests 65816)
-uv run --python pypy@3.10 pytest pysnes/test_cpu.py
+uv run --python pypy@3.10 pytest pysnes/cpu/test_cpu.py
 
 # SPC700 instruction tests (SingleStepTests spc700)
-uv run --python pypy@3.10 pytest pysnes/test_spc700.py
+uv run --python pypy@3.10 pytest pysnes/apu/test_spc700.py
 
 # APU / timer / interrupt / scheduler unit tests
-uv run --python pypy@3.10 pytest pysnes/apu/test_apu.py pysnes/test_timers.py pysnes/test_interrupts.py pysnes/test_scheduler.py
+uv run --python pypy@3.10 pytest pysnes/apu/test_apu.py pysnes/apu/test_timers.py pysnes/bus/test_interrupts.py pysnes/scheduler/test_scheduler.py
 
 # PPU scroll unit tests (synthetic, no ROM needed):
 uv run --python pypy@3.10 pytest pysnes/ppu/test_ppu_scroll.py -v
@@ -208,13 +209,13 @@ uv run --python pypy@3.10 pytest pysnes/ppu/test_ppu.py -m ppu
 uv run --python pypy@3.10 pytest pysnes/ppu/test_ppu.py -m ppu --update-refs
 
 # Filter options (apply to test_cpu.py and test_spc700.py)
-uv run --python pypy@3.10 pytest pysnes/test_cpu.py --opcode ea           # single opcode
-uv run --python pypy@3.10 pytest pysnes/test_spc700.py --opcode d0        # single opcode
-uv run --python pypy@3.10 pytest pysnes/test_cpu.py --max-per-opcode 0    # all cases (unlimited)
-uv run --python pypy@3.10 pytest pysnes/test_cpu.py --max-per-opcode 10   # 10 cases per opcode
-uv run --python pypy@3.10 pytest pysnes/test_cpu.py --mode e              # emulation mode only (65816)
-uv run --python pypy@3.10 pytest pysnes/test_cpu.py --mode n              # native mode only (65816)
-uv run --python pypy@3.10 pytest pysnes/test_cpu.py --opcode ea --mode n  # combine filters
+uv run --python pypy@3.10 pytest pysnes/cpu/test_cpu.py --opcode ea           # single opcode
+uv run --python pypy@3.10 pytest pysnes/apu/test_spc700.py --opcode d0        # single opcode
+uv run --python pypy@3.10 pytest pysnes/cpu/test_cpu.py --max-per-opcode 0    # all cases (unlimited)
+uv run --python pypy@3.10 pytest pysnes/cpu/test_cpu.py --max-per-opcode 10   # 10 cases per opcode
+uv run --python pypy@3.10 pytest pysnes/cpu/test_cpu.py --mode e              # emulation mode only (65816)
+uv run --python pypy@3.10 pytest pysnes/cpu/test_cpu.py --mode n              # native mode only (65816)
+uv run --python pypy@3.10 pytest pysnes/cpu/test_cpu.py --opcode ea --mode n  # combine filters
 ```
 
 - 65816 test data is at `submodules/65816/v1/` (files named `{opcode}.{e|n}.json`)
@@ -236,8 +237,8 @@ uv run --python pypy@3.10 pytest pysnes/test_cpu.py --opcode ea --mode n  # comb
 
 ### Benchmarking Rule
 **Before and after every performance change, measure and record results.** Use the relevant benchmark for the component being optimized:
-- **CPU throughput**: `uv run --python pypy@3.10 pytest pysnes/test_cpu.py --opcode ea -s` — look for "instr/sec" in output
-- **APU throughput**: `uv run --python pypy@3.10 pytest pysnes/test_spc700.py --opcode 00 -s` — look for "instr/sec"
+- **CPU throughput**: `uv run --python pypy@3.10 pytest pysnes/cpu/test_cpu.py --opcode ea -s` — look for "instr/sec" in output
+- **APU throughput**: `uv run --python pypy@3.10 pytest pysnes/apu/test_spc700.py --opcode 00 -s` — look for "instr/sec"
 - **FPS (full emulator)**: run with a ROM and read the FPS from the window title bar
 - **PPU rendering throughput**: `time uv run --python pypy@3.10 pytest pysnes/ppu/test_ppu.py -m ppu` — wall-clock time dominated by PPU rendering; fully automated and reproducible
 
@@ -260,20 +261,14 @@ Document results in the PR/commit message as: `before: X instr/sec → after: Y 
 - ROM path is passed as a positional CLI argument: `python -m pysnes.pysnes <rom>`
 - Optional `--trace <ref>` flag enables CPU trace comparison against a reference log
 
-## Known Timing Issues (for future debugging)
+## APU↔CPU Handshake Notes
 
-### APU sync granularity (Tier 2 divergence at instruction ~1992)
+Super Mario World boots to the animated title screen on branch `apu-sync-timing-fixes`. Three APU-related fixes live on that branch:
 
-**Symptom**: PySNES exits the APU handshake loop (CPU at 0x8082 `CMP $2140`) one iteration later than Mesen. Both are waiting for the SPC700 IPL ROM to write 0xBBAA to ports F4/F5.
+1. **Cycle-accurate APU sync on CPU port reads** — in `pysnes/bus/bus.py` the sync target is `scheduler.master_clock + (cpu.cycles - cpu.prev_cycles)` so the APU catches up to the actual bus-cycle time of the $2140–$2143 read, not the instruction start.
+2. **Exact 21477272/1024000 MC↔APU-clock ratio** — integer 21 approximation accumulated ~60 MC drift over IPL boot; exact ratio eliminates it.
+3. **SPC-side port writes no longer mirror into the CPU→SPC latch** — the four $F4/$2140-style I/O pairs are independent physical registers (one SPC-writes/CPU-reads, one CPU-writes/SPC-reads). An old mirror in `Apu._write` corrupted the CPU→SPC latch on every SPC write, so the N-SPC driver read back its own acknowledgement bytes instead of the CPU's handshake values and the second-stage upload deadlocked.
 
-**Root cause**: `apu.sync_to(master_clock)` is called with `scheduler.master_clock`, which is the master clock at the **start** of the CPU instruction — not at the actual bus cycle where the APU port is read. For `CMP $2140` (16-bit), the port read happens ~24 MC into the instruction (after 3 × 8 MC opcode/address fetches). By syncing only to the instruction start, PySNES may see a stale port value when the APU write falls within those 24 MC.
-
-**What was tried**: Updating `scheduler.master_clock` progressively in `cpu.read()`/`write()`/`idle()` so each `sync_to` call reflects the actual physical time of the bus access. This moved the divergence the wrong way (too early) — possibly due to the APU being over-triggered on opcode fetches and write cycles that don't touch APU ports.
-
-**Next approach to try**: Only advance `scheduler.master_clock` by the elapsed cycles *before* calling `bus.read()` for APU port addresses (0x2140–0x2143), rather than for every bus cycle. Or: pass `scheduler.master_clock + elapsed_within_instruction` directly to `sync_to` in the bus handler, where `elapsed = cpu.cycles - cpu.prev_cycles` at the point of the read.
-
-**Timing reference**: APU writes 0xBBAA at ≈50484 master clocks after reset. CPU loop (CMP+BNE) costs 58 MC/iteration (36 MC CMP + 22 MC BNE-taken). Loop starts at ≈32930 MC. The 1-iteration miss is a ~24 MC window.
-
-**cycles vs icycles** (for reference):
+**cycles vs icycles** (reference):
 - `icycles`: counts bus transactions for the current instruction (each read/write/idle = +1). What SingleStepTests verify.
 - `cycles`: counts actual SNES master clock units elapsed (each bus cycle adds 6, 8, or 12 MC depending on memory region). What the scheduler uses.

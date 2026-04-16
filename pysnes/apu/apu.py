@@ -222,9 +222,13 @@ class Apu:
 
         self.timers = [Timer(self, 128), Timer(self, 128), Timer(self, 16)]
 
-        # Catchup clock tracking: master clock value at last APU sync
-        # APU runs at ~1.024 MHz; 1 APU clock ≈ 21 master clocks (21477272/1024000)
-        self._last_synced_mc: int = 0
+        # Catchup clock tracking: master clock value at last APU sync.
+        # APU runs at ~1.024 MHz; 1 APU clock ≈ 21 master clocks (21477272/1024000).
+        # Start 2 APU bus cycles ahead of master-clock 0 to model the SPC700 reset
+        # vector fetch that Mesen performs (Spc::Reset -> ReadWord(ResetVector))
+        # before any IPL ROM instruction runs.  Without this the APU trails by ~42 MC
+        # and the SMW main-CPU↔APU handshake loop exits one iteration late.
+        self._last_synced_mc: int = -(2 * 21477272 // 1024000)
         # Set when APU writes to ports_w; causes sync_to to yield so the CPU
         # can observe each intermediate port value before the APU runs further.
         self._ports_w_dirty: bool = False
@@ -350,8 +354,10 @@ class Apu:
         elif addr == 0x00F3:
             self.dsp_register_data = value
         elif addr <= 0x00F7:
+            # $F4-$F7 from SPC side: writing updates the SPC→CPU latch (ports_w).
+            # The CPU→SPC latch (ports_r) is separate hardware; do NOT mirror — the
+            # SPC reads back whatever the main CPU last wrote, not its own writes.
             self.ports_w[addr - 0x00F4] = value
-            self.ports_r[addr - 0x00F4] = value  # mirror so APU can read its own writes
             self._ports_w_dirty = True
         elif addr == 0x00F8:
             self.f8 = value
@@ -417,7 +423,9 @@ class Apu:
         cython.cast(InstructionSlot, self.instructions[opcode]).call()
 
     # Approximate master-clock-to-APU-clock ratio (integer division)
-    _APU_MC_PER_CLOCK: int = 21  # 21477272 / 1024000 ≈ 20.979
+    _APU_MC_PER_CLOCK: int = 21  # 21477272 / 1024000 ≈ 20.979 (integer-approx; exact ratio used in sync_to)
+    _APU_MC_NUM: int = 21477272
+    _APU_MC_DEN: int = 1024000
 
     def sync_to(self, master_clock: int) -> None:
         """Catch the APU up to the given master clock value.
@@ -432,10 +440,11 @@ class Apu:
         elapsed = master_clock - self._last_synced_mc
         if elapsed <= 0:
             return
-        # Target APU clock cycles to run (1 APU clock ≈ 21 master clocks).
-        # self.cycles counts actual APU clocks per instruction (reads + writes +
-        # idles), so we accumulate them and stop when the budget is spent.
-        target_apu_clocks = elapsed // self._APU_MC_PER_CLOCK
+        # Target APU clock cycles to run using the exact ratio (21477272/1024000)
+        # rather than integer 21 — over the SPC700 IPL ROM boot (~2400 APU cycles)
+        # the truncation to 21 accumulates ~60 MC of drift, enough to skew the
+        # main-CPU↔APU handshake by a full CPU loop iteration (see SMW boot).
+        target_apu_clocks = elapsed * self._APU_MC_DEN // self._APU_MC_NUM
         self._ports_w_dirty = False
         apu_clocks_run = 0
         while apu_clocks_run < target_apu_clocks:
@@ -445,9 +454,9 @@ class Apu:
             if self._ports_w_dirty:
                 # The APU wrote a port — advance _last_synced_mc by only what
                 # we've run, even if it overshoots mc (the APU has "pre-run").
-                self._last_synced_mc += apu_clocks_run * self._APU_MC_PER_CLOCK
+                self._last_synced_mc += apu_clocks_run * self._APU_MC_NUM // self._APU_MC_DEN
                 return
-        self._last_synced_mc += apu_clocks_run * self._APU_MC_PER_CLOCK
+        self._last_synced_mc += apu_clocks_run * self._APU_MC_NUM // self._APU_MC_DEN
 
     @cython.cfunc
     def step_timers(self, clocks: cython.uint):

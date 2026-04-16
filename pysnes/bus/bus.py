@@ -127,10 +127,9 @@ class Bus:
 
                 if 0x2140 <= addr <= 0x217F:
                     # 0x2140 - 0x204C == 0xF4 [addr of PORT0]
-                    if 0x2140 <= addr <= 0x2143:  # TODO ugly
-                        self.apu.sync_to(self.scheduler.master_clock)
-                        val = self.apu.ports_w[addr - 0x2140]
-                        return val
+                    if 0x2140 <= addr <= 0x2143:
+                        self.apu.sync_to(self.scheduler.master_clock + (self.cpu.cycles - self.cpu.prev_cycles))
+                        return self.apu.ports_w[addr - 0x2140]
                     return self.apu[addr - 0x204C]
 
             elif addr == 0x4016:  # JOYSER0
@@ -392,7 +391,7 @@ class Bus:
                     return  # Not writable
 
                 if 0x2140 <= addr <= 0x2143:  # TODO ugly
-                    self.apu.sync_to(self.scheduler.master_clock)
+                    self.apu.sync_to(self.scheduler.master_clock + (self.cpu.cycles - self.cpu.prev_cycles))
                     self.apu.ports_r[addr - 0x2140] = data
                     return
 

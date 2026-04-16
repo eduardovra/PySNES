@@ -119,6 +119,10 @@ class Ppu:
         self.frames = 0  # total frames rendered
 
         self.main_bgs = [0x00] * 256 * 262  # 262 was 239 before
+        self.sub_bgs = [0x00] * 256 * 262
+        # Per-pixel main-screen layer tag: 0=backdrop, 1-4=BG1-BG4, 5=OBJ.
+        # Used by the color-math composite pass to know which pixels participate.
+        self.main_layer = bytearray(256 * 262)
 
     def inidisp_set(self, data: int) -> None:
         # TODO reset OAM addr if writing while on first blank line
@@ -445,6 +449,10 @@ class Ppu:
         if self.display_disable:
             return
 
+        self._render_layers()
+        self.composite_scanline()
+
+    def _render_layers(self):
         # Draw picture
         if self._bgmode == 0:
             """
@@ -532,21 +540,88 @@ class Ppu:
         else:
             raise NotImplementedError(f"BG Mode {self._bgmode} not implemented")
 
+    def composite_scanline(self) -> None:
+        """Apply CGADSUB color math, blending sub_bgs into main_bgs.
+
+        Minimal slice: only the ADD path (CGADSUB bit 7 = 0), no half (bit 6 = 0),
+        no clip-to-black, no math windowing. CGWSEL bit 1 selects whether
+        sub-screen layers participate; we always treat sub_bgs as the source.
+        Per-pixel participation is gated by CGADSUB bits 0-5:
+          bit 0..3 = BG1..BG4, bit 4 = OBJ palettes 4-7, bit 5 = backdrop.
+        """
+        cgadsub: cython.uint = self.cgadsub
+        if cgadsub == 0:
+            return
+        # Subtract / half / clip not implemented yet — skip silently.
+        if cgadsub & 0x80:
+            return
+        enable_bg1: cython.bint = bool(cgadsub & 0x01)
+        enable_bg2: cython.bint = bool(cgadsub & 0x02)
+        enable_bg3: cython.bint = bool(cgadsub & 0x04)
+        enable_bg4: cython.bint = bool(cgadsub & 0x08)
+        enable_obj: cython.bint = bool(cgadsub & 0x10)
+        enable_back: cython.bint = bool(cgadsub & 0x20)
+
+        y: cython.int = self.v_counter - 1
+        row: cython.uint = y * SCREEN_WIDTH
+        for x in range(SCREEN_WIDTH):
+            idx: cython.uint = row + x
+            layer: cython.uchar = self.main_layer[idx]
+            participate: cython.bint = False
+            if layer == 0:
+                participate = enable_back
+            elif layer == 1:
+                participate = enable_bg1
+            elif layer == 2:
+                participate = enable_bg2
+            elif layer == 3:
+                participate = enable_bg3
+            elif layer == 4:
+                participate = enable_bg4
+            elif layer == 5:
+                participate = enable_obj
+            if not participate:
+                continue
+            m: cython.uint = self.main_bgs[idx]
+            s: cython.uint = self.sub_bgs[idx]
+            mr: cython.uint = (m >> 24) & 0xFF
+            mg: cython.uint = (m >> 16) & 0xFF
+            mb: cython.uint = (m >> 8) & 0xFF
+            sr: cython.uint = (s >> 24) & 0xFF
+            sg: cython.uint = (s >> 16) & 0xFF
+            sb: cython.uint = (s >> 8) & 0xFF
+            r: cython.uint = mr + sr
+            g: cython.uint = mg + sg
+            b: cython.uint = mb + sb
+            if r > 255:
+                r = 255
+            if g > 255:
+                g = 255
+            if b > 255:
+                b = 255
+            self.main_bgs[idx] = (r << 24) | (g << 16) | (b << 8) | (m & 0xFF)
+
     def draw_scanline_backdrop(self) -> None:
-        """Draw the backdrop color for the current scanline"""
+        """Draw the backdrop color for the current scanline.
+        Fills both main and sub buffers and resets the layer tag to 0 (backdrop)."""
         u32_color = self.get_u32_backdrop_color()
         y = self.v_counter - 1
+        row = y * SCREEN_WIDTH
         for x in range(SCREEN_WIDTH):
-            self.main_bgs[y * SCREEN_WIDTH + x] = u32_color
+            self.main_bgs[row + x] = u32_color
+            self.sub_bgs[row + x] = u32_color
+            self.main_layer[row + x] = 0
 
     @cython.cfunc
     def draw_background_scanline(self, bg: Background, bpp: cython.uchar, priority_selector: cython.bint):
         scanline = self.v_counter  # TODO move to method argument
 
-        # assert bg.sub_screen_enable is False, "Sub screen not implemented"
-
-        if not bg.main_screen_enable:
+        # If neither main nor sub is enabled, nothing to do at all.
+        if not bg.main_screen_enable and not bg.sub_screen_enable:
             return
+        write_main: cython.bint = bg.main_screen_enable
+        write_sub: cython.bint = bg.sub_screen_enable
+        layer_tag: cython.uchar = bg.number
 
         # Window masking setup for this BG.
         # $212E TMW bit (bg.number-1): window masking enabled for this BG on main screen.
@@ -667,7 +742,12 @@ class Ppu:
                     color_offset = bg.color_offset_mode_0 if self._bgmode == 0 else 0
 
                     u32_color = self.get_u32_color(bpp, tilemap_palette, v, color_offset)
-                    self.main_bgs[orgy * SCREEN_WIDTH + orgx] = u32_color
+                    pix_idx: cython.uint = orgy * SCREEN_WIDTH + orgx
+                    if write_main:
+                        self.main_bgs[pix_idx] = u32_color
+                        self.main_layer[pix_idx] = layer_tag
+                    if write_sub:
+                        self.sub_bgs[pix_idx] = u32_color
 
     def draw_tiles(
         self,

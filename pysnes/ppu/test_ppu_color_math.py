@@ -273,3 +273,145 @@ class TestColorMathBackdropAdd:
         assert _main_pixel(ppu, 200, 0) == (0, 0, 0), (
             "With color math disabled, the main backdrop should be visible (not the sub)"
         )
+
+
+# ---------------------------------------------------------------------------
+# Subtract path (CGADSUB bit 7) — used by SMW logo drop-shadow
+# ---------------------------------------------------------------------------
+
+class TestColorMathSubtract:
+    """CGADSUB bit 7 = 1 → result = main - sub (clamped to 0)."""
+
+    def _setup_subtract_scene(self, ppu: Ppu, main_rgb5=(31, 31, 31), sub_rgb5=(15, 15, 15)) -> None:
+        """BG1 on main = bright, BG2 on sub = mid-gray. Subtract bit targets BG1."""
+        ppu.bg1.screen_addr = 0
+        ppu.bg2.screen_addr = 0x800
+
+        _write_cgram(ppu, 0, 0, 0, 0)
+        _write_cgram(ppu, 1, *main_rgb5)
+        _write_cgram(ppu, 2, *sub_rgb5)
+
+        _write_4bpp_solid_tile(ppu, 0, 1)
+        _write_4bpp_solid_tile(ppu, 1, 2)
+
+        for col in range(32):
+            ppu.vram[0 + col * 2] = 0
+            ppu.vram[0 + col * 2 + 1] = 0
+            ppu.vram[0x1000 + col * 2] = 1
+            ppu.vram[0x1000 + col * 2 + 1] = 0
+
+        for bg, en_main, en_sub in ((ppu.bg1, True, False), (ppu.bg2, False, True)):
+            bg.tiledata_addr = TILEDATA
+            bg.screen_size = 0
+            bg.tile_size = 0
+            bg.hoffset = 0
+            bg.voffset = 0
+            bg.main_screen_enable = en_main
+            bg.sub_screen_enable = en_sub
+
+        ppu.cgwsel = 0b00000010  # sub-screen layers participate
+        # bit 7 = 1 (subtract), bit 0 = 1 (BG1 participates)
+        ppu.cgadsub = 0b10000001
+
+    def test_subtract_bg1(self):
+        """BG1 white (255) − sub mid-gray (~121) = dark gray."""
+        ppu = _make_ppu()
+        self._setup_subtract_scene(ppu)
+        ppu.v_counter = 1
+        ppu.render_scanline()
+        r, g, b = _main_pixel(ppu, 0, 0)
+        # 5-bit 31 → 248 when scaled; 5-bit 15 → 120. 248 - 120 = 128 (allow small rounding).
+        assert 120 <= r <= 140 and 120 <= g <= 140 and 120 <= b <= 140, (
+            f"expected ~128, got ({r},{g},{b})"
+        )
+
+    def test_subtract_clamps_at_zero(self):
+        """main=dim (8) − sub=bright (255) = 0, not negative."""
+        ppu = _make_ppu()
+        self._setup_subtract_scene(ppu, main_rgb5=(1, 1, 1), sub_rgb5=(31, 31, 31))
+        ppu.v_counter = 1
+        ppu.render_scanline()
+        r, g, b = _main_pixel(ppu, 0, 0)
+        assert (r, g, b) == (0, 0, 0), f"expected clamp to 0, got ({r},{g},{b})"
+
+    def test_subtract_gating_by_cgadsub_bit(self):
+        """When BG1 bit is clear in CGADSUB, BG1 pixels are unchanged even with subtract on."""
+        ppu = _make_ppu()
+        self._setup_subtract_scene(ppu)
+        ppu.cgadsub = 0b10000000  # subtract, but no layer participates
+        ppu.v_counter = 1
+        ppu.render_scanline()
+        # BG1 pixel should pass through unchanged (white)
+        assert _main_pixel(ppu, 0, 0) == (255, 255, 255), "gate off → no math applied"
+
+
+# ---------------------------------------------------------------------------
+# Half-intensity path (CGADSUB bit 6)
+# ---------------------------------------------------------------------------
+
+class TestColorMathHalf:
+    """CGADSUB bit 6 = 1 → divide result by 2 after add or subtract."""
+
+    def _setup_half_scene(self, ppu: Ppu, main_rgb5=(31, 31, 31), sub_rgb5=(31, 31, 31)) -> None:
+        ppu.bg1.screen_addr = 0
+        ppu.bg2.screen_addr = 0x800
+
+        _write_cgram(ppu, 0, 0, 0, 0)
+        _write_cgram(ppu, 1, *main_rgb5)
+        _write_cgram(ppu, 2, *sub_rgb5)
+
+        _write_4bpp_solid_tile(ppu, 0, 1)
+        _write_4bpp_solid_tile(ppu, 1, 2)
+
+        for col in range(32):
+            ppu.vram[0 + col * 2] = 0
+            ppu.vram[0 + col * 2 + 1] = 0
+            ppu.vram[0x1000 + col * 2] = 1
+            ppu.vram[0x1000 + col * 2 + 1] = 0
+
+        for bg, en_main, en_sub in ((ppu.bg1, True, False), (ppu.bg2, False, True)):
+            bg.tiledata_addr = TILEDATA
+            bg.screen_size = 0
+            bg.tile_size = 0
+            bg.hoffset = 0
+            bg.voffset = 0
+            bg.main_screen_enable = en_main
+            bg.sub_screen_enable = en_sub
+
+        ppu.cgwsel = 0b00000010
+
+    def test_half_add(self):
+        """(main + sub) / 2 with both = white → result ≈ white (no clamp loss)."""
+        ppu = _make_ppu()
+        self._setup_half_scene(ppu)
+        # bit 7 = 0 (add), bit 6 = 1 (half), bit 0 = 1 (BG1 participates)
+        ppu.cgadsub = 0b01000001
+        ppu.v_counter = 1
+        ppu.render_scanline()
+        r, g, b = _main_pixel(ppu, 0, 0)
+        # (255 + 255) / 2 = 255
+        assert r >= 250 and g >= 250 and b >= 250, f"expected ~255, got ({r},{g},{b})"
+
+    def test_half_add_produces_average(self):
+        """Half-add of two different colors produces the midpoint."""
+        ppu = _make_ppu()
+        self._setup_half_scene(ppu, main_rgb5=(31, 0, 0), sub_rgb5=(0, 0, 31))
+        ppu.cgadsub = 0b01000001
+        ppu.v_counter = 1
+        ppu.render_scanline()
+        r, g, b = _main_pixel(ppu, 0, 0)
+        # (255,0,0) + (0,0,255) = (255,0,255); half = (127,0,127)
+        assert 120 <= r <= 130 and g == 0 and 120 <= b <= 130, (
+            f"expected ~(127,0,127), got ({r},{g},{b})"
+        )
+
+    def test_half_subtract(self):
+        """(main - sub) / 2 with both = white → 0 / 2 = 0."""
+        ppu = _make_ppu()
+        self._setup_half_scene(ppu)
+        # bit 7 = 1 (sub), bit 6 = 1 (half), bit 0 = 1 (BG1 participates)
+        ppu.cgadsub = 0b11000001
+        ppu.v_counter = 1
+        ppu.render_scanline()
+        r, g, b = _main_pixel(ppu, 0, 0)
+        assert (r, g, b) == (0, 0, 0), f"255-255 half = 0, got ({r},{g},{b})"

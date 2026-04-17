@@ -573,18 +573,22 @@ class Ppu:
     def composite_scanline(self) -> None:
         """Apply CGADSUB color math, blending sub_bgs into main_bgs.
 
-        Minimal slice: only the ADD path (CGADSUB bit 7 = 0), no half (bit 6 = 0),
-        no clip-to-black, no math windowing. CGWSEL bit 1 selects whether
-        sub-screen layers participate; we always treat sub_bgs as the source.
-        Per-pixel participation is gated by CGADSUB bits 0-5:
-          bit 0..3 = BG1..BG4, bit 4 = OBJ palettes 4-7, bit 5 = backdrop.
+        CGADSUB ($2131) layout:
+          bit 7: 0 = add, 1 = subtract (main minus sub)
+          bit 6: 0 = full,  1 = half-intensity (divide result by 2)
+          bit 5: backdrop participates
+          bit 4: OBJ palettes 4-7 participate
+          bit 3..0: BG4..BG1 participate
+
+        Not implemented: clip-to-black, color-math windowing (CGWSEL bits 4-7),
+        CGWSEL bit 1 sub-source select (we always use sub_bgs, which already
+        holds COLDATA when no sub layer covered the pixel).
         """
         cgadsub: cython.uint = self.cgadsub
         if cgadsub == 0:
             return
-        # Subtract / half / clip not implemented yet — skip silently.
-        if cgadsub & 0x80:
-            return
+        subtract: cython.bint = bool(cgadsub & 0x80)
+        half: cython.bint = bool(cgadsub & 0x40)
         enable_bg1: cython.bint = bool(cgadsub & 0x01)
         enable_bg2: cython.bint = bool(cgadsub & 0x02)
         enable_bg3: cython.bint = bool(cgadsub & 0x04)
@@ -614,21 +618,45 @@ class Ppu:
                 continue
             m: cython.uint = self.main_bgs[idx]
             s: cython.uint = self.sub_bgs[idx]
-            mr: cython.uint = (m >> 24) & 0xFF
-            mg: cython.uint = (m >> 16) & 0xFF
-            mb: cython.uint = (m >> 8) & 0xFF
-            sr: cython.uint = (s >> 24) & 0xFF
-            sg: cython.uint = (s >> 16) & 0xFF
-            sb: cython.uint = (s >> 8) & 0xFF
-            r: cython.uint = mr + sr
-            g: cython.uint = mg + sg
-            b: cython.uint = mb + sb
-            if r > 255:
-                r = 255
-            if g > 255:
-                g = 255
-            if b > 255:
-                b = 255
+            mr: cython.int = (m >> 24) & 0xFF
+            mg: cython.int = (m >> 16) & 0xFF
+            mb: cython.int = (m >> 8) & 0xFF
+            sr: cython.int = (s >> 24) & 0xFF
+            sg: cython.int = (s >> 16) & 0xFF
+            sb: cython.int = (s >> 8) & 0xFF
+            r: cython.int
+            g: cython.int
+            b: cython.int
+            if subtract:
+                r = mr - sr
+                g = mg - sg
+                b = mb - sb
+                if r < 0:
+                    r = 0
+                if g < 0:
+                    g = 0
+                if b < 0:
+                    b = 0
+                if half:
+                    r >>= 1
+                    g >>= 1
+                    b >>= 1
+            else:
+                r = mr + sr
+                g = mg + sg
+                b = mb + sb
+                # Half applies before saturation: the 9-bit adder's overflow
+                # bit becomes the high bit of the halved result.
+                if half:
+                    r >>= 1
+                    g >>= 1
+                    b >>= 1
+                if r > 255:
+                    r = 255
+                if g > 255:
+                    g = 255
+                if b > 255:
+                    b = 255
             self.main_bgs[idx] = (r << 24) | (g << 16) | (b << 8) | (m & 0xFF)
 
     def draw_scanline_backdrop(self) -> None:

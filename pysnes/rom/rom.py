@@ -12,11 +12,11 @@ from rich import print
 @cython.cclass
 class InterruptVectors:
     cop: int
-    brk: int  # native-only; 0 in emulation
+    brk: int      # native-only; 0 in emulation
     abort: int
     nmi: int
-    reset: int  # emulation-only; 0 in native
-    irq: int  # in emulation this is IRQ/BRK
+    reset: int    # emulation-only; 0 in native
+    irq: int      # in emulation this is IRQ/BRK
 
 
 @dataclass
@@ -32,12 +32,12 @@ class SnesHeader:
     game_title: str
     mapping_mode: int
     cartridge_type: int
-    rom_size: int  # bytes; 0 if header byte is 0
-    sram_size: int  # bytes; 0 if header byte is 0
-    destination_code: int  # $FFD9 — region, NOT developer ID
+    rom_size: int           # bytes; 0 if header byte is 0
+    sram_size: int          # bytes; 0 if header byte is 0
+    destination_code: int   # $FFD9 — region, NOT developer ID
     version: int
     checksum_complement: int  # 16-bit LE
-    checksum: int  # 16-bit LE
+    checksum: int             # 16-bit LE
 
 
 # Known mapping_mode bytes per the SNES header spec. Bitmask 001A0BCD, base $20:
@@ -90,9 +90,7 @@ class Rom:
         “SMC” comes from Super MagiCom, a floppy-based cart copying device for backup/piracy.
         The original .smc files produced by the device contained a 512 byte header.
         """
-        self.rom = bytearray(
-            0x400000
-        )  # https://en.wikibooks.org/wiki/Super_NES_Programming/SNES_memory_map
+        self.rom = bytearray(0x400000)  # https://en.wikibooks.org/wiki/Super_NES_Programming/SNES_memory_map
 
         print(f"Loading ROM file: {self.rom_file_path!r}")
         with open(self.rom_file_path, "rb") as f:

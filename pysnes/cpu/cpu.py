@@ -144,7 +144,7 @@ class Cpu:
     prev_cycles = cython.declare(cython.uint, visibility="public")
     status = cython.declare(CpuStatus, visibility="public")
 
-    def __init__(self, hardware_vectors: dict) -> None:
+    def __init__(self, hardware_vectors: "HardwareVectors") -> None:
         self.reset_registers()
         self.load_instructions()
 
@@ -169,7 +169,7 @@ class Cpu:
         self.P = 0x34             # Status register
         # self.PB = Reg(8, 0x00)  # Program Bank Register (removed in favor of PC.b)
         self.DB = Reg(8, 0x00)    # Data Bank Register
-        self.PC = Reg(24, 0x00)   # self.hardware_vectors["emulation"]["RESET"]
+        self.PC = Reg(24, 0x00)   # self.hardware_vectors.emulation.reset
 
         # bsnes
         # r.vector = 0xfffc;  //reset vector address

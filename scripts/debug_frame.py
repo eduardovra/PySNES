@@ -15,7 +15,7 @@ controllers = [Controller(), Controller(disabled=True)]
 bus = Bus(rom, cpu, apu, ppu, controllers, scheduler)
 cpu.attach(bus)
 ppu.attach(scheduler, bus)
-cpu.PC.w = rom.hardware_vectors['emulation']['RESET']
+cpu.PC.w = rom.hardware_vectors.emulation.reset
 
 cpu.start(scheduler)
 ppu.start()

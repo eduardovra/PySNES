@@ -22,9 +22,9 @@ uv sync --python pypy@3.10
 make build          # uses PyPy 3.10 by default
 
 # Run
-make run            # build + run (uses default ROM path in Makefile)
-uv run --python pypy3.10 -m pysnes.pysnes roms/game.sfc           # without Cython build
-uv run --python pypy3.10 -m pysnes.pysnes roms/game.sfc --trace roms/game-trace.log  # with CPU trace
+uv run --python pypy3.10 pysnes roms/game.sfc                     # script entry point (recommended)
+uv run --python pypy3.10 pysnes roms/game.sfc --trace roms/game-trace.log  # with CPU trace
+uv run --python pypy3.10 -m pysnes.pysnes roms/game.sfc           # equivalent module form
 
 # Clean build artifacts
 make clean

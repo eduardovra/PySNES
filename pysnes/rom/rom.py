@@ -1,9 +1,76 @@
 import pathlib
+from dataclasses import dataclass
 
+import cython
 from rich import print
 
 # Scripts to convert SNES ROMs to SNES Classic (.sfrom) format and to read .sfrom headers
 # https://gist.github.com/anpage/4834433944a2875ee6d4cbb5786c6bf7
+
+
+@dataclass
+@cython.cclass
+class InterruptVectors:
+    cop: int
+    brk: int      # native-only; 0 in emulation
+    abort: int
+    nmi: int
+    reset: int    # emulation-only; 0 in native
+    irq: int      # in emulation this is IRQ/BRK
+
+
+@dataclass
+@cython.cclass
+class HardwareVectors:
+    native: InterruptVectors
+    emulation: InterruptVectors
+
+
+@dataclass
+@cython.cclass
+class SnesHeader:
+    game_title: str
+    mapping_mode: int
+    cartridge_type: int
+    rom_size: int           # bytes; 0 if header byte is 0
+    sram_size: int          # bytes; 0 if header byte is 0
+    destination_code: int   # $FFD9 — region, NOT developer ID
+    version: int
+    checksum_complement: int  # 16-bit LE
+    checksum: int             # 16-bit LE
+
+
+# Known mapping_mode bytes per the SNES header spec. Bitmask 001A0BCD, base $20:
+#   A == 1: FastROM (+$10)
+#   B == 1: ExHiROM (+$04)
+#   C == 1: ExLoROM (+$02)
+#   D == 1: HiROM    (+$01)
+# Anything outside this set still parses, but we log a warning since the
+# emulator may not handle it correctly.
+_KNOWN_MAPPING_MODES = {
+    0x00,  # SNES Test Program (LoROM, SlowROM, no $20 base)
+    0x20,  # LoROM, SlowROM
+    0x21,  # HiROM, SlowROM
+    0x22,  # ExLoROM (rare, e.g. SDD-1 cartridges)
+    0x23,  # SA-1
+    0x25,  # ExHiROM
+    0x30,  # LoROM, FastROM
+    0x31,  # HiROM, FastROM
+    0x32,  # ExLoROM, FastROM
+    0x35,  # ExHiROM, FastROM
+}
+
+
+def _looks_like_title(buf) -> bool:
+    return all(31 < b < 127 for b in buf)
+
+
+def _looks_like_map_mode(byte: int, want_hirom: bool) -> bool:
+    """Map mode bytes always have the top three bits = 001 ($20 base) and the
+    low bit selects HiROM (1) vs LoROM (0)."""
+    if (byte & 0xE0) != 0x20:
+        return False
+    return bool(byte & 0x01) == want_hirom
 
 
 class Rom:
@@ -30,110 +97,97 @@ class Rom:
             self.rom_file_contents = f.read()
             for i, b in enumerate(self.rom_file_contents):
                 self.rom[i] = b
-            #self.rom = bytes(f.read())  # altered just for tests..
 
-        # Strip out potential header
+        # Strip out potential 512-byte SMC copier header
         self.smc_header_length = len(self.rom_file_contents) % 0x400
         self.rom = self.rom[self.smc_header_length :]
-        rom_type = "LoROM"
-        page_offset = 0x7F00
 
-        # Look for the presence of ascii characters in the memory regions
-        # to determine the right header offset
+        page_offset = self._detect_page_offset()
+        self.snes_header = self._parse_header(page_offset)
+        self.sram_size = self.snes_header.sram_size
 
-        # LoROM
-        if len(self.rom) >= 0x7FFF and all(
-            31 < char < 127 for char in self.rom[0x7FC0 : 0x7FC0 + 21]
-        ):
-            rom_type = "LoROM"
-            page_offset = 0x7F00
-        # HiROM
-        if len(self.rom) >= 0xFFFF and all(
-            31 < char < 127 for char in self.rom[0xFFC0 : 0xFFC0 + 21]
-        ):
-            rom_type = "HiROM"
-            page_offset = 0xFF00
+        if self.snes_header.mapping_mode not in _KNOWN_MAPPING_MODES:
+            print(f"warning: unknown mapping mode {self.snes_header.mapping_mode:#04x}")
 
-        # rom_type = "HiROM"
-        # page_offset = 0xFF00
-
-        # assert rom_type == "LoROM"
-        #assert rom_type is not None
-
-        sram_size_byte = self.rom[page_offset + 0xD8]
-        # Byte 0 means "no SRAM"; otherwise size = 0x400 << byte, capped at 128KB.
-        self.sram_size = min(0x400 << sram_size_byte, 0x20000) if sram_size_byte else 0
-
-        # SNES header is located in the last 64 bytes of the first bank: 0x7FC0 - 0xFFFF
-        self.snes_header = {
-            "game_title": self.rom[
-                page_offset + 0xC0 : page_offset + 0xC0 + 21
-            ],  # 21 bytes, usually uppercase ASCII.
-            "mapping_mode": self.rom[
-                page_offset + 0xD5
-            ],  # 001ABBBB; A==1 means FastROM ($10). If BBBB is the mapping mode.
-            "rom_type": self.rom[
-                page_offset + 0xD6
-            ],  # Denotes that the cartridge contains expansion chips, SRAM, batteries, etc.
-            "rom_size": 0x400 << self.rom[page_offset + 0xD7],
-            "sram_size": 0x400 << self.rom[page_offset + 0xD8],
-            "developer_id": self.rom[page_offset + 0xD9],
-            "version": self.rom[page_offset + 0xDB],
-            "checksum_complement": self.rom[page_offset + 0xDC],
-            "checksum": self.rom[page_offset + 0xDE],
-        }
         print(self.snes_header)
 
-        # The bitmask to use is 001A0BCD, the basic value is $20:
-        # - A == 0 means SlowROM (+ $0), A == 1 means FastROM (+ $10).
-        # - B == 1 means ExHiROM (+ $4)
-        # - C == 1 means ExLoROM (+ $2)
-        # - D == 0 means LoROM (+ $0), D == 1 means HiROM (+ $1)
-        # For super mario world A == 0 and D == 0, so it's SlowROM + LoROM
-        assert self.snes_header["mapping_mode"] in (
-            0x00,  # LoROM + SlowROM - SNES Test Program
-            0x20,  # LoROM+SNES - For SMW
-            0x30,  # LoROM + FastROM+SNES - For the test ROM
-            0x31,  # HiROM + FastROM
+        self.hardware_vectors = self._parse_vectors(page_offset)
+        print(self.hardware_vectors)
+
+    def _detect_page_offset(self) -> int:
+        """Return $7F00 for LoROM or $FF00 for HiROM. Prefers a candidate whose
+        $xxD5 map-mode byte is well-formed; falls back to ASCII-printability of
+        the title; defaults to LoROM."""
+        lo_title_ok = _looks_like_title(self.rom[0x7FC0 : 0x7FC0 + 21])
+        hi_title_ok = _looks_like_title(self.rom[0xFFC0 : 0xFFC0 + 21])
+        lo_mode_ok = _looks_like_map_mode(self.rom[0x7FD5], want_hirom=False)
+        hi_mode_ok = _looks_like_map_mode(self.rom[0xFFD5], want_hirom=True)
+
+        if hi_title_ok and hi_mode_ok and not lo_mode_ok:
+            return 0xFF00
+        if lo_title_ok and lo_mode_ok:
+            return 0x7F00
+        if hi_title_ok and hi_mode_ok:
+            return 0xFF00
+        if lo_title_ok:
+            return 0x7F00
+        if hi_title_ok:
+            return 0xFF00
+        return 0x7F00
+
+    def _parse_header(self, page_offset: int) -> SnesHeader:
+        rom = self.rom
+        title_bytes = bytes(rom[page_offset + 0xC0 : page_offset + 0xC0 + 21])
+        try:
+            game_title = title_bytes.decode("ascii").rstrip()
+        except UnicodeDecodeError:
+            game_title = title_bytes.decode("ascii", errors="replace").rstrip()
+
+        rom_size_byte = rom[page_offset + 0xD7]
+        sram_size_byte = rom[page_offset + 0xD8]
+
+        return SnesHeader(
+            game_title=game_title,
+            mapping_mode=rom[page_offset + 0xD5],
+            cartridge_type=rom[page_offset + 0xD6],
+            rom_size=(0x400 << rom_size_byte) if rom_size_byte else 0,
+            sram_size=min(0x400 << sram_size_byte, 0x20000) if sram_size_byte else 0,
+            destination_code=rom[page_offset + 0xD9],
+            version=rom[page_offset + 0xDB],
+            checksum_complement=rom[page_offset + 0xDC] | rom[page_offset + 0xDD] << 8,
+            checksum=rom[page_offset + 0xDE] | rom[page_offset + 0xDF] << 8,
         )
 
+    def _parse_vectors(self, page_offset: int) -> HardwareVectors:
         """
-        7.10 Hardware Vectors:
-        ----------------------
+        Hardware vectors (last 32 bytes of bank 0):
+
             Native Mode           6502 Emulation Mode
             -----------------------------------------
-            IRQ   $FFEE-$FFEF     IRQ/BRK $FFFE-$FFFF
-                                  RESET   $FFFC-$FFFD
-            NMI   $FFEA-$FFEB     NMI     $FFFA-$FFFB
-            ABORT $FFE8-$FFE9     ABORT   $FFF8-$FFF9
+            COP   $FFE4-$FFE5     COP     $FFF4-$FFF5
             BRK   $FFE6-$FFE7
-            COP   $FFE5-$FFE6     COP     $FFF4-$FFF5
+            ABORT $FFE8-$FFE9     ABORT   $FFF8-$FFF9
+            NMI   $FFEA-$FFEB     NMI     $FFFA-$FFFB
+                                  RESET   $FFFC-$FFFD
+            IRQ   $FFEE-$FFEF     IRQ/BRK $FFFE-$FFFF
         """
-
-        # Interrupt vectors
-        self.hardware_vectors = {
-            "native": {
-                "IRQ": self.rom[page_offset | 0xEE] | self.rom[page_offset | 0xEF] << 8,
-                "NMI": self.rom[page_offset | 0xEA] | self.rom[page_offset | 0xEB] << 8,
-                "ABORT": self.rom[page_offset | 0xE8]
-                | self.rom[page_offset | 0xE9] << 8,
-                "BRK": self.rom[page_offset | 0xE6] | self.rom[page_offset | 0xE7] << 8,
-                "COP": self.rom[page_offset | 0xE5] | self.rom[page_offset | 0xE6] << 8,
-            },
-            "emulation": {
-                "IRQ/BRK": self.rom[page_offset | 0xEE]
-                | self.rom[page_offset | 0xEF] << 8,
-                "RESET": self.rom[page_offset | 0xFC]
-                | self.rom[page_offset | 0xFD] << 8,
-                "NMI": self.rom[page_offset | 0xFA] | self.rom[page_offset | 0xFB] << 8,
-                "ABORT": self.rom[page_offset | 0xF8]
-                | self.rom[page_offset | 0xF9] << 8,
-                "COP": self.rom[page_offset | 0xF4] | self.rom[page_offset | 0xF5] << 8,
-            },
-        }
-
-        hardware_vectors_str = {
-            "emulation": {k: hex(v) for k, v in self.hardware_vectors["emulation"].items()},
-            "native": {k: hex(v) for k, v in self.hardware_vectors["native"].items()},
-        }
-        print(hardware_vectors_str)
+        rom = self.rom
+        word = lambda lo: rom[page_offset | lo] | rom[page_offset | (lo + 1)] << 8
+        return HardwareVectors(
+            native=InterruptVectors(
+                cop=word(0xE4),
+                brk=word(0xE6),
+                abort=word(0xE8),
+                nmi=word(0xEA),
+                reset=0,
+                irq=word(0xEE),
+            ),
+            emulation=InterruptVectors(
+                cop=word(0xF4),
+                brk=0,
+                abort=word(0xF8),
+                nmi=word(0xFA),
+                reset=word(0xFC),
+                irq=word(0xFE),
+            ),
+        )

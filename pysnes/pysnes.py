@@ -56,7 +56,7 @@ class PySNES:
         self.event = sdl.SDL_Event()
 
         # Reset PC to the address in the cartridge reset vector
-        self.cpu.PC.w = rom.hardware_vectors["emulation"]["RESET"]
+        self.cpu.PC.w = rom.hardware_vectors.emulation.reset
 
         # Emulator state
         self.running = True

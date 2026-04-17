@@ -60,3 +60,6 @@ dependencies = [
     "vmprof>=0.4.18.1",
     "zipp>=3.23.0",
 ]
+
+[project.scripts]
+pysnes = "pysnes.pysnes:main"

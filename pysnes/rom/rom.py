@@ -60,6 +60,10 @@ class Rom:
         # assert rom_type == "LoROM"
         #assert rom_type is not None
 
+        sram_size_byte = self.rom[page_offset + 0xD8]
+        # Byte 0 means "no SRAM"; otherwise size = 0x400 << byte, capped at 128KB.
+        self.sram_size = min(0x400 << sram_size_byte, 0x20000) if sram_size_byte else 0
+
         # SNES header is located in the last 64 bytes of the first bank: 0x7FC0 - 0xFFFF
         self.snes_header = {
             "game_title": self.rom[

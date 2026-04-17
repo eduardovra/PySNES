@@ -85,6 +85,12 @@ class CpuStatus:
     # nmi_line: set to True at V-Blank start by bus.raise_nmi(); read by bus at $4210
     nmi_line = cython.declare(cython.bint, visibility="public")
     nmi_enable = cython.declare(cython.bint, visibility="public")
+    # irq_line: set by PPU when H/V match condition is satisfied; cleared by
+    # reading $4211 (TIMEUP) or by disabling both H-IRQ and V-IRQ via $4200.
+    irq_line = cython.declare(cython.bint, visibility="public")
+    # H/V IRQ target registers ($4207-$420A). 9-bit each.
+    htime = cython.declare(cython.ushort, visibility="public")
+    vtime = cython.declare(cython.ushort, visibility="public")
     auto_joypad_read_enable = cython.declare(cython.bint, visibility="public")
     # MEMSEL ($420D) bit 0: 1 = FastROM (banks $80-$BF and $C0-$FF use 6 MC instead of 8)
     fast_rom = cython.declare(cython.bint, visibility="public")
@@ -95,6 +101,9 @@ class CpuStatus:
         self.irq_enable = False
         self.nmi_line = False
         self.nmi_enable = False
+        self.irq_line = False
+        self.htime = 0x1FF  # power-on default (maximum — won't match)
+        self.vtime = 0x1FF
         self.auto_joypad_read_enable = False
         self.fast_rom = False
 
@@ -247,6 +256,10 @@ class Cpu:
         if self._nmi_pending:
             self._nmi_pending = False
             vector = 0xFFFA if self.EF else 0xFFEA
+            mc = self.interrupt(vector)
+        elif self.status.irq_line and not self.IFlag:
+            # IRQ vector: $FFFE (emulation) / $FFEE (native)
+            vector = 0xFFFE if self.EF else 0xFFEE
             mc = self.interrupt(vector)
         else:
             mc = self.fetch_and_execute()

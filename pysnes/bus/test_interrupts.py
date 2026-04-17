@@ -241,3 +241,210 @@ def test_interrupt_returns_correct_mc_for_scheduler():
     cpu.S.w = 0x01FF
     mc = cpu.interrupt(0xFFEA)
     assert mc == 60, f"interrupt() must return elapsed MC, got {mc}"
+
+
+# ---------------------------------------------------------------------------
+# H/V IRQ — $4207-$420A target registers
+# ---------------------------------------------------------------------------
+
+def test_htime_low_write():
+    bus, cpu = make_bus()
+    bus[0x004208] = 0x00  # clear high bit first
+    bus[0x004207] = 0x80
+    assert cpu.status.htime == 0x080
+
+
+def test_htime_high_write_only_bit0():
+    bus, cpu = make_bus()
+    bus[0x004207] = 0x00
+    bus[0x004208] = 0xFF  # only bit 0 retained → HTIME high = 1
+    assert cpu.status.htime == 0x100
+
+
+def test_htime_full_9bit_target():
+    bus, cpu = make_bus()
+    bus[0x004207] = 0x55
+    bus[0x004208] = 0x01
+    assert cpu.status.htime == 0x155
+
+
+def test_vtime_low_write():
+    bus, cpu = make_bus()
+    bus[0x00420A] = 0x00  # clear high bit first
+    bus[0x004209] = 0xC8  # 200
+    assert cpu.status.vtime == 200
+
+
+def test_vtime_high_write_only_bit0():
+    bus, cpu = make_bus()
+    bus[0x004209] = 0x00
+    bus[0x00420A] = 0x01
+    assert cpu.status.vtime == 0x100
+
+
+# ---------------------------------------------------------------------------
+# $4211 TIMEUP — read-and-clear IRQ flag
+# ---------------------------------------------------------------------------
+
+def test_timeup_read_clears_irq_line():
+    bus, cpu = make_bus()
+    cpu.status.irq_line = True
+    _ = bus[0x004211]
+    assert cpu.status.irq_line is False
+
+
+def test_timeup_bit7_reflects_irq_line():
+    bus, cpu = make_bus()
+    cpu.status.irq_line = True
+    val = bus[0x004211]
+    assert val & 0x80
+
+
+def test_timeup_bit7_clear_when_line_low():
+    bus, cpu = make_bus()
+    cpu.status.irq_line = False
+    val = bus[0x004211]
+    assert not (val & 0x80)
+
+
+# ---------------------------------------------------------------------------
+# IRQ dispatch in CPU._step
+# ---------------------------------------------------------------------------
+
+def test_irq_pending_fires_interrupt_when_i_flag_clear():
+    """_step() must fire IRQ when irq_line is high and IFlag is clear."""
+    bus, cpu = make_bus()
+    cpu.start(bus.scheduler)
+    cpu.IFlag = False
+    cpu.EF = True
+    cpu.status.irq_line = True
+    cpu.S.w = 0x01FF
+    # Seed emulation-mode IRQ vector ($FFFE/F) = $8000 via LoROM mapping.
+    bus.rom.rom[0x7FFE] = 0x00
+    bus.rom.rom[0x7FFF] = 0x80
+    bus.scheduler.run_one()
+    assert cpu.PC.w == 0x8000
+    assert cpu.IFlag is True  # IRQ dispatch sets IFlag
+
+
+def test_irq_blocked_when_i_flag_set():
+    """IRQ line high but I flag set → no interrupt dispatched."""
+    bus, cpu = make_bus()
+    cpu.start(bus.scheduler)
+    cpu.IFlag = True
+    cpu.status.irq_line = True
+    cpu.S.w = 0x01FF
+    cpu.PC.d = 0x008000
+    bus.rom.rom[0] = 0xEA  # NOP opcode
+    bus.scheduler.run_one()
+    assert cpu.PC.w == 0x8001
+
+
+def test_irq_not_dispatched_when_line_low():
+    bus, cpu = make_bus()
+    cpu.start(bus.scheduler)
+    cpu.IFlag = False
+    cpu.status.irq_line = False
+    cpu.S.w = 0x01FF
+    cpu.PC.d = 0x008000
+    bus.rom.rom[0] = 0xEA  # NOP
+    bus.scheduler.run_one()
+    assert cpu.PC.w == 0x8001
+
+
+def test_nmi_takes_priority_over_irq():
+    """When both NMI and IRQ are pending, NMI wins."""
+    bus, cpu = make_bus()
+    cpu.start(bus.scheduler)
+    cpu.IFlag = False
+    cpu.EF = True
+    cpu.status.nmi_enable = True
+    cpu.nmi_rising_edge()
+    cpu.status.irq_line = True
+    cpu.S.w = 0x01FF
+    bus.scheduler.run_one()
+    # NMI consumed, IRQ line still high (NMI doesn't clear it)
+    assert cpu._nmi_pending is False
+    assert cpu.status.irq_line is True
+
+
+# ---------------------------------------------------------------------------
+# PPU → bus IRQ trigger at H/V match
+# ---------------------------------------------------------------------------
+
+def _make_bus_with_ppu():
+    """Variant of make_bus that also starts the PPU event loop."""
+    bus, cpu = make_bus()
+    bus.ppu.start()
+    cpu.start(bus.scheduler)
+    return bus, cpu
+
+
+def test_vrq_fires_at_vtime_scanline():
+    """V-only IRQ: raise line when v_counter reaches VTIME."""
+    bus, cpu = make_bus()
+    bus[0x004209] = 10  # VTIME = 10
+    bus[0x00420A] = 0
+    bus[0x004200] = 0x20  # V-IRQ only
+    # Simulate scanline advance by calling PPU hblank at VTIME line
+    bus.ppu.v_counter = 10
+    bus.ppu._irq_check()
+    assert cpu.status.irq_line is True
+
+
+def test_vrq_does_not_fire_on_other_scanlines():
+    bus, cpu = make_bus()
+    bus[0x004209] = 10
+    bus[0x00420A] = 0
+    bus[0x004200] = 0x20
+    bus.ppu.v_counter = 9
+    bus.ppu._irq_check()
+    assert cpu.status.irq_line is False
+
+
+def test_hrq_fires_every_scanline():
+    """H-only IRQ: raise on every scanline (at HTIME)."""
+    bus, cpu = make_bus()
+    bus[0x004207] = 100
+    bus[0x004208] = 0
+    bus[0x004200] = 0x10  # H-IRQ only
+    for v in (0, 50, 100, 200):
+        bus.ppu.v_counter = v
+        cpu.status.irq_line = False
+        bus.ppu._irq_check()
+        assert cpu.status.irq_line is True, f"H-IRQ did not fire at v={v}"
+
+
+def test_hvrq_fires_only_at_vtime():
+    """H+V IRQ: raise only at scanline VTIME."""
+    bus, cpu = make_bus()
+    bus[0x004207] = 100
+    bus[0x004208] = 0
+    bus[0x004209] = 42
+    bus[0x00420A] = 0
+    bus[0x004200] = 0x30  # both
+    bus.ppu.v_counter = 41
+    bus.ppu._irq_check()
+    assert cpu.status.irq_line is False
+    bus.ppu.v_counter = 42
+    bus.ppu._irq_check()
+    assert cpu.status.irq_line is True
+
+
+def test_irq_disabled_does_not_raise():
+    bus, cpu = make_bus()
+    bus[0x004209] = 10
+    bus[0x00420A] = 0
+    bus[0x004200] = 0x00  # all IRQs disabled
+    bus.ppu.v_counter = 10
+    bus.ppu._irq_check()
+    assert cpu.status.irq_line is False
+
+
+def test_disabling_irq_via_nmitimen_clears_line():
+    """Writing NMITIMEN with H/V IRQ both 0 should lower the IRQ line."""
+    bus, cpu = make_bus()
+    bus[0x004200] = 0x20
+    cpu.status.irq_line = True
+    bus[0x004200] = 0x00  # disable H/V IRQ
+    assert cpu.status.irq_line is False

@@ -59,4 +59,5 @@ dependencies = [
     "urllib3>=2.5.0",
     "vmprof>=0.4.18.1",
     "zipp>=3.23.0",
+    "pillow>=12.2.0",
 ]

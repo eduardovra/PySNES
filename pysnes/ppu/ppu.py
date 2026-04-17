@@ -409,8 +409,38 @@ class Ppu:
         if 0 <= self.v_counter < _VBLANK_START_LINE:
             self.bus.cpu.dma.hdma_scanline()
 
+        # H/V-IRQ timer match check (once per scanline at H-blank entry).
+        # Real hardware fires at dot HTIME within the scanline; we approximate
+        # at H-blank start since the CPU runs in scanline-granularity bursts.
+        self._irq_check()
+
         # Schedule end of scanline / start of next
         self.scheduler.add(_MC_PER_SCANLINE - _HBLANK_START_MC, self._scanline_end)
+
+    def _irq_check(self) -> None:
+        """Raise CPU IRQ line if the H/V timer match condition is satisfied.
+
+        $4200 bits 5:4 select the mode:
+          00 — IRQ disabled
+          01 — H-only:  fire every scanline at dot HTIME
+          10 — V-only:  fire at scanline VTIME, dot 0
+          11 — H+V:     fire at scanline VTIME, dot HTIME
+
+        The raised IRQ line stays high until $4211 is read (or IRQ is disabled
+        via $4200). Retrigger is natural: the next matching scanline will
+        re-raise the line if the CPU has already cleared it.
+        """
+        st = self.bus.cpu.status
+        h_en: cython.bint = st.hirq_enable
+        v_en: cython.bint = st.virq_enable
+        if not (h_en or v_en):
+            return
+        if v_en and self.v_counter != st.vtime:
+            return
+        # When V-IRQ is set without H-IRQ, the target scanline is enough.
+        # When H-IRQ is set (with or without V-IRQ), we also require scanline
+        # match (if V too) and fire on every qualifying scanline.
+        st.irq_line = True
 
     def _scanline_end(self) -> None:
         """Fired at the end of each scanline."""
@@ -474,16 +504,22 @@ class Ppu:
             BG3 tiles with priority 0
             BG4 tiles with priority 0
             """
+            # Mode 0: back → front painter order.
+            # Each layer writes only where pixels are non-transparent, so the
+            # last write at a pixel wins (= "in front").
             self.draw_scanline_backdrop()
-            self.draw_background_scanline(self.bg4, 2, False)
-            self.draw_background_scanline(self.bg3, 2, False)
-            self.draw_background_scanline(self.bg4, 2, True)
-            self.draw_background_scanline(self.bg3, 2, True)
-            self.draw_background_scanline(self.bg2, 2, False)
-            self.draw_background_scanline(self.bg1, 2, False)
-            self.draw_background_scanline(self.bg2, 2, True)
-            self.draw_background_scanline(self.bg1, 2, True)
-            self.draw_objects()
+            self.draw_background_scanline(self.bg4, 2, False)     # BG4 pri 0
+            self.draw_objects(priority=0)                         # OBJ pri 0
+            self.draw_background_scanline(self.bg3, 2, False)     # BG3 pri 0
+            self.draw_objects(priority=1)                         # OBJ pri 1
+            self.draw_background_scanline(self.bg4, 2, True)      # BG4 pri 1
+            self.draw_background_scanline(self.bg3, 2, True)      # BG3 pri 1
+            self.draw_objects(priority=2)                         # OBJ pri 2
+            self.draw_background_scanline(self.bg2, 2, False)     # BG2 pri 0
+            self.draw_background_scanline(self.bg1, 2, False)     # BG1 pri 0
+            self.draw_objects(priority=3)                         # OBJ pri 3
+            self.draw_background_scanline(self.bg2, 2, True)      # BG2 pri 1
+            self.draw_background_scanline(self.bg1, 2, True)      # BG1 pri 1
         elif self._bgmode == 1:
             """
             In Mode 1, you have 2 BGs of 16 colors and 1 BG of 4 colors. To calculate the
@@ -502,17 +538,22 @@ class Ppu:
             Sprites with priority 0
             BG3 tiles with priority 0
             """
+            # Mode 1: back → front painter order, with $2105 bit 3 moving
+            # BG3 pri-1 either to the very top or behind OBJ pri-0/1.
             self.draw_scanline_backdrop()
-            self.draw_background_scanline(self.bg3, 2, False)
+            self.draw_background_scanline(self.bg3, 2, False)     # BG3 pri 0
+            self.draw_objects(priority=0)                         # OBJ pri 0
             if self._bgpriority == 0:
-                self.draw_background_scanline(self.bg3, 2, True)
-            self.draw_background_scanline(self.bg2, 4, False)
-            self.draw_background_scanline(self.bg1, 4, False)
-            self.draw_background_scanline(self.bg2, 4, True)
-            self.draw_background_scanline(self.bg1, 4, True)
-            self.draw_objects()
+                self.draw_background_scanline(self.bg3, 2, True)  # BG3 pri 1 (low)
+            self.draw_objects(priority=1)                         # OBJ pri 1
+            self.draw_background_scanline(self.bg2, 4, False)     # BG2 pri 0
+            self.draw_background_scanline(self.bg1, 4, False)     # BG1 pri 0
+            self.draw_objects(priority=2)                         # OBJ pri 2
+            self.draw_background_scanline(self.bg2, 4, True)      # BG2 pri 1
+            self.draw_background_scanline(self.bg1, 4, True)      # BG1 pri 1
+            self.draw_objects(priority=3)                         # OBJ pri 3
             if self._bgpriority == 1:
-                self.draw_background_scanline(self.bg3, 2, True)
+                self.draw_background_scanline(self.bg3, 2, True)  # BG3 pri 1 (high)
         elif self._bgmode == 3:
             """
             In Mode 3, you have one 256-color BG and one 16-color BG. To calculate the
@@ -532,29 +573,38 @@ class Ppu:
 
             Note that register $2130 may enable Direct Color Mode on BG1.
             """
+            # Mode 3: back → front painter order with sprites interleaved.
             self.draw_scanline_backdrop()
-            self.draw_background_scanline(self.bg2, 4, False)
-            self.draw_background_scanline(self.bg1, 8, False)
-            self.draw_background_scanline(self.bg2, 4, True)
-            self.draw_background_scanline(self.bg1, 8, True)
+            self.draw_background_scanline(self.bg2, 4, False)   # BG2 pri 0
+            self.draw_objects(priority=0)                       # OBJ pri 0
+            self.draw_background_scanline(self.bg1, 8, False)   # BG1 pri 0
+            self.draw_objects(priority=1)                       # OBJ pri 1
+            self.draw_background_scanline(self.bg2, 4, True)    # BG2 pri 1
+            self.draw_objects(priority=2)                       # OBJ pri 2
+            self.draw_background_scanline(self.bg1, 8, True)    # BG1 pri 1
+            self.draw_objects(priority=3)                       # OBJ pri 3
         else:
             raise NotImplementedError(f"BG Mode {self._bgmode} not implemented")
 
     def composite_scanline(self) -> None:
         """Apply CGADSUB color math, blending sub_bgs into main_bgs.
 
-        Minimal slice: only the ADD path (CGADSUB bit 7 = 0), no half (bit 6 = 0),
-        no clip-to-black, no math windowing. CGWSEL bit 1 selects whether
-        sub-screen layers participate; we always treat sub_bgs as the source.
-        Per-pixel participation is gated by CGADSUB bits 0-5:
-          bit 0..3 = BG1..BG4, bit 4 = OBJ palettes 4-7, bit 5 = backdrop.
+        CGADSUB ($2131) layout:
+          bit 7: 0 = add, 1 = subtract (main minus sub)
+          bit 6: 0 = full,  1 = half-intensity (divide result by 2)
+          bit 5: backdrop participates
+          bit 4: OBJ palettes 4-7 participate
+          bit 3..0: BG4..BG1 participate
+
+        Not implemented: clip-to-black, color-math windowing (CGWSEL bits 4-7),
+        CGWSEL bit 1 sub-source select (we always use sub_bgs, which already
+        holds COLDATA when no sub layer covered the pixel).
         """
         cgadsub: cython.uint = self.cgadsub
         if cgadsub == 0:
             return
-        # Subtract / half / clip not implemented yet — skip silently.
-        if cgadsub & 0x80:
-            return
+        subtract: cython.bint = bool(cgadsub & 0x80)
+        half: cython.bint = bool(cgadsub & 0x40)
         enable_bg1: cython.bint = bool(cgadsub & 0x01)
         enable_bg2: cython.bint = bool(cgadsub & 0x02)
         enable_bg3: cython.bint = bool(cgadsub & 0x04)
@@ -584,32 +634,59 @@ class Ppu:
                 continue
             m: cython.uint = self.main_bgs[idx]
             s: cython.uint = self.sub_bgs[idx]
-            mr: cython.uint = (m >> 24) & 0xFF
-            mg: cython.uint = (m >> 16) & 0xFF
-            mb: cython.uint = (m >> 8) & 0xFF
-            sr: cython.uint = (s >> 24) & 0xFF
-            sg: cython.uint = (s >> 16) & 0xFF
-            sb: cython.uint = (s >> 8) & 0xFF
-            r: cython.uint = mr + sr
-            g: cython.uint = mg + sg
-            b: cython.uint = mb + sb
-            if r > 255:
-                r = 255
-            if g > 255:
-                g = 255
-            if b > 255:
-                b = 255
+            mr: cython.int = (m >> 24) & 0xFF
+            mg: cython.int = (m >> 16) & 0xFF
+            mb: cython.int = (m >> 8) & 0xFF
+            sr: cython.int = (s >> 24) & 0xFF
+            sg: cython.int = (s >> 16) & 0xFF
+            sb: cython.int = (s >> 8) & 0xFF
+            r: cython.int
+            g: cython.int
+            b: cython.int
+            if subtract:
+                r = mr - sr
+                g = mg - sg
+                b = mb - sb
+                if r < 0:
+                    r = 0
+                if g < 0:
+                    g = 0
+                if b < 0:
+                    b = 0
+                if half:
+                    r >>= 1
+                    g >>= 1
+                    b >>= 1
+            else:
+                r = mr + sr
+                g = mg + sg
+                b = mb + sb
+                # Half applies before saturation: the 9-bit adder's overflow
+                # bit becomes the high bit of the halved result.
+                if half:
+                    r >>= 1
+                    g >>= 1
+                    b >>= 1
+                if r > 255:
+                    r = 255
+                if g > 255:
+                    g = 255
+                if b > 255:
+                    b = 255
             self.main_bgs[idx] = (r << 24) | (g << 16) | (b << 8) | (m & 0xFF)
 
     def draw_scanline_backdrop(self) -> None:
         """Draw the backdrop color for the current scanline.
-        Fills both main and sub buffers and resets the layer tag to 0 (backdrop)."""
-        u32_color = self.get_u32_backdrop_color()
+
+        Main-screen backdrop = CGRAM[0]. Sub-screen backdrop = COLDATA fixed
+        color ($2132), per SNES PPU behavior — sub-screen doesn't use CGRAM[0]."""
+        main_u32 = self.get_u32_backdrop_color()
+        sub_u32 = self.get_u32_coldata_color()
         y = self.v_counter - 1
         row = y * SCREEN_WIDTH
         for x in range(SCREEN_WIDTH):
-            self.main_bgs[row + x] = u32_color
-            self.sub_bgs[row + x] = u32_color
+            self.main_bgs[row + x] = main_u32
+            self.sub_bgs[row + x] = sub_u32
             self.main_layer[row + x] = 0
 
     @cython.cfunc
@@ -773,17 +850,19 @@ class Ppu:
         # tile width/height can be 8x8 or 16x16 pixels for backgrounds
         # objects can have larger sizes though
 
-        for tile_pos_v in range(1):
-            for tile_pos_h in range(1):
+        h_tiles = tile_width // 8
+        v_tiles = tile_height // 8
+        for tile_pos_v in range(v_tiles):
+            for tile_pos_h in range(h_tiles):
                 # compute x, y positions
                 if tile.h_flip:
-                    x = x_offset + tile_width - 8 - tile_pos_h * 8
+                    x = x_offset + (h_tiles - 1 - tile_pos_h) * 8
                 else:
-                    x = x_offset + tile_pos_h * tile_width
+                    x = x_offset + tile_pos_h * 8
                 if tile.v_flip:
-                    y = y_offset + tile_height - 8 - tile_pos_v * 8
+                    y = y_offset + (v_tiles - 1 - tile_pos_v) * 8
                 else:
-                    y = y_offset + tile_pos_v * tile_height
+                    y = y_offset + tile_pos_v * 8
 
                 # used when drawing objects...
                 if tile_character is not None:
@@ -907,11 +986,21 @@ class Ppu:
 
         return (r_8bit << 24) | (g_8bit << 16) | (b_8bit << 8) | a_8bit
 
-    def draw_objects(self) -> None:
+    def get_u32_coldata_color(self) -> int:
+        r_8bit = (self.coldata_r << 3) | (self.coldata_r >> 2)
+        g_8bit = (self.coldata_g << 3) | (self.coldata_g >> 2)
+        b_8bit = (self.coldata_b << 3) | (self.coldata_b >> 2)
+        return (r_8bit << 24) | (g_8bit << 16) | (b_8bit << 8) | 255
+
+    def draw_objects(self, priority: int = -1) -> None:
         # objects are the building blocks for sprites
         # they can move independently from the background and always use 4bpp
         # they can be 8x8, 16x16, 32x32 or 64x64 pixels in size
         # oam is the memory region where the objects properties are stored. each obj uses 34 bits
+        #
+        # priority: when >= 0, only objects with obj.priority == priority are
+        # drawn. This lets the mode dispatcher interleave sprite layers with
+        # BG layers in the correct front-to-back order per SNES spec.
 
         if not self.oam_main_screen_enable:
             return
@@ -922,6 +1011,8 @@ class Ppu:
             # x_visible = obj.x > -8 and obj.x < 256 - 8  # TODO hardcoded tile size
             # y_visible = obj.y > -8 and obj.y < 224  # TODO probably wrong
             # if x_visible and y_visible:
+            if priority >= 0 and obj.priority != priority:
+                continue
             if obj.y != 240:  # Games seem to use this value to hide the objects
                 tile_width, tile_height = self.get_obj_dimensions(obj.size)
 

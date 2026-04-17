@@ -100,8 +100,10 @@ class Bus:
             if 0x0000 <= addr <= 0x1FFF:
                 return self.low_ram[addr & 0xFFFF]  # LowRAM, shadowed from bank $7E
 
-        if bank == 0x00:
-            # TODO dont know how to map the other banks yet
+        if 0x00 <= bank <= 0x3F:
+            # Hardware registers $2100-$21FF and $4200-$44FF are mirrored
+            # across System Area banks $00-$3F (and $80-$BF via LoROM mirror
+            # which is normalized above).
             if 0x2100 <= addr <= 0x21FF:
                 if addr == 0x2137:  # SLHV
                     return self.ppu.slhv
@@ -149,6 +151,10 @@ class Bus:
                     self.cpu.status.nmi_line = False  # Reading clears the line
 
                     return data
+                if addr == 0x4211:  # TIMEUP - IRQ flag (read-and-clear)
+                    data = self.cpu.status.irq_line << 7
+                    self.cpu.status.irq_line = False  # Reading clears the latched flag
+                    return data
                 if addr == 0x4212:  # HVBJOY - PPU Status
                     return (
                         (1 << 5)  # This bit is unmapped but the test program keeps reading it
@@ -193,7 +199,7 @@ class Bus:
                 self.low_ram[addr & 0xFFFF] = data
                 return
 
-        if bank == 0x00:
+        if 0x00 <= bank <= 0x3F:
             if 0x2100 <= addr <= 0x21FF:
                 if addr == 0x2100:  # INIDISP
                     self.ppu.inidisp_set(data)
@@ -443,6 +449,9 @@ class Bus:
                     self.cpu.status.irq_enable = (
                         self.cpu.status.hirq_enable or self.cpu.status.virq_enable
                     )
+                    # Disabling both H-IRQ and V-IRQ clears any latched IRQ flag.
+                    if not self.cpu.status.irq_enable:
+                        self.cpu.status.irq_line = False
                     # If NMI is being enabled while V-Blank line is already high, trigger immediately.
                     # nmi_enable must be set first so nmi_rising_edge() sees it as True.
                     was_enabled = self.cpu.status.nmi_enable
@@ -450,6 +459,19 @@ class Bus:
                     if data & 0x80:
                         if not was_enabled and self.cpu.status.nmi_line:
                             self.cpu.nmi_rising_edge()
+                    return
+
+                if addr == 0x4207:  # HTIMEL
+                    self.cpu.status.htime = (self.cpu.status.htime & 0x100) | data
+                    return
+                if addr == 0x4208:  # HTIMEH (only bit 0)
+                    self.cpu.status.htime = (self.cpu.status.htime & 0x0FF) | ((data & 0x01) << 8)
+                    return
+                if addr == 0x4209:  # VTIMEL
+                    self.cpu.status.vtime = (self.cpu.status.vtime & 0x100) | data
+                    return
+                if addr == 0x420A:  # VTIMEH (only bit 0)
+                    self.cpu.status.vtime = (self.cpu.status.vtime & 0x0FF) | ((data & 0x01) << 8)
                     return
 
                 if 0x4300 <= addr <= 0x43FF:

@@ -17,7 +17,7 @@ from pathlib import Path
 DEFAULTS = {
     "headless": False,
     "rom": None,
-    "mesen_bin": "/home/eduardovra/Downloads/Mesen2-2.1.1/bin/linux-x64/Release/Mesen",
+    "mesen_bin": "submodules/Mesen2/bin/linux-x64/Release/linux-x64/publish/Mesen",
 }
 
 SETTINGS_FILE = "settings.json"

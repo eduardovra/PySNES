@@ -50,32 +50,51 @@ and `backdrop + COLDATA = (156, 231, 231)` matches Mesen pixel-exact.
 
 ## Remaining Glitches
 
-### 1. Bottom banner missing — HDMA ch7 early termination
+### 1. Bottom banner missing — two layers of bugs (one fixed, one open)
+
 Where Mesen shows grass, Mario walking, a bird, a red apple, and the
 "© 1990,1991 Nintendo" text, PySNES shows the brick frame-border
-tiles repeating.
+tiles repeating. BG1 is being window-masked out of the banner region:
+with `--force-tmw 0` the grass banner renders nearly identically to
+Mesen, so BG1 rendering is fine — the window mask is wrong.
 
-**Cause (confirmed)**: BG1 is being window-masked out of every
-scanline in the banner region. With `--force-tmw 0` (all window
-masking disabled), PySNES renders the grass banner nearly
-identically to Mesen. So BG1 rendering itself is fine — the window
-mask is wrong.
+HDMA ch7 targets `$2126/$2127` (WH0/WH1) and should update them per
+scanline. Config (from Mesen state): `indirect=1, transferMode=1`
+(2-byte transfer), `$00:$927C` table, `$00:$04A0` indirect data.
 
-**Root cause (confirmed)**: HDMA channel 7 targets `$2126/$2127`
-(WH0/WH1) and should update them per scanline. Per-scanline logging
-of `wh0/wh1` shows values changing through scanline 112, then
-**freezing at `(wh0=159, wh1=253)` for scanlines 113-223**. On those
-scanlines the BG1 W1-inverted mask clips BG1 everywhere except
-cols 159-253 (visible as a small grass bush on the right side of
-the rendered frame).
+**Bug A (fixed)**: `pysnes/cpu/dma.py` had no indirect-addressing
+support at all — the 2 bytes after the count byte were being read as
+inline data, causing immediate termination. Rewrote `_load_next_entry`
+and `hdma_scanline` for DMAPx bit 6. Added 3 new unit tests. After
+this fix the pointer advances correctly (`$04A0 → $065E` over 224
+scanlines) and the brick-border glitch is gone.
 
-HDMA ch7 config (from Mesen state):
-`hdmaIndirectAddressing: true, transferMode: 1` (2-byte transfer).
+**Bug B (open — CPU/timing divergence)**: With indirect HDMA fixed,
+WH0/WH1 now read fresh WRAM every scanline, but PySNES WRAM contents
+are wrong. Tracked frame-by-frame dumps of `$04A0..$04AF`:
 
-Likely bug in `pysnes/cpu/dma.py::hdma_scanline` — either the repeat
-counter runs out prematurely, indirect-address pointer reads
-garbage, or the "done" flag is set early. Reproducer:
-`scripts/pysnes_dump_vram.py --force-tmw 0` vs default.
+- Through frame 372, PySNES and Mesen match exactly
+  (`FF 00 FF 00 FF 00 FF 00`).
+- At frame 373 Mesen starts the curtain-rising animation and fills
+  the table with varying window positions
+  (`FF 00 6D 93 68 98 65 9B ...`).
+- At frame 369 the same routine fires in PySNES but writes all
+  `0x80` from byte 2 onward (`FF 00 80 80 80 80 80 80 ...`), and the
+  table stays stuck at `0x80` forever.
+
+Both 0x80 lo and 0x80 hi map to WH inverted-clip columns [128, 128],
+i.e. BG1 fully masked. Same divergence pattern explains the frozen
+`wh0=159, wh1=253` seen earlier (stale table from before the
+animation routine ran).
+
+Root cause is upstream of HDMA — the animation code computes wrong
+bytes. Likely candidates: APU/CPU timing drift shifts which branch
+the animation state machine takes, or a 16-bit arithmetic/flag bug
+in an opcode SMW uses in this routine. `test_frame_divergence`
+reports CPU drift by frame 1 (PC±2), consistent with this.
+
+Next-step: instruction-level divergence trace around frames 368-373
+to identify the specific opcode/branch going wrong.
 
 ### 2. Logo drop-shadow / 3D effect missing
 In Mesen the "SUPER" letters have colorful gradient fills and the

@@ -361,3 +361,99 @@ def test_hdma_disabled_channel_does_nothing():
     bus.ppu.wh0 = 0
     cpu.dma.hdma_scanline()
     assert bus.ppu.wh0 == 0           # not written
+
+
+# ---------------------------------------------------------------------------
+# Indirect HDMA (DMAPx bit 6 = 1): table bytes after count are a 2-byte
+# pointer into `indirect_bank:ptr` where the real data lives. This mode is
+# used by SMW's title screen on channel 7 to per-scanline update WH0/WH1.
+# ---------------------------------------------------------------------------
+
+
+def _setup_hdma_indirect_channel0(bus, rom, table_offset, table_bytes,
+                                   indirect_bank, indirect_addr, indirect_bytes):
+    """Write an indirect HDMA table plus its data block; configure channel 0."""
+    for i, b in enumerate(table_bytes):
+        rom.rom[table_offset + i] = b
+    # Put indirect data in WRAM so we can write it via the bus.
+    assert indirect_bank == 0x7E
+    for i, b in enumerate(indirect_bytes):
+        bus[(indirect_bank << 16) | ((indirect_addr + i) & 0xFFFF)] = b
+
+    src = 0x8000 + table_offset
+    bus[0x004300] = 0x41   # DMAP0: indirect=1, mode=1
+    bus[0x004301] = 0x26   # BBAD0: $2126 (WH0)
+    bus[0x004302] = src & 0xFF          # A1T0L
+    bus[0x004303] = (src >> 8) & 0xFF   # A1T0H
+    bus[0x004304] = 0x00                # A1B0: bank 0
+    bus[0x004307] = indirect_bank       # DASB0: indirect bank
+    bus[0x00420C] = 0x01                # HDMAEN: channel 0
+
+
+def test_hdma_indirect_non_repeat_reads_from_pointer():
+    """Indirect + do-not-repeat: count byte + 2-byte pointer → read data at pointer."""
+    bus, rom, cpu = make_bus()
+    # Table: count=0x02 (do-not-repeat, 2 scanlines), ptr=$1234, end
+    _setup_hdma_indirect_channel0(
+        bus, rom,
+        table_offset=0x0000,
+        table_bytes=[0x02, 0x34, 0x12, 0x00],
+        indirect_bank=0x7E,
+        indirect_addr=0x1234,
+        indirect_bytes=[77, 188],
+    )
+    cpu.dma.hdma_init()
+
+    for _ in range(2):
+        cpu.dma.hdma_scanline()
+        assert bus.ppu.wh0 == 77
+        assert bus.ppu.wh1 == 188
+
+
+def test_hdma_indirect_repeat_advances_pointer_per_scanline():
+    """Indirect + do-repeat: fresh data read from pointer each scanline."""
+    bus, rom, cpu = make_bus()
+    # Table: count=0x83 (do-repeat, 3 scanlines), ptr=$0200, end
+    _setup_hdma_indirect_channel0(
+        bus, rom,
+        table_offset=0x0000,
+        table_bytes=[0x83, 0x00, 0x02, 0x00],
+        indirect_bank=0x7E,
+        indirect_addr=0x0200,
+        indirect_bytes=[10, 20, 30, 40, 50, 60],
+    )
+    cpu.dma.hdma_init()
+
+    cpu.dma.hdma_scanline()
+    assert (bus.ppu.wh0, bus.ppu.wh1) == (10, 20)
+    cpu.dma.hdma_scanline()
+    assert (bus.ppu.wh0, bus.ppu.wh1) == (30, 40)
+    cpu.dma.hdma_scanline()
+    assert (bus.ppu.wh0, bus.ppu.wh1) == (50, 60)
+
+
+def test_hdma_indirect_multiple_entries():
+    """Indirect: two table entries pointing at different data blocks."""
+    bus, rom, cpu = make_bus()
+    # Entry 1: non-repeat, 1 scanline, ptr=$0300
+    # Entry 2: non-repeat, 1 scanline, ptr=$0400
+    # End
+    _setup_hdma_indirect_channel0(
+        bus, rom,
+        table_offset=0x0000,
+        table_bytes=[0x01, 0x00, 0x03, 0x01, 0x00, 0x04, 0x00],
+        indirect_bank=0x7E,
+        indirect_addr=0x0300,
+        indirect_bytes=[1, 2],
+    )
+    # Fill the second indirect block too.
+    bus[0x7E0400] = 100
+    bus[0x7E0401] = 200
+
+    cpu.dma.hdma_init()
+
+    cpu.dma.hdma_scanline()
+    assert (bus.ppu.wh0, bus.ppu.wh1) == (1, 2)
+
+    cpu.dma.hdma_scanline()
+    assert (bus.ppu.wh0, bus.ppu.wh1) == (100, 200)

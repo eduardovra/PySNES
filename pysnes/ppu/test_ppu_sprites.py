@@ -344,3 +344,124 @@ class TestMultiTileSprite:
 
         for x in range(20, 36):
             assert _pixel(ppu, x, 26) == BLACK, f"below sprite at ({x},26)"
+
+
+# ---------------------------------------------------------------------------
+# Sprite priority ordering
+#
+# Mode 1 front→back order (from ppu.render_scanline):
+#   BG3 pri 1 (if $2105 bit 3 set)
+#   Sprite pri 3
+#   BG1 pri 1
+#   BG2 pri 1
+#   Sprite pri 2
+#   BG1 pri 0
+#   BG2 pri 0
+#   Sprite pri 1
+#   BG3 pri 1 (if bit clear)
+#   Sprite pri 0
+#   BG3 pri 0
+#   Backdrop
+# ---------------------------------------------------------------------------
+
+TILEDATA_BG = 0x4000  # BG1/2 tile data (bytes); different region from OBJ tiles
+YELLOW = (255, 255, 0)
+
+
+def _write_bg1_4bpp_solid_tile(ppu: Ppu, tile_index: int, color_index: int) -> None:
+    bp0 = 0xFF if (color_index & 1) else 0x00
+    bp1 = 0xFF if (color_index & 2) else 0x00
+    bp2 = 0xFF if (color_index & 4) else 0x00
+    bp3 = 0xFF if (color_index & 8) else 0x00
+    addr = TILEDATA_BG + tile_index * 32
+    for row in range(8):
+        ppu.vram[addr + row * 2 + 0] = bp0
+        ppu.vram[addr + row * 2 + 1] = bp1
+        ppu.vram[addr + 16 + row * 2 + 0] = bp2
+        ppu.vram[addr + 16 + row * 2 + 1] = bp3
+
+
+def _setup_bg1_tile_over_sprite(ppu: Ppu, bg_priority_bit: int, sprite_priority: int) -> None:
+    """Place a BG1 4bpp YELLOW tile and a GREEN sprite at the same pixel.
+
+    BG1 tile's tilemap priority bit controls whether it's "priority 1" in SNES
+    composition order. Both the BG1 tile and sprite render at screen (20, 10).
+    """
+    # BG1 palette 0, color 1 = YELLOW (5-bit: 31,31,0)
+    _write_cgram(ppu, 0, 0, 0, 0)  # backdrop black
+    _write_cgram(ppu, 1, 31, 31, 0)  # BG1 pal0 color1 = YELLOW
+
+    _write_bg1_4bpp_solid_tile(ppu, 0, color_index=1)
+
+    # Tilemap: one tile at tilemap row 1, col 2 → covers screen (16..23, 8..15).
+    # Simpler: put the BG tile at col 2, row 1 so it covers the sprite at (20,10).
+    # Tilemap entry: word 0 for (col 0, row 0). Each row = 32 words = 64 bytes.
+    # For (col 2, row 1) → byte addr = 1*64 + 2*2 = 68.
+    # Low byte = tile index 0; high byte bit 5 = priority bit.
+    base = 0  # BG1 tilemap base at VRAM byte 0
+    tilemap_addr = base + (1 * 32 + 2) * 2
+    ppu.vram[tilemap_addr + 0] = 0  # tile 0
+    # bit 5 of high byte is priority
+    ppu.vram[tilemap_addr + 1] = 0x20 if bg_priority_bit else 0x00
+
+    ppu.bg1.tiledata_addr = TILEDATA_BG
+    ppu.bg1.screen_addr = base
+    ppu.bg1.screen_size = 0
+    ppu.bg1.tile_size = 0
+    ppu.bg1.hoffset = 0
+    ppu.bg1.voffset = 0
+    ppu.bg1.main_screen_enable = True
+    ppu.bg1.sub_screen_enable = False
+
+    # Sprite at same pixel as BG1 tile — GREEN 8x8
+    _setup_sprite(ppu)  # places sprite at (10, 5)
+    ppu.oam.objects[0].x = 20
+    ppu.oam.objects[0].y = 10
+    ppu.oam.objects[0].priority = sprite_priority
+
+
+class TestSpritePriorityOrdering:
+    """Mode 1 BG/sprite compositing must respect OAM priority field."""
+
+    def test_bg1_high_priority_covers_sprite_priority_2(self):
+        """In Mode 1, BG1 pri-1 tile is in FRONT of sprite priority 2."""
+        ppu = _make_ppu()
+        _setup_bg1_tile_over_sprite(ppu, bg_priority_bit=1, sprite_priority=2)
+        ppu.v_counter = 11  # draw at output row 10
+        ppu.render_scanline()
+        # Sprite and BG1 both at (20, 10). BG1 pri-1 wins → YELLOW.
+        assert _pixel(ppu, 20, 10) == YELLOW, (
+            f"BG1 pri-1 should be in front of sprite pri-2, got {_pixel(ppu, 20, 10)}"
+        )
+
+    def test_bg1_low_priority_behind_sprite_priority_2(self):
+        """BG1 pri-0 tile is BEHIND sprite priority 2 → sprite wins."""
+        ppu = _make_ppu()
+        _setup_bg1_tile_over_sprite(ppu, bg_priority_bit=0, sprite_priority=2)
+        ppu.v_counter = 11
+        ppu.render_scanline()
+        # BG1 pri-0 is behind sprite pri-2 → GREEN sprite visible.
+        assert _pixel(ppu, 20, 10) == GREEN, (
+            f"Sprite pri-2 should cover BG1 pri-0, got {_pixel(ppu, 20, 10)}"
+        )
+
+    def test_sprite_priority_3_covers_bg1_high_priority(self):
+        """Sprite priority 3 is in front of EVERYTHING including BG1 pri-1."""
+        ppu = _make_ppu()
+        _setup_bg1_tile_over_sprite(ppu, bg_priority_bit=1, sprite_priority=3)
+        ppu.v_counter = 11
+        ppu.render_scanline()
+        assert _pixel(ppu, 20, 10) == GREEN, (
+            f"Sprite pri-3 should cover BG1 pri-1, got {_pixel(ppu, 20, 10)}"
+        )
+
+    def test_sprite_priority_0_behind_bg1_low_priority(self):
+        """Sprite priority 0 is behind BG1 pri-0."""
+        ppu = _make_ppu()
+        _setup_bg1_tile_over_sprite(ppu, bg_priority_bit=0, sprite_priority=0)
+        ppu.v_counter = 11
+        ppu.render_scanline()
+        # BG1 pri-0 is in front of sprite pri-0 → YELLOW wins.
+        assert _pixel(ppu, 20, 10) == YELLOW, (
+            f"BG1 pri-0 should cover sprite pri-0, got {_pixel(ppu, 20, 10)}"
+        )

@@ -100,8 +100,10 @@ class Bus:
             if 0x0000 <= addr <= 0x1FFF:
                 return self.low_ram[addr & 0xFFFF]  # LowRAM, shadowed from bank $7E
 
-        if bank == 0x00:
-            # TODO dont know how to map the other banks yet
+        if 0x00 <= bank <= 0x3F:
+            # Hardware registers $2100-$21FF and $4200-$44FF are mirrored
+            # across System Area banks $00-$3F (and $80-$BF via LoROM mirror
+            # which is normalized above).
             if 0x2100 <= addr <= 0x21FF:
                 if addr == 0x2137:  # SLHV
                     return self.ppu.slhv
@@ -197,7 +199,7 @@ class Bus:
                 self.low_ram[addr & 0xFFFF] = data
                 return
 
-        if bank == 0x00:
+        if 0x00 <= bank <= 0x3F:
             if 0x2100 <= addr <= 0x21FF:
                 if addr == 0x2100:  # INIDISP
                     self.ppu.inidisp_set(data)

@@ -37,22 +37,20 @@ def _build_lorom(
     img = bytearray(LOROM_BANK_SIZE)
 
     img[HEADER_BASE : HEADER_BASE + 21] = title
-    img[HEADER_BASE + 0x15] = mapping_mode      # $FFD5
-    img[HEADER_BASE + 0x16] = cartridge_type    # $FFD6
-    img[HEADER_BASE + 0x17] = rom_size_byte     # $FFD7
-    img[HEADER_BASE + 0x18] = sram_size_byte    # $FFD8
+    img[HEADER_BASE + 0x15] = mapping_mode  # $FFD5
+    img[HEADER_BASE + 0x16] = cartridge_type  # $FFD6
+    img[HEADER_BASE + 0x17] = rom_size_byte  # $FFD7
+    img[HEADER_BASE + 0x18] = sram_size_byte  # $FFD8
     img[HEADER_BASE + 0x19] = destination_code  # $FFD9
-    img[HEADER_BASE + 0x1B] = version           # $FFDB
+    img[HEADER_BASE + 0x1B] = version  # $FFDB
     img[HEADER_BASE + 0x1C] = checksum_complement & 0xFF
     img[HEADER_BASE + 0x1D] = (checksum_complement >> 8) & 0xFF
     img[HEADER_BASE + 0x1E] = checksum & 0xFF
     img[HEADER_BASE + 0x1F] = (checksum >> 8) & 0xFF
 
-    nv = {"cop": 0x1234, "brk": 0x2345, "abort": 0x3456,
-          "nmi": 0x4567, "irq": 0x5678}
+    nv = {"cop": 0x1234, "brk": 0x2345, "abort": 0x3456, "nmi": 0x4567, "irq": 0x5678}
     nv.update(native_vectors or {})
-    ev = {"cop": 0xA111, "abort": 0xA222, "nmi": 0xA333,
-          "reset": 0x8000, "irq": 0xA444}
+    ev = {"cop": 0xA111, "abort": 0xA222, "nmi": 0xA333, "reset": 0x8000, "irq": 0xA444}
     ev.update(emulation_vectors or {})
 
     def write_word(offset: int, value: int) -> None:
@@ -79,6 +77,7 @@ def make_rom(tmp_path):
         path = tmp_path / name
         path.write_bytes(image)
         return Rom(str(path))
+
     return _make
 
 
@@ -94,26 +93,44 @@ def test_native_cop_vector_reads_from_FFE4(make_rom):
 
 def test_native_vectors_full(make_rom):
     img = _build_lorom(
-        native_vectors={"cop": 0x1111, "brk": 0x2222, "abort": 0x3333,
-                        "nmi": 0x4444, "irq": 0x5555},
+        native_vectors={
+            "cop": 0x1111,
+            "brk": 0x2222,
+            "abort": 0x3333,
+            "nmi": 0x4444,
+            "irq": 0x5555,
+        },
     )
     rom = make_rom(img)
     nv = rom.hardware_vectors.native
     assert (nv.cop, nv.brk, nv.abort, nv.nmi, nv.irq) == (
-        0x1111, 0x2222, 0x3333, 0x4444, 0x5555,
+        0x1111,
+        0x2222,
+        0x3333,
+        0x4444,
+        0x5555,
     )
     assert nv.reset == 0  # reset is emulation-only
 
 
 def test_emulation_vectors_full(make_rom):
     img = _build_lorom(
-        emulation_vectors={"cop": 0xAAAA, "abort": 0xBBBB, "nmi": 0xCCCC,
-                           "reset": 0x8123, "irq": 0xDDDD},
+        emulation_vectors={
+            "cop": 0xAAAA,
+            "abort": 0xBBBB,
+            "nmi": 0xCCCC,
+            "reset": 0x8123,
+            "irq": 0xDDDD,
+        },
     )
     rom = make_rom(img)
     ev = rom.hardware_vectors.emulation
     assert (ev.cop, ev.abort, ev.nmi, ev.reset, ev.irq) == (
-        0xAAAA, 0xBBBB, 0xCCCC, 0x8123, 0xDDDD,
+        0xAAAA,
+        0xBBBB,
+        0xCCCC,
+        0x8123,
+        0xDDDD,
     )
     assert ev.brk == 0  # 65C02 emulation has no separate BRK vector
 
@@ -176,9 +193,15 @@ def test_smc_header_is_stripped(make_rom):
 
 def test_header_dataclasses_are_typed():
     h = SnesHeader(
-        game_title="X", mapping_mode=0x20, cartridge_type=0,
-        rom_size=0, sram_size=0, destination_code=0, version=0,
-        checksum_complement=0, checksum=0,
+        game_title="X",
+        mapping_mode=0x20,
+        cartridge_type=0,
+        rom_size=0,
+        sram_size=0,
+        destination_code=0,
+        version=0,
+        checksum_complement=0,
+        checksum=0,
     )
     v = HardwareVectors(
         native=InterruptVectors(cop=0, brk=0, abort=0, nmi=0, reset=0, irq=0),

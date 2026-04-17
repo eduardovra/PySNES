@@ -12,8 +12,8 @@ except ImportError as e:
 
 class Video:
 
-    WINDOW_WIDTH = 1400
-    WINDOW_HEIGHT = 1400
+    WINDOW_WIDTH = 768
+    WINDOW_HEIGHT = 672
 
     def __init__(self):
         self.use_sdl2 = SDL2_AVAILABLE
@@ -34,7 +34,7 @@ class Video:
         self.window = sdl.SDL_CreateWindow(
             b"PySNES",
             0, 0, self.WINDOW_WIDTH, self.WINDOW_HEIGHT,
-            sdl.SDL_WINDOW_SHOWN,
+            sdl.SDL_WINDOW_SHOWN | sdl.SDL_WINDOW_RESIZABLE,
         )
 
         if not self.window:

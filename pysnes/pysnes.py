@@ -1,5 +1,6 @@
 import argparse
 from ctypes import byref
+import pathlib
 import signal
 import time
 import sys
@@ -33,12 +34,14 @@ class PySNES:
 
         rom = Rom(rom_file_path)
         self.rom_name = rom.rom_file_name
+        self.sram_path = pathlib.Path(rom_file_path).with_suffix(".srm")
         self.scheduler = Scheduler()
         self.apu = Apu()
         self.cpu = Cpu(rom.hardware_vectors)
         self.ppu = Ppu()
         self.controllers = [Controller(), Controller(disabled=True)]
         bus = Bus(rom, self.cpu, self.apu, self.ppu, self.controllers, self.scheduler)
+        self._load_sram(bus)
         self.cpu.attach(bus)
         self.cpu.trace_enabled = False
         self.ppu.attach(self.scheduler, bus)
@@ -73,6 +76,16 @@ class PySNES:
         self._trace_count = 0
         self._trace_limit = 100_000
         self._trace_diverged = False
+
+    def _load_sram(self, bus):
+        n = bus.load_sram(str(self.sram_path))
+        if n:
+            print(f"SRAM loaded from {self.sram_path} ({n} bytes)", flush=True)
+
+    def _save_sram(self):
+        n = self.bus.save_sram(str(self.sram_path))
+        if n:
+            print(f"SRAM saved to {self.sram_path} ({n} bytes)", flush=True)
 
     def _handle_sigusr1(self, _signum, _frame):
         self._screenshot_requested = True
@@ -227,6 +240,7 @@ class PySNES:
                 self.process_inputs()
 
         finally:
+            self._save_sram()
             if self._trace_file:
                 self._trace_file.close()
             if self._trace_ref:

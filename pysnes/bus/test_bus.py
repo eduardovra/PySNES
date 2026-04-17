@@ -26,8 +26,9 @@ ROM_SIZE = 512 * 1024  # 512 KB — enough for LoROM bank 0
 class StubRom:
     """Minimal ROM stub with a writable bytearray backing store."""
 
-    def __init__(self, size=ROM_SIZE):
+    def __init__(self, size=ROM_SIZE, sram_size=0):
         self.rom = bytearray(size)
+        self.sram_size = sram_size
         # Populate reset vector so Cpu() doesn't choke
         self.hardware_vectors = {
             "emulation": {"RESET": 0x8000, "NMI": 0x8000, "IRQ": 0x8000,
@@ -42,8 +43,8 @@ class StubRom:
         return 0
 
 
-def make_bus():
-    rom = StubRom()
+def make_bus(sram_size=0):
+    rom = StubRom(sram_size=sram_size)
     scheduler = Scheduler()
     apu = Apu()
     cpu = Cpu(rom.hardware_vectors)
@@ -398,3 +399,131 @@ def test_memsel_fastrom_toggle():
     assert cpu.get_clock_cycles(0xC00000) == 6
     bus[0x00420D] = 0x00
     assert cpu.get_clock_cycles(0xC00000) == 8
+
+
+# ---------------------------------------------------------------------------
+# SRAM (LoROM) — banks $70-$7D, addr $0000-$7FFF (mirrored at $F0-$FD)
+# ---------------------------------------------------------------------------
+
+def test_sram_basic_write_read():
+    """Bank $70 $0000 writes and reads through SRAM."""
+    bus, *_ = make_bus(sram_size=0x2000)  # 8KB
+    bus[0x700000] = 0xAB
+    assert bus[0x700000] == 0xAB
+
+
+def test_sram_distinct_from_wram():
+    """SRAM is a separate buffer from WRAM."""
+    bus, *_ = make_bus(sram_size=0x2000)
+    bus[0x7E0100] = 0x11       # WRAM
+    bus[0x700100] = 0x22       # SRAM (same low address, different region)
+    assert bus[0x7E0100] == 0x11
+    assert bus[0x700100] == 0x22
+
+
+def test_sram_mirror_bank_f0():
+    """Bank $F0 mirrors bank $70."""
+    bus, *_ = make_bus(sram_size=0x2000)
+    bus[0x700010] = 0x55
+    assert bus[0xF00010] == 0x55
+
+
+def test_sram_upper_bank_7d():
+    """Bank $7D is the last SRAM bank; address should wrap per sram_size."""
+    bus, *_ = make_bus(sram_size=0x2000)  # 8KB -> mask $1FFF
+    # Bank $7D addr $0000 maps to SRAM offset (0xD<<15) & 0x1FFF = 0x0000
+    bus[0x7D0000] = 0x77
+    assert bus[0x700000] == 0x77  # same SRAM byte due to wrap
+
+
+def test_sram_size_masking_2kb():
+    """With 2KB SRAM, addresses $0000 and $0800 alias the same byte."""
+    bus, *_ = make_bus(sram_size=0x800)  # 2KB
+    bus[0x700000] = 0xAA
+    assert bus[0x700800] == 0xAA
+    bus[0x700801] = 0xBB
+    assert bus[0x700001] == 0xBB
+
+
+def test_sram_size_masking_8kb():
+    """With 8KB SRAM, $0000 and $2000 alias; $0000 and $1FFF do not."""
+    bus, *_ = make_bus(sram_size=0x2000)
+    bus[0x700000] = 0x01
+    bus[0x701FFF] = 0x02
+    assert bus[0x700000] == 0x01
+    assert bus[0x701FFF] == 0x02
+    # Wrap: $2000 aliases $0000
+    bus[0x702000] = 0x99
+    assert bus[0x700000] == 0x99
+
+
+def test_sram_no_sram_read_returns_open_bus():
+    """When sram_size is 0, SRAM reads return 0xFF (open bus)."""
+    bus, *_ = make_bus(sram_size=0)
+    assert bus[0x700000] == 0xFF
+
+
+def test_sram_no_sram_write_ignored():
+    """When sram_size is 0, SRAM writes are silently ignored (no crash)."""
+    bus, *_ = make_bus(sram_size=0)
+    bus[0x700000] = 0xAB  # must not raise
+    assert bus[0x700000] == 0xFF
+
+
+def test_sram_roundtrip_save_load(tmp_path):
+    """Write to SRAM, save, create new bus, load — contents preserved."""
+    path = tmp_path / "game.srm"
+    bus, *_ = make_bus(sram_size=0x2000)
+    bus[0x700000] = 0xDE
+    bus[0x700001] = 0xAD
+    bus[0x701FFF] = 0xEF
+    n = bus.save_sram(str(path))
+    assert n == 0x2000
+    assert path.stat().st_size == 0x2000
+
+    bus2, *_ = make_bus(sram_size=0x2000)
+    assert bus2[0x700000] == 0x00  # fresh
+    loaded = bus2.load_sram(str(path))
+    assert loaded == 0x2000
+    assert bus2[0x700000] == 0xDE
+    assert bus2[0x700001] == 0xAD
+    assert bus2[0x701FFF] == 0xEF
+
+
+def test_sram_save_noop_when_no_sram(tmp_path):
+    """No .srm file written when cart has no SRAM."""
+    path = tmp_path / "game.srm"
+    bus, *_ = make_bus(sram_size=0)
+    assert bus.save_sram(str(path)) == 0
+    assert not path.exists()
+
+
+def test_sram_load_missing_file_noop(tmp_path):
+    """Loading from a non-existent file returns 0 and leaves SRAM untouched."""
+    bus, *_ = make_bus(sram_size=0x800)
+    bus[0x700000] = 0x5A
+    assert bus.load_sram(str(tmp_path / "missing.srm")) == 0
+    assert bus[0x700000] == 0x5A
+
+
+def test_sram_load_smaller_file_preserves_tail(tmp_path):
+    """Loading a file smaller than sram_size only overwrites the leading bytes."""
+    path = tmp_path / "partial.srm"
+    path.write_bytes(b"\x11\x22")
+    bus, *_ = make_bus(sram_size=0x800)
+    bus[0x700100] = 0xFE       # tail byte to preserve
+    loaded = bus.load_sram(str(path))
+    assert loaded == 2
+    assert bus[0x700000] == 0x11
+    assert bus[0x700001] == 0x22
+    assert bus[0x700100] == 0xFE  # unchanged
+
+
+def test_sram_upper_half_still_rom():
+    """Bank $70 $8000-$FFFF is ROM, not SRAM — reads must not return SRAM data."""
+    bus, rom, *_ = make_bus(sram_size=0x2000)
+    bus[0x700000] = 0xCC                 # SRAM at offset 0
+    # Bank $00 $8000 -> ROM offset 0; set it so we can verify $70 $8000 hits ROM
+    # (bank $70 $8000 -> ROM offset 0x380000 which is OOB on 512KB StubRom -> 0)
+    assert bus[0x708000] != 0xCC         # not SRAM
+    assert bus[0x708000] == 0             # OOB ROM read returns 0 from StubRom

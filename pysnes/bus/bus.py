@@ -1,5 +1,6 @@
 # cython: profile=True
 
+import os
 from typing import List
 
 import cython
@@ -20,6 +21,9 @@ class Bus:
     low_ram: cython.uchar[:]
     high_ram: cython.uchar[:]
     extended_ram: cython.uchar[:]
+    sram: cython.uchar[:]
+    sram_size: cython.uint
+    sram_mask: cython.uint
     dma_ppu2_hw_registers: cython.uchar[:]
     hblank: cython.bint
     vblank: cython.bint
@@ -42,6 +46,9 @@ class Bus:
         self.high_ram = bytearray(0xE000)
         self.dma_ppu2_hw_registers = bytearray(0x44FF - 0x4200 + 1)
         self.extended_ram = bytearray(0x7FFFFF - 0x7E8000 + 1)
+        self.sram_size = getattr(rom, "sram_size", 0)
+        self.sram_mask = self.sram_size - 1 if self.sram_size else 0
+        self.sram = bytearray(self.sram_size if self.sram_size else 1)
         self.controller_port1, self.controller_port2 = controllers
 
         # H/V blank flags owned by the bus; set by the PPU scheduler events
@@ -50,6 +57,27 @@ class Bus:
 
         # WRAM port address register (17-bit, 0x2181-0x2183)
         self._wmadd = 0
+
+    def load_sram(self, path: str) -> int:
+        """Load SRAM bytes from `path`. Returns the number of bytes loaded (0 if no SRAM or file missing)."""
+        i: cython.uint
+        n: cython.uint
+        if self.sram_size == 0 or not os.path.exists(path):
+            return 0
+        with open(path, "rb") as f:
+            data: bytes = f.read()
+        n = min(len(data), self.sram_size)
+        for i in range(n):
+            self.sram[i] = data[i]
+        return n
+
+    def save_sram(self, path: str) -> int:
+        """Write SRAM bytes to `path`. Returns bytes written (0 if no SRAM)."""
+        if self.sram_size == 0:
+            return 0
+        with open(path, "wb") as f:
+            f.write(bytes(self.sram[:self.sram_size]))
+        return self.sram_size
 
     def raise_nmi(self) -> None:
         """Called by PPU at V-Blank start (rising NMI edge)."""
@@ -89,6 +117,13 @@ class Bus:
             ((0x70 <= bank <= 0x7D) and (0x8000 <= addr <= 0xFFFF)):
             rom_addr: cython.uint = (bank * 0x8000) + (addr - (0x8000 if addr >= 0x8000 else 0))
             return self.rom[rom_addr]
+
+        # SRAM: LoROM banks $70-$7D, addr $0000-$7FFF (mirrored from $F0-$FD)
+        if 0x70 <= bank <= 0x7D and addr < 0x8000:
+            if self.sram_size:
+                sram_addr: cython.uint = (((bank - 0x70) << 15) | addr) & self.sram_mask
+                return self.sram[sram_addr]
+            return 0xFF
 
         if 0x7E2000 <= abs_addr <= 0x7E7FFF:
             return self.high_ram[abs_addr - 0x7E2000]
@@ -186,6 +221,13 @@ class Bus:
             ((0x70 <= bank <= 0x7D) and (0x8000 <= addr <= 0xFFFF)):
             rom_addr: cython.uint = (bank * 0x8000) + (addr - (0x8000 if addr >= 0x8000 else 0))
             self.rom.rom[rom_addr] = data
+            return
+
+        # SRAM: LoROM banks $70-$7D, addr $0000-$7FFF (mirrored from $F0-$FD)
+        if 0x70 <= bank <= 0x7D and addr < 0x8000:
+            if self.sram_size:
+                sram_addr: cython.uint = (((bank - 0x70) << 15) | addr) & self.sram_mask
+                self.sram[sram_addr] = data
             return
 
         if (0x00 <= bank <= 0x3F) or bank == 0x7E:

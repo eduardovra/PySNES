@@ -603,13 +603,16 @@ class Ppu:
 
     def draw_scanline_backdrop(self) -> None:
         """Draw the backdrop color for the current scanline.
-        Fills both main and sub buffers and resets the layer tag to 0 (backdrop)."""
-        u32_color = self.get_u32_backdrop_color()
+
+        Main-screen backdrop = CGRAM[0]. Sub-screen backdrop = COLDATA fixed
+        color ($2132), per SNES PPU behavior — sub-screen doesn't use CGRAM[0]."""
+        main_u32 = self.get_u32_backdrop_color()
+        sub_u32 = self.get_u32_coldata_color()
         y = self.v_counter - 1
         row = y * SCREEN_WIDTH
         for x in range(SCREEN_WIDTH):
-            self.main_bgs[row + x] = u32_color
-            self.sub_bgs[row + x] = u32_color
+            self.main_bgs[row + x] = main_u32
+            self.sub_bgs[row + x] = sub_u32
             self.main_layer[row + x] = 0
 
     @cython.cfunc
@@ -908,6 +911,12 @@ class Ppu:
         a_8bit = 255  # 255 no transparency, 0 full transparency
 
         return (r_8bit << 24) | (g_8bit << 16) | (b_8bit << 8) | a_8bit
+
+    def get_u32_coldata_color(self) -> int:
+        r_8bit = (self.coldata_r << 3) | (self.coldata_r >> 2)
+        g_8bit = (self.coldata_g << 3) | (self.coldata_g >> 2)
+        b_8bit = (self.coldata_b << 3) | (self.coldata_b >> 2)
+        return (r_8bit << 24) | (g_8bit << 16) | (b_8bit << 8) | 255
 
     def draw_objects(self) -> None:
         # objects are the building blocks for sprites

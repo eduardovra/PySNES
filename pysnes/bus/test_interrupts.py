@@ -18,6 +18,7 @@ from ..cpu import Cpu
 from ..apu import Apu
 from ..ppu import Ppu
 from ..controller import Controller
+from ..rom import HardwareVectors, InterruptVectors
 
 
 # ---------------------------------------------------------------------------
@@ -30,12 +31,12 @@ ROM_SIZE = 512 * 1024
 class StubRom:
     def __init__(self, size=ROM_SIZE):
         self.rom = bytearray(size)
-        self.hardware_vectors = {
-            "emulation": {"RESET": 0x8000, "NMI": 0x8000, "IRQ": 0x8000,
-                          "COP": 0x8000, "ABORT": 0x8000},
-            "native":    {"RESET": 0x8000, "NMI": 0x8000, "IRQ": 0x8000,
-                          "BRK": 0x8000, "COP": 0x8000, "ABORT": 0x8000},
-        }
+        self.hardware_vectors = HardwareVectors(
+            native=InterruptVectors(cop=0x8000, brk=0x8000, abort=0x8000,
+                                    nmi=0x8000, reset=0, irq=0x8000),
+            emulation=InterruptVectors(cop=0x8000, brk=0, abort=0x8000,
+                                       nmi=0x8000, reset=0x8000, irq=0x8000),
+        )
 
     def __getitem__(self, addr):
         if 0 <= addr < len(self.rom):

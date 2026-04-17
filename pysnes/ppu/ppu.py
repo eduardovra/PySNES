@@ -409,8 +409,38 @@ class Ppu:
         if 0 <= self.v_counter < _VBLANK_START_LINE:
             self.bus.cpu.dma.hdma_scanline()
 
+        # H/V-IRQ timer match check (once per scanline at H-blank entry).
+        # Real hardware fires at dot HTIME within the scanline; we approximate
+        # at H-blank start since the CPU runs in scanline-granularity bursts.
+        self._irq_check()
+
         # Schedule end of scanline / start of next
         self.scheduler.add(_MC_PER_SCANLINE - _HBLANK_START_MC, self._scanline_end)
+
+    def _irq_check(self) -> None:
+        """Raise CPU IRQ line if the H/V timer match condition is satisfied.
+
+        $4200 bits 5:4 select the mode:
+          00 — IRQ disabled
+          01 — H-only:  fire every scanline at dot HTIME
+          10 — V-only:  fire at scanline VTIME, dot 0
+          11 — H+V:     fire at scanline VTIME, dot HTIME
+
+        The raised IRQ line stays high until $4211 is read (or IRQ is disabled
+        via $4200). Retrigger is natural: the next matching scanline will
+        re-raise the line if the CPU has already cleared it.
+        """
+        st = self.bus.cpu.status
+        h_en: cython.bint = st.hirq_enable
+        v_en: cython.bint = st.virq_enable
+        if not (h_en or v_en):
+            return
+        if v_en and self.v_counter != st.vtime:
+            return
+        # When V-IRQ is set without H-IRQ, the target scanline is enough.
+        # When H-IRQ is set (with or without V-IRQ), we also require scanline
+        # match (if V too) and fire on every qualifying scanline.
+        st.irq_line = True
 
     def _scanline_end(self) -> None:
         """Fired at the end of each scanline."""

@@ -504,16 +504,22 @@ class Ppu:
             BG3 tiles with priority 0
             BG4 tiles with priority 0
             """
+            # Mode 0: back → front painter order.
+            # Each layer writes only where pixels are non-transparent, so the
+            # last write at a pixel wins (= "in front").
             self.draw_scanline_backdrop()
-            self.draw_background_scanline(self.bg4, 2, False)
-            self.draw_background_scanline(self.bg3, 2, False)
-            self.draw_background_scanline(self.bg4, 2, True)
-            self.draw_background_scanline(self.bg3, 2, True)
-            self.draw_background_scanline(self.bg2, 2, False)
-            self.draw_background_scanline(self.bg1, 2, False)
-            self.draw_background_scanline(self.bg2, 2, True)
-            self.draw_background_scanline(self.bg1, 2, True)
-            self.draw_objects()
+            self.draw_background_scanline(self.bg4, 2, False)     # BG4 pri 0
+            self.draw_objects(priority=0)                         # OBJ pri 0
+            self.draw_background_scanline(self.bg3, 2, False)     # BG3 pri 0
+            self.draw_objects(priority=1)                         # OBJ pri 1
+            self.draw_background_scanline(self.bg4, 2, True)      # BG4 pri 1
+            self.draw_background_scanline(self.bg3, 2, True)      # BG3 pri 1
+            self.draw_objects(priority=2)                         # OBJ pri 2
+            self.draw_background_scanline(self.bg2, 2, False)     # BG2 pri 0
+            self.draw_background_scanline(self.bg1, 2, False)     # BG1 pri 0
+            self.draw_objects(priority=3)                         # OBJ pri 3
+            self.draw_background_scanline(self.bg2, 2, True)      # BG2 pri 1
+            self.draw_background_scanline(self.bg1, 2, True)      # BG1 pri 1
         elif self._bgmode == 1:
             """
             In Mode 1, you have 2 BGs of 16 colors and 1 BG of 4 colors. To calculate the
@@ -532,17 +538,22 @@ class Ppu:
             Sprites with priority 0
             BG3 tiles with priority 0
             """
+            # Mode 1: back → front painter order, with $2105 bit 3 moving
+            # BG3 pri-1 either to the very top or behind OBJ pri-0/1.
             self.draw_scanline_backdrop()
-            self.draw_background_scanline(self.bg3, 2, False)
+            self.draw_background_scanline(self.bg3, 2, False)     # BG3 pri 0
+            self.draw_objects(priority=0)                         # OBJ pri 0
             if self._bgpriority == 0:
-                self.draw_background_scanline(self.bg3, 2, True)
-            self.draw_background_scanline(self.bg2, 4, False)
-            self.draw_background_scanline(self.bg1, 4, False)
-            self.draw_background_scanline(self.bg2, 4, True)
-            self.draw_background_scanline(self.bg1, 4, True)
-            self.draw_objects()
+                self.draw_background_scanline(self.bg3, 2, True)  # BG3 pri 1 (low)
+            self.draw_objects(priority=1)                         # OBJ pri 1
+            self.draw_background_scanline(self.bg2, 4, False)     # BG2 pri 0
+            self.draw_background_scanline(self.bg1, 4, False)     # BG1 pri 0
+            self.draw_objects(priority=2)                         # OBJ pri 2
+            self.draw_background_scanline(self.bg2, 4, True)      # BG2 pri 1
+            self.draw_background_scanline(self.bg1, 4, True)      # BG1 pri 1
+            self.draw_objects(priority=3)                         # OBJ pri 3
             if self._bgpriority == 1:
-                self.draw_background_scanline(self.bg3, 2, True)
+                self.draw_background_scanline(self.bg3, 2, True)  # BG3 pri 1 (high)
         elif self._bgmode == 3:
             """
             In Mode 3, you have one 256-color BG and one 16-color BG. To calculate the
@@ -562,11 +573,16 @@ class Ppu:
 
             Note that register $2130 may enable Direct Color Mode on BG1.
             """
+            # Mode 3: back → front painter order with sprites interleaved.
             self.draw_scanline_backdrop()
-            self.draw_background_scanline(self.bg2, 4, False)
-            self.draw_background_scanline(self.bg1, 8, False)
-            self.draw_background_scanline(self.bg2, 4, True)
-            self.draw_background_scanline(self.bg1, 8, True)
+            self.draw_background_scanline(self.bg2, 4, False)   # BG2 pri 0
+            self.draw_objects(priority=0)                       # OBJ pri 0
+            self.draw_background_scanline(self.bg1, 8, False)   # BG1 pri 0
+            self.draw_objects(priority=1)                       # OBJ pri 1
+            self.draw_background_scanline(self.bg2, 4, True)    # BG2 pri 1
+            self.draw_objects(priority=2)                       # OBJ pri 2
+            self.draw_background_scanline(self.bg1, 8, True)    # BG1 pri 1
+            self.draw_objects(priority=3)                       # OBJ pri 3
         else:
             raise NotImplementedError(f"BG Mode {self._bgmode} not implemented")
 
@@ -976,11 +992,15 @@ class Ppu:
         b_8bit = (self.coldata_b << 3) | (self.coldata_b >> 2)
         return (r_8bit << 24) | (g_8bit << 16) | (b_8bit << 8) | 255
 
-    def draw_objects(self) -> None:
+    def draw_objects(self, priority: int = -1) -> None:
         # objects are the building blocks for sprites
         # they can move independently from the background and always use 4bpp
         # they can be 8x8, 16x16, 32x32 or 64x64 pixels in size
         # oam is the memory region where the objects properties are stored. each obj uses 34 bits
+        #
+        # priority: when >= 0, only objects with obj.priority == priority are
+        # drawn. This lets the mode dispatcher interleave sprite layers with
+        # BG layers in the correct front-to-back order per SNES spec.
 
         if not self.oam_main_screen_enable:
             return
@@ -991,6 +1011,8 @@ class Ppu:
             # x_visible = obj.x > -8 and obj.x < 256 - 8  # TODO hardcoded tile size
             # y_visible = obj.y > -8 and obj.y < 224  # TODO probably wrong
             # if x_visible and y_visible:
+            if priority >= 0 and obj.priority != priority:
+                continue
             if obj.y != 240:  # Games seem to use this value to hide the objects
                 tile_width, tile_height = self.get_obj_dimensions(obj.size)
 

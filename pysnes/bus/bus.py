@@ -24,6 +24,7 @@ class Bus:
     sram: cython.uchar[:]
     sram_size: cython.uint
     sram_mask: cython.uint
+    sram_dirty: cython.bint
     dma_ppu2_hw_registers: cython.uchar[:]
     hblank: cython.bint
     vblank: cython.bint
@@ -49,6 +50,7 @@ class Bus:
         self.sram_size = getattr(rom, "sram_size", 0)
         self.sram_mask = self.sram_size - 1 if self.sram_size else 0
         self.sram = bytearray(self.sram_size if self.sram_size else 1)
+        self.sram_dirty = False
         self.controller_port1, self.controller_port2 = controllers
 
         # H/V blank flags owned by the bus; set by the PPU scheduler events
@@ -69,14 +71,16 @@ class Bus:
         n = min(len(data), self.sram_size)
         for i in range(n):
             self.sram[i] = data[i]
+        self.sram_dirty = False
         return n
 
     def save_sram(self, path: str) -> int:
-        """Write SRAM bytes to `path`. Returns bytes written (0 if no SRAM)."""
-        if self.sram_size == 0:
+        """Write SRAM bytes to `path` if dirty. Returns bytes written (0 if no SRAM or not dirty)."""
+        if self.sram_size == 0 or not self.sram_dirty:
             return 0
         with open(path, "wb") as f:
             f.write(bytes(self.sram[:self.sram_size]))
+        self.sram_dirty = False
         return self.sram_size
 
     def raise_nmi(self) -> None:
@@ -228,6 +232,7 @@ class Bus:
             if self.sram_size:
                 sram_addr: cython.uint = (((bank - 0x70) << 15) | addr) & self.sram_mask
                 self.sram[sram_addr] = data
+                self.sram_dirty = True
             return
 
         if (0x00 <= bank <= 0x3F) or bank == 0x7E:

@@ -470,6 +470,49 @@ def test_sram_no_sram_write_ignored():
     assert bus[0x700000] == 0xFF
 
 
+def test_sram_save_noop_when_clean(tmp_path):
+    """A fresh bus with no SRAM writes should not create a .srm file."""
+    path = tmp_path / "game.srm"
+    bus, *_ = make_bus(sram_size=0x2000)
+    assert bus.save_sram(str(path)) == 0
+    assert not path.exists()
+
+
+def test_sram_save_noop_after_save(tmp_path):
+    """After saving, a second save with no further writes is a no-op."""
+    path = tmp_path / "game.srm"
+    bus, *_ = make_bus(sram_size=0x2000)
+    bus[0x700000] = 0xAB
+    assert bus.save_sram(str(path)) == 0x2000
+    mtime = path.stat().st_mtime_ns
+    assert bus.save_sram(str(path)) == 0       # nothing dirty
+    assert path.stat().st_mtime_ns == mtime    # file untouched
+
+
+def test_sram_load_then_save_is_noop(tmp_path):
+    """Loading SRAM doesn't make it dirty — a subsequent save does nothing."""
+    path = tmp_path / "game.srm"
+    path.write_bytes(b"\xAA" * 0x2000)
+    bus, *_ = make_bus(sram_size=0x2000)
+    assert bus.load_sram(str(path)) == 0x2000
+    # Save to a different path to make the no-op check unambiguous
+    out = tmp_path / "out.srm"
+    assert bus.save_sram(str(out)) == 0
+    assert not out.exists()
+
+
+def test_sram_write_sets_dirty(tmp_path):
+    """A write via the bus after load makes SRAM dirty again."""
+    path = tmp_path / "game.srm"
+    path.write_bytes(b"\x00" * 0x2000)
+    bus, *_ = make_bus(sram_size=0x2000)
+    bus.load_sram(str(path))
+    bus[0x700010] = 0x42
+    out = tmp_path / "out.srm"
+    assert bus.save_sram(str(out)) == 0x2000
+    assert out.read_bytes()[0x10] == 0x42
+
+
 def test_sram_roundtrip_save_load(tmp_path):
     """Write to SRAM, save, create new bus, load — contents preserved."""
     path = tmp_path / "game.srm"

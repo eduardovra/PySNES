@@ -120,8 +120,7 @@ pysnes/debugger/debugger.py    Debugger + live UI window
 - **PPU Mode 7**: M7A-M7Y matrix registers present but not functional
 - **NMI/V-Blank**: basic implementation, timing edge cases likely
 - **DMA/HDMA**: partial, timing accuracy unknown
-- **OAM sprite wrapping**: has `TODO handle wrapping` comment in code
-- **Backdrop color**: comment says it's incorrect — should only show when all layers above are transparent
+- **OAM Y wrapping**: X sign-extension done; Y still uses the `y==240 → hide` heuristic, which is close but not exactly hardware-accurate.
 - **HiROM**: LoROM is the primary target; HiROM may have mapping issues
 - **Window effects**: masking/windowing not implemented
 - **Color math**: SNES special effects processing not implemented

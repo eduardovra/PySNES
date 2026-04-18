@@ -186,6 +186,27 @@ class TestSpriteRendering:
         for x in range(0, 5):
             assert _pixel(ppu, x, 5) == GREEN, f"Expected GREEN at ({x}, 5)"
 
+    def test_sprite_x_9bit_sign_extends_to_negative(self):
+        """
+        OBJ X is 9-bit signed on hardware. An obj.x of 509 (bit 8 set, low=0xFD)
+        must be interpreted as -3, so an 8×8 sprite spans x=-3..4 and pixels
+        0..4 on the visible row become GREEN. Without sign-extension the sprite
+        is fully clipped (x≥256 never passes draw_point's 0 ≤ x < 256 guard).
+        """
+        ppu = _make_ppu()
+        _setup_sprite(ppu)
+
+        ppu.oam.objects[0].x = 509  # 9-bit raw; signed = -3
+
+        ppu.v_counter = 6
+        ppu.draw_scanline_backdrop()
+        ppu.draw_objects()
+
+        for x in range(0, 5):
+            assert _pixel(ppu, x, 5) == GREEN, f"Expected GREEN at ({x}, 5)"
+        # Pixel at x=5 is outside the sprite's right edge — must still be backdrop.
+        assert _pixel(ppu, 5, 5) == BLACK
+
     def test_sprite_scanline_not_rendered_above_or_below(self):
         """
         Sprite is at y=5 (rows 5..12). Scanline 5 (v_counter=5) corresponds

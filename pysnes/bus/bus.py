@@ -443,7 +443,7 @@ class Bus:
                 if addr == 0x2137:  # SLHV
                     return  # Not writable
 
-                if 0x2140 <= addr <= 0x2143:  # TODO ugly
+                if 0x2140 <= addr <= 0x2143:  # APUIO0-APUIO3 (CPU→SPC ports)
                     self.apu.sync_to(self.scheduler.master_clock + (self.cpu.cycles - self.cpu.prev_cycles))
                     self.apu.ports_r[addr - 0x2140] = data
                     return

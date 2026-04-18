@@ -1,114 +1,96 @@
-# SMW Title Screen Investigation — Remaining Visual Glitches
+# SMW Title Screen Investigation
 
-Branch: `smw-past-title`
+Living document tracking progress on the SMW title-screen render pipeline.
 
-## Status
-SMW boots to the animated title screen. The sky-blue rendering is now
-correct after the sub-screen backdrop fix (see Root Cause below). Two
-visible glitches remain at frame 560:
+## Status (2026-04-18)
 
-1. Missing logo drop-shadow / 3D effect on "SUPER MARIO WORLD"
-2. Missing bottom banner (grass + Mario + Nintendo copyright area) —
-   the brick frame border bleeds through where the grass banner should
-   be.
+SMW boots past the IPL handshake, past the Nintendo Presents splash,
+and into the title screen. The title **fade-in** (frame ~300–340,
+mosaic + brightness ramp) is now pixel-identical to Mesen at the
+frames observed. The **title-curtain animation** (grass banner
+sweeping up from the bottom with Mario/Yoshi/bird sprites) is still
+broken: instead of the per-scanline HDMA window values Mesen writes,
+PySNES's WRAM table is filled with `0x80`s, producing a single-pixel
+window that masks everything except the dead-center column.
 
-Frame 560 sky region pixel-diff vs Mesen:
-- rows 28-39, cols 32-223: near-exact match (sky color `(156,231,231)`)
-- rows 16-27 diffs are caused by missing logo drop-shadow layer
+The curtain bug is a downstream symptom of a small CPU/APU timing
+drift during boot that we have not fully closed.
 
-## Root Cause (Confirmed) — Sub-Screen Backdrop
+## Fixes landed this session
 
-`draw_scanline_backdrop` previously initialized `sub_bgs` to
-`CGRAM[0]` (black). On the SMW title screen:
+PRs merged (all on `main`):
 
-- `CGRAM[0]` is black
-- `COLDATA ($2132)` fixed color = `0x7393` → `(156, 231, 231)` sky blue
-- `CGADSUB = 0x20` → only backdrop participates in color math (ADD)
-- `CGWSEL`, `TS`, `TM` are set up so that the sky pixels are
-  backdrop-only on the main screen, with color math pulling the
-  sub-screen fixed color onto the main.
+- `#10` sprite sub-tile bleed (d0eb43b) — multi-tile sprites
+- `#10` sub-screen backdrop (`fa71a43`) — sky blue via `backdrop + COLDATA`
+- `#10` HDMA indirect addressing (`46027e8`) — DMAPx bit 6
+- `#10` 3× window default
+- `#11` H/V IRQ (`$4207-$420A`, `$4211`, PPU timer match)
+- `#12` CGADSUB subtract + half-intensity (bits 7/6)
+- `#13` OAM priority ordering across modes 0/1/3
+- `#14` Hardware-register bank mirror (`$2100-$21FF`, `$4200-$44FF` across banks `$00-$3F`)
+- `#15` SRAM with `.srm` battery backup
+- `#17` ROM header parsing dataclasses
+- `#18` 40-MC DRAM refresh per scanline
+- `#19` Low-effort TODO cleanup
+- `#20` PPU mosaic per-BG block averaging (`$2106`)
+- `#21` CGWSEL color-math windowing (bits 5:4 + WOBJSEL bits 4-7 + WOBJLOG bits 2-3)
+- `#22` `$4210` RDNMI bit-7 persists through V-Blank end
 
-SNES PPU behavior: the sub-screen backdrop is the **COLDATA fixed
-color**, not `CGRAM[0]`. PySNES was writing `CGRAM[0] = 0` to
-`sub_bgs`, so the ADD produced `black + black = black` at every sky
-pixel. After the fix, `sub_bgs` is initialized to the COLDATA color,
-and `backdrop + COLDATA = (156, 231, 231)` matches Mesen pixel-exact.
+Frame-400 Mesen diff evolution during the session:
+- Before any of the above: ~16% pixel diff, mountains leaking, no grass banner
+- After H/V IRQ + color-math subtract + sprite priority + bank mirror: 84%+ match, Mario renders, mountains fade correctly
+- After CGWSEL windowing landed: frame 310 is **100% pixel-identical** to Mesen; frame 400 drops to 39.7% because CGWSEL correctly gates color math, exposing the upstream WRAM-table bug
 
-**Fix**: `pysnes/ppu/ppu.py` — `draw_scanline_backdrop` now uses
-`get_u32_coldata_color()` for `sub_bgs`.
+## Remaining bug chain
 
-## Verified Not the Cause (pre-fix)
-- **VRAM**: byte-identical between PySNES and Mesen in BG1/BG2/BG3
-  tilemap/tiledata regions.
-- **CGRAM**: only 2/512 bytes differ.
-- **Multi-tile sprites**: fixed in `d0eb43b`.
-- **Sub-screen buffer routing**: already routing BG2 to `sub_bgs`.
-- **Window masking**: original hypothesis (BG3 showing through
-  because of window-masking semantics) was wrong — the sky BG3 pixels
-  were never there in Mesen; the sky was a color-math ADD of
-  COLDATA onto the backdrop.
+1. **SMW NMI handler computes `WH0/WH1` table filled with `0x80` bytes** instead of a sweeping sequence
+2. Root cause: **SMW's animation state machine takes a wrong branch** during the IPL handshake phase
+3. Root cause: **our APU returns `0xAA` from `$2140` one CMP iteration earlier than Mesen's**
+4. Root cause: **CPU/APU timing drift in our emulator**
+   - Tier-2 instruction-level divergence at instruction **#1988**: PySNES already at `PC=$8087` (post-spin `sep #$20`), Mesen still at `PC=$8082` (another CMP)
+   - Magnitude: ~12 MC (one CMP+BNE pair) ahead of Mesen by instruction 1988
 
-## Remaining Glitches
+This means our APU gets a tiny bit more effective clock budget than
+Mesen's APU over the ~48K master clocks of boot code, finishes the IPL
+memory-clear loop one iteration early, and latches `$AA` into its
+`$F4` output before Mesen's APU does.
 
-### 1. Bottom banner missing — two layers of bugs (one fixed, one open)
+## Things tried that didn't close the drift
 
-Where Mesen shows grass, Mario walking, a bird, a red apple, and the
-"© 1990,1991 Nintendo" text, PySNES shows the brick frame-border
-tiles repeating. BG1 is being window-masked out of the banner region:
-with `--force-tmw 0` the grass banner renders nearly identically to
-Mesen, so BG1 rendering is fine — the window mask is wrong.
+- **DRAM refresh (`#18`)** — moved divergence from 5 iterations behind to 1 ahead. Net improvement, but overshot by ~12 MC.
+- **Cycle-count audit of all 256 CPU opcodes** — 23 opcodes have mis-counted cycle totals in SingleStepTests, but *none of them are executed* by SMW in the first 2000 instructions. Fixing them would be correct but won't move SMW.
+- **SPC700 cycle counts** — verified correct; `test_spc700.py` enforces cycle-count equality and passes.
+- **`$4210` RDNMI persistence (`#22`)** — architectural correctness fix, but SMW's first V-Blank is at MC 307K, well after the MC 48K handshake divergence. No timing impact on boot.
+- **CGWSEL color-math windowing (`#21`)** — does not affect CPU/APU state; it only gates the post-render composite pass.
 
-HDMA ch7 targets `$2126/$2127` (WH0/WH1) and should update them per
-scanline. Config (from Mesen state): `indirect=1, transferMode=1`
-(2-byte transfer), `$00:$927C` table, `$00:$04A0` indirect data.
+## Hypotheses not yet tested
 
-**Bug A (fixed)**: `pysnes/cpu/dma.py` had no indirect-addressing
-support at all — the 2 bytes after the count byte were being read as
-inline data, causing immediate termination. Rewrote `_load_next_entry`
-and `hdma_scanline` for DMAPx bit 6. Added 3 new unit tests. After
-this fix the pointer advances correctly (`$04A0 → $065E` over 224
-scanlines) and the brick-border glitch is gone.
+- **Integer-rounding drift in `apu.sync_to`**: we use `elapsed * 1024000 // 21477272` (floor) for both directions. Mesen integrates differently (spc sample rate × 64 model). Small per-call rounding differences accumulate.
+- **CPU cycle counts for instructions SMW actually uses** during boot. A per-opcode audit limited to SMW's hot set (`A9`/`A2`/`8D`/`E2`/`C2`/`18`/`38`/`78`/`9C`/`48`/`68`/`AB`/`BD`/`DD`/`F0`/`D0`/`CD`/`B0`/`90`…) could reveal a single off-by-one per-instruction.
+- **Reset cycle count**: we initialize `cpu.cycles = 182` (snes9x value). Mesen may differ.
+- **I/O port read cycles for `$2140`**: currently 6 MC (fast bus). Some sources claim it's xslow (12 MC) during active rendering or 8 MC in certain timing windows.
 
-**Bug B (open — CPU/timing divergence)**: With indirect HDMA fixed,
-WH0/WH1 now read fresh WRAM every scanline, but PySNES WRAM contents
-are wrong. Tracked frame-by-frame dumps of `$04A0..$04AF`:
+## Diagnostic scripts (committed)
 
-- Through frame 372, PySNES and Mesen match exactly
-  (`FF 00 FF 00 FF 00 FF 00`).
-- At frame 373 Mesen starts the curtain-rising animation and fills
-  the table with varying window positions
-  (`FF 00 6D 93 68 98 65 9B ...`).
-- At frame 369 the same routine fires in PySNES but writes all
-  `0x80` from byte 2 onward (`FF 00 80 80 80 80 80 80 ...`), and the
-  table stays stuck at `0x80` forever.
+- `scripts/pysnes_dump_vram.py` — headless dump of VRAM, CGRAM, PPU state, composite framebuffer
+- `scripts/mesen_dump_state.lua` — Mesen-side equivalent dump (VRAM + PPU state JSON)
+- `scripts/mesen_layers.lua` — per-layer capture with TM/TS overrides
+- `scripts/mesen_screenshot.lua` — full screen buffer capture
+- `scripts/mesen_trace.lua` — CPU instruction trace over TCP
 
-Both 0x80 lo and 0x80 hi map to WH inverted-clip columns [128, 128],
-i.e. BG1 fully masked. Same divergence pattern explains the frozen
-`wh0=159, wh1=253` seen earlier (stale table from before the
-animation routine ran).
+Useful one-off probes that helped in this session (not committed,
+under `/tmp/`):
 
-Root cause is upstream of HDMA — the animation code computes wrong
-bytes. Likely candidates: APU/CPU timing drift shifts which branch
-the animation state machine takes, or a 16-bit arithmetic/flag bug
-in an opcode SMW uses in this routine. `test_frame_divergence`
-reports CPU drift by frame 1 (PC±2), consistent with this.
+- headless framebuffer snap at N frames, convert `main_bgs` to PNG with brightness applied
+- `mesen_vs_pysnes.py` — side-by-side composite + per-pixel diff at a given frame
+- Probe of APU sync progress (APU PC vs MC) at checkpointed MCs
+- BG1-only vs Mesen-BG1-only comparison using `TM_MASK=0x01`
+- Tier-2 test with `MESEN_PORT` listener to capture Mesen trace lines
+- Trace of every CPU `$2140` read with returned value and APU state
 
-Next-step: instruction-level divergence trace around frames 368-373
-to identify the specific opcode/branch going wrong.
+## Next steps when this picks back up
 
-### 2. Logo drop-shadow / 3D effect missing
-In Mesen the "SUPER" letters have colorful gradient fills and the
-"MARIO WORLD" letters have a 3D drop-shadow. In PySNES the letters
-are flat.
-
-Likely explanation: this is either a high-priority BG1 tile layer we
-aren't compositing, or it involves color-math half/sub path (CGADSUB
-bit 7 `subtract`, bit 6 `half`) — our `composite_scanline` bails out
-on bit 7 (`if cgadsub & 0x80: return`).
-
-## Diagnostic Scripts (committed)
-- `scripts/pysnes_dump_vram.py` — headless dump of VRAM, CGRAM, PPU
-  state, composite framebuffer
-- `scripts/mesen_dump_state.lua` — Mesen-side equivalent dump
-- `scripts/mesen_layers.lua` — per-layer capture with TM/TS
-  overrides
+1. **Compare CPU trace line-by-line for pre-spin instructions** (1-1980) between PySNES and Mesen — if state diverges before the spin, the cycle bug is in one of those earlier opcodes.
+2. **Swap our integer-floor `sync_to` for fractional accumulation** (store last-sync-MC as a `(whole, remainder)` pair, or use a float) to eliminate sub-MC rounding bias.
+3. **Try `cpu.cycles = 186` or `200` at reset** — snes9x's comment notes "182 Or 188. This is the cycle count just after the jump to the Reset Vector." Different emulators start at different values.
+4. **Consider running SMW's boot under BizHawk or bsnes** to cross-check: if both bsnes and Mesen exit the spin at the same instruction count, the target is unambiguous; if they differ, our target is fuzzy.

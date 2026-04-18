@@ -211,6 +211,12 @@ class Cpu:
         # NMI pending flag — set by nmi_rising_edge(), checked in _step()
         self._nmi_pending: bool = False
 
+        # DRAM refresh: the SNES CPU is paused for 40 MC once per scanline
+        # (approximately at dot 133 = MC 536 of each scanline). Tracking the
+        # scanline index lets _step() add the 40 MC pause on the first
+        # instruction of each new scanline.
+        self._last_refresh_scanline: int = -1
+
     def load_instructions(self):
         from .wdc65816.instructions import INSTRUCTIONS
 
@@ -263,6 +269,15 @@ class Cpu:
             mc = self.interrupt(vector)
         else:
             mc = self.fetch_and_execute()
+        # DRAM refresh: once per scanline the CPU is paused for 40 MC
+        # (https://wiki.superfamicom.org/timing). We credit the pause on the
+        # first instruction that crosses into a new scanline. This gives the
+        # APU its expected cycle budget — without it, the SMW APU handshake
+        # spin-loop sees stale port values.
+        scanline = self.scheduler.master_clock // 1364
+        if scanline != self._last_refresh_scanline:
+            self._last_refresh_scanline = scanline
+            mc += 40
         # mc is in master clocks; schedule the next step that many clocks ahead
         self.scheduler.add(mc, self._step)
 

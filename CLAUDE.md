@@ -245,8 +245,8 @@ uv run --python pypy@3.10 pytest pysnes/cpu/test_cpu.py --opcode ea --mode n  # 
 - SPC700 test data is at `submodules/SingleStepTests_spc700/v1/`
 - Tests verify: initial state → execute instruction → final registers, RAM, and memory access sequence
 - CPU (`pysnes/cpu/cpu.py`) and APU (`pysnes/apu/apu.py`) are the tested implementations
-- `pytest-xdist` is available for parallel execution (memory is bounded — test params are `(file, index)` refs, not full dicts)
-- **Do NOT use `-n auto` for `test_cpu.py`** — it spawns too many workers and crashes the machine. Use `-n 6` until CPU test worker memory footprint is reduced.
+- `pytest-xdist` is available for parallel execution. Test params are `(file, index)` refs, not full dicts; collection is cached to `.pytest_cache/ss_{cpu,spc700}_<key>.pickle` under an `fcntl.flock` so workers after the first just read the pickle.
+- **Recommended invocation: `-n auto --dist=loadgroup`** for `test_cpu.py` and `test_spc700.py`. Each param carries an `xdist_group(file_path)` marker, so `--dist=loadgroup` pins all cases from one JSON file to a single worker; a single-slot file cache in `_load_case` then parses that JSON only once per worker. Delete `.pytest_cache/ss_*.pickle` if you suspect stale cache (it's keyed on filter args + JSON mtimes and should self-invalidate).
 - Cycle count checking is enabled for opcodes in `CYCLE_CHECK_OPCODES` in `test_cpu.py` (currently: ea, 1a, 3a, 18, 38)
 
 ## Performance Notes

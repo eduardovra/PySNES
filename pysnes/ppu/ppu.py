@@ -125,7 +125,10 @@ class Ppu:
         self.main_layer = bytearray(256 * 262)
 
     def inidisp_set(self, data: int) -> None:
-        # TODO reset OAM addr if writing while on first blank line
+        # Missing: when clearing forced-blank (bit 7 → 0) during V-Blank, the
+        # internal OAM address must be reloaded from OAMADDL/OAMADDH. The reload
+        # also fires at V-Blank entry when forced-blank is off. Not yet wired —
+        # belongs in the V-Blank transition in _vblank_start, not here.
         self.display_brightness = data >> 0 & 15
         self.display_disable = data >> 7 & 1
 
@@ -1023,26 +1026,25 @@ class Ppu:
             return
 
         for obj in self.oam.objects:
-            # Draw object if it's within the visible area (256x224)
-            # TODO handle wrapping
-            # x_visible = obj.x > -8 and obj.x < 256 - 8  # TODO hardcoded tile size
-            # y_visible = obj.y > -8 and obj.y < 224  # TODO probably wrong
-            # if x_visible and y_visible:
             if priority >= 0 and obj.priority != priority:
                 continue
-            if obj.y != 240:  # Games seem to use this value to hide the objects
-                tile_width, tile_height = self.get_obj_dimensions(obj.size)
-
-                self.draw_tiles(
-                    bpp=4,  # Always 4bpp for objects
-                    x_offset=obj.x,
-                    y_offset=obj.y,
-                    tile=obj,
-                    tile_base_addr=self.oam_tiledata_address * 2,  # Indexed in words
-                    tile_width=tile_width,
-                    tile_height=tile_height,
-                    tile_character=obj.character,
-                )
+            if obj.y == 240:  # Games use y=240 to hide a sprite entirely off-screen.
+                continue
+            # OBJ X is 9-bit signed (Anomie/fullsnes): values 256..511 represent
+            # -256..-1, letting sprites straddle the left edge. draw_point's
+            # 0 ≤ x < 256 guard clips the off-screen pixels.
+            x_screen = obj.x - 512 if obj.x >= 256 else obj.x
+            tile_width, tile_height = self.get_obj_dimensions(obj.size)
+            self.draw_tiles(
+                bpp=4,  # Always 4bpp for objects
+                x_offset=x_screen,
+                y_offset=obj.y,
+                tile=obj,
+                tile_base_addr=self.oam_tiledata_address * 2,  # Indexed in words
+                tile_width=tile_width,
+                tile_height=tile_height,
+                tile_character=obj.character,
+            )
 
     def get_obj_dimensions(self, obj_size: int) -> Tuple[int, int]:
         """

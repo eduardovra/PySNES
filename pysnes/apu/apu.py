@@ -143,8 +143,8 @@ class Apu:
     _control_register_raw = cython.declare(cython.uchar)
     dsp_register_address = cython.declare(cython.uchar)
     dsp_register_data = cython.declare(cython.uchar)
-    f8 = cython.declare(cython.uchar)
-    f9 = cython.declare(cython.uchar)
+    auxio4 = cython.declare(cython.uchar)
+    auxio5 = cython.declare(cython.uchar)
     ipl_rom_enable = cython.declare(cython.bint)
     # Test register ($F0) fields
     timers_disable = cython.declare(cython.bint)
@@ -208,7 +208,7 @@ class Apu:
         self.A =  0x00    # Accumulator (8 bit)
         self.X =  0x00    # X Index Register (8 bit)
         self.Y =  0x00    # Y Index Register (8 bit)
-        self.S =  0xEF    # Stack Pointer (8 bit) - always on page 1 --> TODO first version used 0x1EF
+        self.S =  0xEF    # Stack Pointer (8 bit) - always on page 1
 
         # Flags stored in PSW Register
         self.NF = False  # Negative
@@ -245,8 +245,9 @@ class Apu:
         self.dsp_register_data = 0x00  # F3 (r/w)
         # self.timers = bytearray(3)  # FA/FB/FC (/w)
         # self.counters = bytearray(3)  # FD/FE/FF (r/)
-        self.f8 = 0  # TODO don't remember what this is
-        self.f9 = 0  # TODO don't remember what this is
+        # $F8/$F9 AUXIO4/AUXIO5: general-purpose 8-bit R/W scratch registers
+        self.auxio4 = 0
+        self.auxio5 = 0
 
         # Control register 0xF1
         self.ipl_rom_enable = True
@@ -318,9 +319,9 @@ class Apu:
         elif addr <= 0x00F7:
             result = self.ports_r[addr - 0x00F4]
         elif addr == 0x00F8:
-            result = self.f8
+            result = self.auxio4
         elif addr == 0x00F9:
-            result = self.f9
+            result = self.auxio5
         elif addr <= 0x00FC:
             result = cython.cast(Timer, self.timers[addr - 0x00FA]).target
         elif addr <= 0x00FF:
@@ -360,9 +361,9 @@ class Apu:
             self.ports_w[addr - 0x00F4] = value
             self._ports_w_dirty = True
         elif addr == 0x00F8:
-            self.f8 = value
+            self.auxio4 = value
         elif addr == 0x00F9:
-            self.f9 = value
+            self.auxio5 = value
         elif addr <= 0x00FC:
             cython.cast(Timer, self.timers[addr - 0x00FA]).target = value
         elif addr <= 0x00FF:

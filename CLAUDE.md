@@ -247,7 +247,7 @@ uv run --python pypy@3.10 pytest pysnes/cpu/test_cpu.py --opcode ea --mode n  # 
 - CPU (`pysnes/cpu/cpu.py`) and APU (`pysnes/apu/apu.py`) are the tested implementations
 - `pytest-xdist` is available for parallel execution. Test params are `(file, index)` refs, not full dicts; collection is cached to `.pytest_cache/ss_{cpu,spc700}_<key>.pickle` under an `fcntl.flock` so workers after the first just read the pickle.
 - **Recommended invocation: `-n auto --dist=loadgroup`** for `test_cpu.py` and `test_spc700.py`. Each param carries an `xdist_group(file_path)` marker, so `--dist=loadgroup` pins all cases from one JSON file to a single worker; a single-slot file cache in `_load_case` then parses that JSON only once per worker. Delete `.pytest_cache/ss_*.pickle` if you suspect stale cache (it's keyed on filter args + JSON mtimes and should self-invalidate).
-- Cycle count checking is enabled for opcodes in `CYCLE_CHECK_OPCODES` in `test_cpu.py` (currently: ea, 1a, 3a, 18, 38)
+- Cycle count is checked against `len(test_case["cycles"])` for every CPU opcode. The 65816 harness does not verify per-cycle bus-status bits (VDA/VPA/VPB/MLB/M/X/E); only R/W.
 
 ## Performance Notes
 - Cython compiles all Python to C for speed

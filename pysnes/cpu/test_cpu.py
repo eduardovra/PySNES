@@ -12,18 +12,6 @@ from pysnes._ss_cache import get_or_build
 
 TESTS_PATH = "submodules/65816/v1"
 
-# Opcodes for which cycle counts are verified (expand as coverage grows).
-# Branch opcodes: idle6 fires on emulation-mode page cross (adds 1 null cycle).
-# Index-page-cross opcodes: idle4 fires when XFlag=0 or base/indexed addresses cross pages.
-CYCLE_CHECK_OPCODES = {
-    "ea", "1a", "3a", "18", "38",
-    # Branches (idle6: page-cross penalty in emulation mode)
-    "10", "30", "50", "70", "80", "90", "b0", "d0", "f0",
-    # BankRead indexed (idle4: page-cross or 16-bit index penalty)
-    "bd", "bc",  # LDA abs,X  LDY abs,X
-    # IndirectIndexed (idle4: page-cross or 16-bit index penalty)
-    "b1", "d1", "f1", "11", "31", "51", "71", "91",  # LDA/CMP/SBC/ORA/AND/EOR/ADC/STA (dp),Y
-}
 
 _FILE_CACHE_KEY: str | None = None
 _FILE_CACHE_VAL: list | None = None
@@ -204,13 +192,11 @@ def test_cpu(test_case):
     # check on read/write cycles
     assert calls_performed == calls_expected
 
-    # cycle count check (only for opcodes in CYCLE_CHECK_OPCODES)
-    opcode_name = test_case["name"].split()[0].lower()
-    if opcode_name in CYCLE_CHECK_OPCODES:
-        expected_cycle_count = len(test_case["cycles"])
-        assert cpu.icycles == expected_cycle_count, (
-            f"cycle count: {cpu.icycles} != {expected_cycle_count}"
-        )
+    # cycle count check
+    expected_cycle_count = len(test_case["cycles"])
+    assert cpu.icycles == expected_cycle_count, (
+        f"cycle count: {cpu.icycles} != {expected_cycle_count}"
+    )
 
 
 # VP == VPB

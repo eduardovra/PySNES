@@ -167,7 +167,7 @@ def _generate_ref_png(mesen: str, rom_path: Path, ref_path: Path, n_frames: int)
 
         import time  # noqa: PLC0415
         proc = subprocess.Popen(
-            [mesen, str(rom_path), "--headless", "--lua", str(lua_script)],
+            [mesen, "--testrunner", str(lua_script), str(rom_path)],
             env=env,
         )
         # Wait for Mesen to finish writing the output file (it hangs after emu.stop())

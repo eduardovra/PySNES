@@ -1,8 +1,69 @@
 import pathlib
 from dataclasses import dataclass
+from enum import IntEnum
+from typing import Union
 
 import cython
 from rich import print
+
+
+class MappingMode(IntEnum):
+    TEST_PROGRAM = 0x00
+    LOROM = 0x20
+    HIROM = 0x21
+    EXLOROM = 0x22
+    SA1 = 0x23
+    EXHIROM = 0x25
+    LOROM_FAST = 0x30
+    HIROM_FAST = 0x31
+    EXLOROM_FAST = 0x32
+    EXHIROM_FAST = 0x35
+
+
+SUPPORTED_MAPPING_MODES = frozenset({MappingMode.LOROM, MappingMode.LOROM_FAST})
+
+
+class CartridgeType(IntEnum):
+    ROM_ONLY = 0x00
+    ROM_RAM = 0x01
+    ROM_RAM_BATTERY = 0x02
+    ROM_COPROCESSOR = 0x03
+    ROM_COPROCESSOR_RAM = 0x04
+    ROM_COPROCESSOR_RAM_BATTERY = 0x05
+    ROM_SUPERFX = 0x13
+    ROM_SUPERFX_RAM = 0x14
+    ROM_SUPERFX_RAM_BATTERY = 0x15
+    ROM_SA1_RAM = 0x34
+    ROM_SA1_RAM_BATTERY = 0x35
+    ROM_SDD1 = 0x43
+    ROM_SDD1_RAM_BATTERY = 0x45
+
+
+class Region(IntEnum):
+    JAPAN = 0x00
+    NORTH_AMERICA = 0x01
+    EUROPE = 0x02
+    SWEDEN = 0x03
+    FINLAND = 0x04
+    DENMARK = 0x05
+    FRANCE = 0x06
+    NETHERLANDS = 0x07
+    SPAIN = 0x08
+    GERMANY = 0x09
+    ITALY = 0x0A
+    CHINA = 0x0B
+    INDONESIA = 0x0C
+    SOUTH_KOREA = 0x0D
+    CANADA = 0x0F
+    BRAZIL = 0x10
+    AUSTRALIA = 0x11
+
+
+def _enum_or_int(cls: type[IntEnum], value: int) -> Union[IntEnum, int]:
+    try:
+        return cls(value)
+    except ValueError:
+        return value
 
 # Scripts to convert SNES ROMs to SNES Classic (.sfrom) format and to read .sfrom headers
 # https://gist.github.com/anpage/4834433944a2875ee6d4cbb5786c6bf7
@@ -30,35 +91,14 @@ class HardwareVectors:
 @cython.cclass
 class SnesHeader:
     game_title: str
-    mapping_mode: int
-    cartridge_type: int
+    mapping_mode: Union[MappingMode, int]
+    cartridge_type: Union[CartridgeType, int]
     rom_size: int           # bytes; 0 if header byte is 0
     sram_size: int          # bytes; 0 if header byte is 0
-    destination_code: int   # $FFD9 — region, NOT developer ID
+    destination_code: Union[Region, int]   # $FFD9 — region, NOT developer ID
     version: int
     checksum_complement: int  # 16-bit LE
     checksum: int             # 16-bit LE
-
-
-# Known mapping_mode bytes per the SNES header spec. Bitmask 001A0BCD, base $20:
-#   A == 1: FastROM (+$10)
-#   B == 1: ExHiROM (+$04)
-#   C == 1: ExLoROM (+$02)
-#   D == 1: HiROM    (+$01)
-# Anything outside this set still parses, but we log a warning since the
-# emulator may not handle it correctly.
-_KNOWN_MAPPING_MODES = {
-    0x00,  # SNES Test Program (LoROM, SlowROM, no $20 base)
-    0x20,  # LoROM, SlowROM
-    0x21,  # HiROM, SlowROM
-    0x22,  # ExLoROM (rare, e.g. SDD-1 cartridges)
-    0x23,  # SA-1
-    0x25,  # ExHiROM
-    0x30,  # LoROM, FastROM
-    0x31,  # HiROM, FastROM
-    0x32,  # ExLoROM, FastROM
-    0x35,  # ExHiROM, FastROM
-}
 
 
 def _looks_like_title(buf) -> bool:
@@ -106,8 +146,11 @@ class Rom:
         self.snes_header = self._parse_header(page_offset)
         self.sram_size = self.snes_header.sram_size
 
-        if self.snes_header.mapping_mode not in _KNOWN_MAPPING_MODES:
-            print(f"warning: unknown mapping mode {self.snes_header.mapping_mode:#04x}")
+        assert self.snes_header.mapping_mode in SUPPORTED_MAPPING_MODES, (
+            f"unsupported mapping mode {self.snes_header.mapping_mode:#04x} — "
+            f"only LoROM ({MappingMode.LOROM:#04x}) and LoROM+FastROM "
+            f"({MappingMode.LOROM_FAST:#04x}) are implemented"
+        )
 
         print(self.snes_header)
 
@@ -148,11 +191,11 @@ class Rom:
 
         return SnesHeader(
             game_title=game_title,
-            mapping_mode=rom[page_offset + 0xD5],
-            cartridge_type=rom[page_offset + 0xD6],
+            mapping_mode=_enum_or_int(MappingMode, rom[page_offset + 0xD5]),
+            cartridge_type=_enum_or_int(CartridgeType, rom[page_offset + 0xD6]),
             rom_size=(0x400 << rom_size_byte) if rom_size_byte else 0,
             sram_size=min(0x400 << sram_size_byte, 0x20000) if sram_size_byte else 0,
-            destination_code=rom[page_offset + 0xD9],
+            destination_code=_enum_or_int(Region, rom[page_offset + 0xD9]),
             version=rom[page_offset + 0xDB],
             checksum_complement=rom[page_offset + 0xDC] | rom[page_offset + 0xDD] << 8,
             checksum=rom[page_offset + 0xDE] | rom[page_offset + 0xDF] << 8,

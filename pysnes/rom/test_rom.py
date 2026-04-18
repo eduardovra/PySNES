@@ -11,7 +11,15 @@ import pathlib
 
 import pytest
 
-from .rom import HardwareVectors, InterruptVectors, Rom, SnesHeader
+from .rom import (
+    CartridgeType,
+    HardwareVectors,
+    InterruptVectors,
+    MappingMode,
+    Region,
+    Rom,
+    SnesHeader,
+)
 
 
 LOROM_BANK_SIZE = 0x8000
@@ -133,11 +141,44 @@ def test_destination_code_field(make_rom):
     assert rom.snes_header.destination_code == 0x07
 
 
-def test_unknown_mapping_mode_does_not_raise(make_rom):
-    """0x21 = HiROM SlowROM; previously the assert allow-list would crash."""
-    img = _build_lorom(mapping_mode=0x21)
+def test_mapping_mode_is_enum_when_supported(make_rom):
+    img = _build_lorom(mapping_mode=0x30)  # LoROM + FastROM
     rom = make_rom(img)
-    assert rom.snes_header.mapping_mode == 0x21
+    assert rom.snes_header.mapping_mode is MappingMode.LOROM_FAST
+    assert rom.snes_header.mapping_mode == 0x30  # IntEnum still compares as int
+
+
+@pytest.mark.parametrize("mode", [
+    0x21,  # HiROM — known but bus mapping not implemented
+    0x22,  # ExLoROM
+    0x23,  # SA-1 (coprocessor)
+    0x25,  # ExHiROM
+    0x31,  # HiROM + FastROM
+    0x99,  # unknown byte
+])
+def test_unsupported_mapping_mode_raises(make_rom, mode):
+    img = _build_lorom(mapping_mode=mode)
+    with pytest.raises(AssertionError, match="unsupported mapping mode"):
+        make_rom(img)
+
+
+def test_region_enum(make_rom):
+    img = _build_lorom(destination_code=0x01)
+    rom = make_rom(img)
+    assert rom.snes_header.destination_code is Region.NORTH_AMERICA
+
+
+def test_region_falls_back_to_int_when_unknown(make_rom):
+    img = _build_lorom(destination_code=0xEE)
+    rom = make_rom(img)
+    assert rom.snes_header.destination_code == 0xEE
+    assert not isinstance(rom.snes_header.destination_code, Region)
+
+
+def test_cartridge_type_enum(make_rom):
+    img = _build_lorom(cartridge_type=0x02)
+    rom = make_rom(img)
+    assert rom.snes_header.cartridge_type is CartridgeType.ROM_RAM_BATTERY
 
 
 def test_zero_sram_byte_means_no_sram(make_rom):

@@ -148,12 +148,22 @@ def test_mapping_mode_is_enum_when_supported(make_rom):
     assert rom.snes_header.mapping_mode == 0x30  # IntEnum still compares as int
 
 
+def test_mapping_mode_hirom_parses(make_rom):
+    img = _build_lorom(mapping_mode=0x21)
+    rom = make_rom(img)
+    assert rom.snes_header.mapping_mode is MappingMode.HIROM
+
+
+def test_mapping_mode_hirom_fast_parses(make_rom):
+    img = _build_lorom(mapping_mode=0x31)
+    rom = make_rom(img)
+    assert rom.snes_header.mapping_mode is MappingMode.HIROM_FAST
+
+
 @pytest.mark.parametrize("mode", [
-    0x21,  # HiROM — known but bus mapping not implemented
     0x22,  # ExLoROM
     0x23,  # SA-1 (coprocessor)
     0x25,  # ExHiROM
-    0x31,  # HiROM + FastROM
     0x99,  # unknown byte
 ])
 def test_unsupported_mapping_mode_raises(make_rom, mode):

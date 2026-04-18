@@ -21,7 +21,8 @@ from pysnes.cpu import Cpu
 from pysnes.apu import Apu
 from pysnes.ppu import Ppu
 from pysnes.controller import Controller
-from pysnes.rom import HardwareVectors, InterruptVectors
+from pysnes.rom import HardwareVectors, InterruptVectors, MappingMode
+from types import SimpleNamespace
 
 
 ROM_SIZE = 512 * 1024
@@ -30,6 +31,7 @@ ROM_SIZE = 512 * 1024
 class StubRom:
     def __init__(self, size=ROM_SIZE):
         self.rom = bytearray(size)
+        self.snes_header = SimpleNamespace(mapping_mode=MappingMode.LOROM)
         self.hardware_vectors = HardwareVectors(
             native=InterruptVectors(cop=0x8000, brk=0x8000, abort=0x8000,
                                     nmi=0x8000, reset=0, irq=0x8000),

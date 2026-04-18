@@ -6,6 +6,8 @@ without needing a real ROM file.  A minimal stub ROM is built in-memory so
 the bus can be constructed with its normal code path.
 """
 
+from types import SimpleNamespace
+
 import pytest
 
 from ..scheduler import Scheduler
@@ -14,7 +16,7 @@ from ..cpu import Cpu
 from ..apu import Apu
 from ..ppu import Ppu
 from ..controller import Controller
-from ..rom import HardwareVectors, InterruptVectors
+from ..rom import HardwareVectors, InterruptVectors, MappingMode
 
 
 # ---------------------------------------------------------------------------
@@ -27,9 +29,10 @@ ROM_SIZE = 512 * 1024  # 512 KB — enough for LoROM bank 0
 class StubRom:
     """Minimal ROM stub with a writable bytearray backing store."""
 
-    def __init__(self, size=ROM_SIZE, sram_size=0):
+    def __init__(self, size=ROM_SIZE, sram_size=0, mapping_mode=MappingMode.LOROM):
         self.rom = bytearray(size)
         self.sram_size = sram_size
+        self.snes_header = SimpleNamespace(mapping_mode=mapping_mode)
         # Populate reset vector so Cpu() doesn't choke
         self.hardware_vectors = HardwareVectors(
             native=InterruptVectors(cop=0x8000, brk=0x8000, abort=0x8000,
@@ -44,8 +47,8 @@ class StubRom:
         return 0
 
 
-def make_bus(sram_size=0):
-    rom = StubRom(sram_size=sram_size)
+def make_bus(sram_size=0, mapping_mode=MappingMode.LOROM):
+    rom = StubRom(sram_size=sram_size, mapping_mode=mapping_mode)
     scheduler = Scheduler()
     apu = Apu()
     cpu = Cpu(rom.hardware_vectors)
@@ -669,3 +672,154 @@ def test_write_unmapped_stack_region_dropped():
     """Writes to $7FFF in bank $00 (above LowRAM, not a register) must not raise."""
     bus, *_ = make_bus()
     bus[0x007FFF] = 0x00   # Zelda's stack push hits this
+
+
+# ---------------------------------------------------------------------------
+# HiROM mapping — banks $C0-$FF full (mirror $40-$7D), $00-$3F upper half
+# (mirror $80-$BF). Formula: rom_addr = (bank & 0x3F) << 16 | addr.
+# ---------------------------------------------------------------------------
+
+def test_hirom_read_bank_c0_low_half():
+    """Bank $C0 addr $0000 → rom_addr 0x000000 (first byte of ROM image)."""
+    bus, rom, *_ = make_bus(mapping_mode=MappingMode.HIROM)
+    rom.rom[0x000000] = 0xAB
+    assert bus[0xC00000] == 0xAB
+
+
+def test_hirom_read_bank_c0_high_half():
+    """Bank $C0 addr $8000 → rom_addr 0x008000."""
+    bus, rom, *_ = make_bus(mapping_mode=MappingMode.HIROM)
+    rom.rom[0x008000] = 0xBC
+    assert bus[0xC08000] == 0xBC
+
+
+def test_hirom_read_bank_c1_spans_full_64kb():
+    """Bank $C1 maps 64KB starting at rom_addr 0x010000."""
+    bus, rom, *_ = make_bus(mapping_mode=MappingMode.HIROM)
+    rom.rom[0x010000] = 0x11
+    rom.rom[0x01FFFF] = 0x22
+    assert bus[0xC10000] == 0x11
+    assert bus[0xC1FFFF] == 0x22
+
+
+def test_hirom_read_bank_00_upper_half():
+    """Bank $00 addr $8000 is the upper half of HiROM bank $C0 → rom_addr 0x008000."""
+    bus, rom, *_ = make_bus(mapping_mode=MappingMode.HIROM)
+    rom.rom[0x008000] = 0xCD
+    assert bus[0x008000] == 0xCD
+
+
+def test_hirom_read_bank_07_upper_half():
+    """Bank $07 addr $FFFF → rom_addr 0x07FFFF (last byte of stub ROM)."""
+    bus, rom, *_ = make_bus(mapping_mode=MappingMode.HIROM)
+    rom.rom[0x07FFFF] = 0xDE
+    assert bus[0x07FFFF] == 0xDE
+
+
+def test_hirom_read_bank_40_mirrors_bank_c0():
+    """Banks $40-$7D mirror $C0-$FD (same full-bank layout)."""
+    bus, rom, *_ = make_bus(mapping_mode=MappingMode.HIROM)
+    rom.rom[0x000100] = 0xEF
+    assert bus[0x400100] == 0xEF
+
+
+def test_hirom_read_bank_80_mirrors_bank_00_upper_half():
+    """Banks $80-$BF at $8000-$FFFF mirror banks $00-$3F upper halves."""
+    bus, rom, *_ = make_bus(mapping_mode=MappingMode.HIROM)
+    rom.rom[0x008100] = 0xF0
+    assert bus[0x808100] == 0xF0
+
+
+def test_hirom_write_to_rom_region():
+    """Writes to HiROM-mapped addresses go to rom.rom (test harness behaviour)."""
+    bus, rom, *_ = make_bus(mapping_mode=MappingMode.HIROM)
+    bus[0xC00001] = 0x7F
+    assert rom.rom[0x000001] == 0x7F
+
+
+def test_hirom_bank_00_low_half_is_lowram_not_rom():
+    """HiROM banks $00-$3F below $8000 are system area (LowRAM / I/O), NOT ROM."""
+    bus, rom, *_ = make_bus(mapping_mode=MappingMode.HIROM)
+    bus[0x000100] = 0xFA
+    # Must go to low_ram, not rom.rom
+    assert rom.rom[0x000100] != 0xFA
+    # And read-back returns the low_ram value
+    assert bus[0x000100] == 0xFA
+
+
+def test_hirom_bank_40_full_not_lowram():
+    """HiROM bank $40 addr $0000 is ROM (not LowRAM, unlike LoROM bank $40)."""
+    bus, rom, *_ = make_bus(mapping_mode=MappingMode.HIROM)
+    rom.rom[0x000200] = 0xCC
+    # Confirm LowRAM access separately to prove routing diverges
+    bus[0x000200] = 0xDD          # writes LowRAM (bank $00 addr $0200)
+    assert bus[0x400200] == 0xCC  # still reads HiROM
+
+
+# ---------------------------------------------------------------------------
+# HiROM SRAM — banks $20-$3F / $A0-$BF at $6000-$7FFF, 8KB window per bank
+# ---------------------------------------------------------------------------
+
+def test_hirom_sram_bank_20():
+    """HiROM SRAM: bank $20 addr $6000 → SRAM offset 0."""
+    bus, *_ = make_bus(sram_size=0x2000, mapping_mode=MappingMode.HIROM)
+    bus[0x206000] = 0x11
+    assert bus[0x206000] == 0x11
+
+
+def test_hirom_sram_mirror_bank_a0():
+    """HiROM SRAM bank $A0 mirrors bank $20 (via $80-$FF bank mirror)."""
+    bus, *_ = make_bus(sram_size=0x2000, mapping_mode=MappingMode.HIROM)
+    bus[0x206001] = 0x22
+    assert bus[0xA06001] == 0x22
+
+
+def test_hirom_sram_multiple_banks():
+    """Bank $21 addr $6000 → SRAM offset 0x2000 (8KB stride per bank)."""
+    bus, *_ = make_bus(sram_size=0x8000, mapping_mode=MappingMode.HIROM)
+    bus[0x206000] = 0x44
+    bus[0x216000] = 0x33
+    assert bus[0x206000] == 0x44
+    assert bus[0x216000] == 0x33
+
+
+def test_hirom_sram_size_masking_8kb():
+    """With 8KB SRAM, bank $21 wraps back to bank $20."""
+    bus, *_ = make_bus(sram_size=0x2000, mapping_mode=MappingMode.HIROM)
+    bus[0x206000] = 0x55
+    # sram_mask = 0x1FFF; bank $21 offset = 0x2000 & 0x1FFF = 0
+    assert bus[0x216000] == 0x55
+
+
+def test_hirom_sram_no_sram_returns_open_bus():
+    """Reading HiROM SRAM with sram_size=0 returns 0xFF (open bus)."""
+    bus, *_ = make_bus(sram_size=0, mapping_mode=MappingMode.HIROM)
+    assert bus[0x206000] == 0xFF
+
+
+def test_hirom_sram_window_bounds():
+    """Bank $20 addr $5FFF is NOT SRAM (below the $6000-$7FFF window)."""
+    bus, *_ = make_bus(sram_size=0x2000, mapping_mode=MappingMode.HIROM)
+    # $5FFF is above LowRAM ($0000-$1FFF) and hits the system-area fallthrough.
+    # Must not be routed as SRAM; a write there must not persist as a readable
+    # SRAM byte at offset $5FFF & sram_mask.
+    bus[0x206000] = 0xAA          # SRAM byte 0
+    # $205FFF would alias SRAM offset $5FFF & 0x1FFF = 0x1FFF if we wrongly
+    # routed it; ensure it does NOT overwrite byte 0.
+    bus[0x205FFF] = 0x00          # should be dropped (system area)
+    assert bus[0x206000] == 0xAA
+
+
+def test_hirom_bank_00_low_ram_still_works():
+    """HiROM must not accidentally claim bank $00 $0000-$1FFF as ROM."""
+    bus, *_ = make_bus(mapping_mode=MappingMode.HIROM)
+    bus[0x000100] = 0x42
+    assert bus[0x000100] == 0x42
+    assert bus[0x7E0100] == 0x42  # LowRAM canonical
+
+
+def test_hirom_bank_00_hw_registers_still_work():
+    """HiROM bank $00 $2100-$21FF must still hit PPU registers, not ROM."""
+    bus, _, _, _, ppu = make_bus(mapping_mode=MappingMode.HIROM)
+    bus[0x002100] = 0x0F  # INIDISP, display enable
+    assert not ppu.display_disable

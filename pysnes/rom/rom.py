@@ -24,6 +24,8 @@ SUPPORTED_MAPPING_MODES = frozenset({
     MappingMode.TEST_PROGRAM,
     MappingMode.LOROM,
     MappingMode.LOROM_FAST,
+    MappingMode.HIROM,
+    MappingMode.HIROM_FAST,
 })
 
 
@@ -152,8 +154,8 @@ class Rom:
 
         assert self.snes_header.mapping_mode in SUPPORTED_MAPPING_MODES, (
             f"unsupported mapping mode {self.snes_header.mapping_mode:#04x} — "
-            f"only LoROM ({MappingMode.LOROM:#04x}) and LoROM+FastROM "
-            f"({MappingMode.LOROM_FAST:#04x}) are implemented"
+            f"supported: LoROM ({MappingMode.LOROM:#04x} / {MappingMode.LOROM_FAST:#04x}), "
+            f"HiROM ({MappingMode.HIROM:#04x} / {MappingMode.HIROM_FAST:#04x})"
         )
 
         print(self.snes_header)

@@ -5,7 +5,7 @@ from typing import List
 
 import cython
 
-from ..rom import Rom
+from ..rom import MappingMode, Rom
 from ..cpu import Cpu
 from ..apu import Apu
 from ..ppu import Ppu
@@ -28,6 +28,7 @@ class Bus:
     dma_ppu2_hw_registers: cython.uchar[:]
     hblank: cython.bint
     vblank: cython.bint
+    is_hirom: cython.bint
 
     def __init__(
         self,
@@ -38,7 +39,9 @@ class Bus:
         controllers: List[Controller],
         scheduler: Scheduler,
     ) -> None:
-        self.rom = rom  # LoROM section (program memory)
+        self.rom = rom  # program memory (LoROM or HiROM, selected below)
+        mapping_mode = rom.snes_header.mapping_mode
+        self.is_hirom = mapping_mode == MappingMode.HIROM or mapping_mode == MappingMode.HIROM_FAST
         self.cpu = cpu
         self.apu = apu  # Sound system [0x2140-0x217F]
         self.ppu = ppu
@@ -126,18 +129,33 @@ class Bus:
             bank = bank - 0x80
             abs_addr = abs_addr - 0x800000
 
-        if ((0x00 <= bank <= 0x6F) and 0x8000 <= addr <= 0xFFFF) or \
-            ((0x40 <= bank <= 0x6F) and (0x0000 <= addr <= 0xFFFF)) or \
-            ((0x70 <= bank <= 0x7D) and (0x8000 <= addr <= 0xFFFF)):
-            rom_addr: cython.uint = (bank * 0x8000) + (addr - (0x8000 if addr >= 0x8000 else 0))
-            return self.rom[rom_addr]
+        if self.is_hirom:
+            # HiROM ROM: banks $00-$3F at $8000-$FFFF, banks $40-$7D full.
+            # rom_addr = (bank & 0x3F) << 16 | addr works for both regions.
+            if ((0x00 <= bank <= 0x3F) and addr >= 0x8000) or \
+               (0x40 <= bank <= 0x7D):
+                rom_addr: cython.uint = ((bank & 0x3F) << 16) | addr
+                return self.rom[rom_addr]
 
-        # SRAM: LoROM banks $70-$7D, addr $0000-$7FFF (mirrored from $F0-$FD)
-        if 0x70 <= bank <= 0x7D and addr < 0x8000:
-            if self.sram_size:
-                sram_addr: cython.uint = (((bank - 0x70) << 15) | addr) & self.sram_mask
-                return self.sram[sram_addr]
-            return 0xFF
+            # HiROM SRAM: banks $20-$3F at $6000-$7FFF, 8KB window per bank.
+            if 0x20 <= bank <= 0x3F and 0x6000 <= addr <= 0x7FFF:
+                if self.sram_size:
+                    sram_addr: cython.uint = (((bank - 0x20) << 13) | (addr - 0x6000)) & self.sram_mask
+                    return self.sram[sram_addr]
+                return 0xFF
+        else:
+            if ((0x00 <= bank <= 0x6F) and 0x8000 <= addr <= 0xFFFF) or \
+                ((0x40 <= bank <= 0x6F) and (0x0000 <= addr <= 0xFFFF)) or \
+                ((0x70 <= bank <= 0x7D) and (0x8000 <= addr <= 0xFFFF)):
+                rom_addr: cython.uint = (bank * 0x8000) + (addr - (0x8000 if addr >= 0x8000 else 0))
+                return self.rom[rom_addr]
+
+            # SRAM: LoROM banks $70-$7D, addr $0000-$7FFF (mirrored from $F0-$FD)
+            if 0x70 <= bank <= 0x7D and addr < 0x8000:
+                if self.sram_size:
+                    sram_addr: cython.uint = (((bank - 0x70) << 15) | addr) & self.sram_mask
+                    return self.sram[sram_addr]
+                return 0xFF
 
         if 0x7E2000 <= abs_addr <= 0x7E7FFF:
             return self.high_ram[abs_addr - 0x7E2000]
@@ -249,20 +267,34 @@ class Bus:
             bank = bank - 0x80
             abs_addr = abs_addr - 0x800000
 
-        if ((0x00 <= bank <= 0x6F) and 0x8000 <= addr <= 0xFFFF) or \
-            ((0x40 <= bank <= 0x6F) and (0x0000 <= addr <= 0xFFFF)) or \
-            ((0x70 <= bank <= 0x7D) and (0x8000 <= addr <= 0xFFFF)):
-            rom_addr: cython.uint = (bank * 0x8000) + (addr - (0x8000 if addr >= 0x8000 else 0))
-            self.rom.rom[rom_addr] = data
-            return
+        if self.is_hirom:
+            if ((0x00 <= bank <= 0x3F) and addr >= 0x8000) or \
+               (0x40 <= bank <= 0x7D):
+                rom_addr: cython.uint = ((bank & 0x3F) << 16) | addr
+                self.rom.rom[rom_addr] = data
+                return
 
-        # SRAM: LoROM banks $70-$7D, addr $0000-$7FFF (mirrored from $F0-$FD)
-        if 0x70 <= bank <= 0x7D and addr < 0x8000:
-            if self.sram_size:
-                sram_addr: cython.uint = (((bank - 0x70) << 15) | addr) & self.sram_mask
-                self.sram[sram_addr] = data
-                self.sram_dirty = True
-            return
+            if 0x20 <= bank <= 0x3F and 0x6000 <= addr <= 0x7FFF:
+                if self.sram_size:
+                    sram_addr: cython.uint = (((bank - 0x20) << 13) | (addr - 0x6000)) & self.sram_mask
+                    self.sram[sram_addr] = data
+                    self.sram_dirty = True
+                return
+        else:
+            if ((0x00 <= bank <= 0x6F) and 0x8000 <= addr <= 0xFFFF) or \
+                ((0x40 <= bank <= 0x6F) and (0x0000 <= addr <= 0xFFFF)) or \
+                ((0x70 <= bank <= 0x7D) and (0x8000 <= addr <= 0xFFFF)):
+                rom_addr: cython.uint = (bank * 0x8000) + (addr - (0x8000 if addr >= 0x8000 else 0))
+                self.rom.rom[rom_addr] = data
+                return
+
+            # SRAM: LoROM banks $70-$7D, addr $0000-$7FFF (mirrored from $F0-$FD)
+            if 0x70 <= bank <= 0x7D and addr < 0x8000:
+                if self.sram_size:
+                    sram_addr: cython.uint = (((bank - 0x70) << 15) | addr) & self.sram_mask
+                    self.sram[sram_addr] = data
+                    self.sram_dirty = True
+                return
 
         if (0x00 <= bank <= 0x3F) or bank == 0x7E:
             if 0x0000 <= addr <= 0x1FFF:

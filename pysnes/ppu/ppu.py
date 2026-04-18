@@ -599,12 +599,19 @@ class Ppu:
           bit 4: OBJ palettes 4-7 participate
           bit 3..0: BG4..BG1 participate
 
-        Not implemented: clip-to-black, color-math windowing (CGWSEL bits 4-7),
-        CGWSEL bit 1 sub-source select (we always use sub_bgs, which already
-        holds COLDATA when no sub layer covered the pixel).
+        CGWSEL ($2130) bits 5-4 gate WHEN color math applies per pixel:
+          00 = always, 01 = inside color window, 10 = outside, 11 = never.
+        The color window uses W1/W2 with WOBJSEL bits 4-7 for enable/invert
+        and WOBJLOG bits 2-3 for combining W1+W2 (OR/AND/XOR/XNOR).
+
+        Not yet implemented: CGWSEL bits 7-6 clip-to-black, bit 1 sub-source
+        select (we always use sub_bgs, which already holds COLDATA where no
+        sub layer covered the pixel).
         """
         cgadsub: cython.uint = self.cgadsub
-        if cgadsub == 0:
+        cgwsel: cython.uint = self.cgwsel
+        cmath_mode: cython.uint = (cgwsel >> 4) & 0x3  # 00..11
+        if cgadsub == 0 or cmath_mode == 0x3:
             return
         subtract: cython.bint = bool(cgadsub & 0x80)
         half: cython.bint = bool(cgadsub & 0x40)
@@ -614,6 +621,15 @@ class Ppu:
         enable_bg4: cython.bint = bool(cgadsub & 0x08)
         enable_obj: cython.bint = bool(cgadsub & 0x10)
         enable_back: cython.bint = bool(cgadsub & 0x20)
+
+        # Color-window (math window) setup: WOBJSEL bits 4-7, WOBJLOG bits 2-3.
+        # Per $2125 spec (matching $2123 W12SEL convention): bit 0=invert, bit 1=enable.
+        # Pairs: bits 0-1 OBJ W1, 2-3 OBJ W2, 4-5 MATH W1, 6-7 MATH W2.
+        math_w1_invert: cython.bint = bool((self.wobjsel >> 4) & 1)
+        math_w1_enable: cython.bint = bool((self.wobjsel >> 5) & 1)
+        math_w2_invert: cython.bint = bool((self.wobjsel >> 6) & 1)
+        math_w2_enable: cython.bint = bool((self.wobjsel >> 7) & 1)
+        math_logic: cython.uint = (self.wobjlog >> 2) & 0x3  # 0=OR,1=AND,2=XOR,3=XNOR
 
         y: cython.int = self.v_counter - 1
         row: cython.uint = y * SCREEN_WIDTH
@@ -635,6 +651,41 @@ class Ppu:
                 participate = enable_obj
             if not participate:
                 continue
+
+            # Color-window gating (CGWSEL bits 5-4).
+            if cmath_mode != 0:
+                # Compute the color window value at this x.
+                in_w1: cython.bint = False
+                if math_w1_enable:
+                    in_range1: cython.bint = (self.wh0 <= x <= self.wh1)
+                    in_w1 = in_range1 ^ math_w1_invert
+                in_w2: cython.bint = False
+                if math_w2_enable:
+                    in_range2: cython.bint = (self.wh2 <= x <= self.wh3)
+                    in_w2 = in_range2 ^ math_w2_invert
+                if math_w1_enable and math_w2_enable:
+                    if math_logic == 0:
+                        in_window: cython.bint = in_w1 or in_w2
+                    elif math_logic == 1:
+                        in_window = in_w1 and in_w2
+                    elif math_logic == 2:
+                        in_window = in_w1 != in_w2  # XOR
+                    else:
+                        in_window = in_w1 == in_w2  # XNOR
+                elif math_w1_enable:
+                    in_window = in_w1
+                elif math_w2_enable:
+                    in_window = in_w2
+                else:
+                    # No window active; treat as "always inside" (all pixels
+                    # qualify as inside, none qualify as outside). This matches
+                    # the observed Mesen semantic where a disabled window acts
+                    # as if inside-of-nothing = full-screen inside.
+                    in_window = True
+                if cmath_mode == 1 and not in_window:
+                    continue  # inside only → skip outside
+                if cmath_mode == 2 and in_window:
+                    continue  # outside only → skip inside
             m: cython.uint = self.main_bgs[idx]
             s: cython.uint = self.sub_bgs[idx]
             mr: cython.int = (m >> 24) & 0xFF

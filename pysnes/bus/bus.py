@@ -91,8 +91,14 @@ class Bus:
         self.cpu.nmi_rising_edge()
 
     def lower_nmi(self) -> None:
-        """Called by PPU at V-Blank end (falling NMI edge)."""
-        self.cpu.status.nmi_line = False
+        """Called by PPU at V-Blank end.
+
+        Per SNES hardware, $4210 bit 7 is NOT auto-cleared at V-Blank end —
+        the flag persists until the CPU reads $4210. So this is a no-op for
+        now; we keep the hook for future use (e.g. dropping the NMI interrupt
+        line when NMITIMEN bit 7 is cleared by the game).
+        """
+        # Intentionally no-op on nmi_line. Kept as a named hook.
 
     def _update_controller_autojoypad_read(self) -> None:
         self.controller_port1.latch(0)

@@ -47,6 +47,10 @@ class Ppu:
         self.vmaddh: cython.uchar = 0
         self._vmdatal: cython.uchar = 0
         self._vmdatah: cython.uchar = 0
+        # VRAM read port has a 16-bit prefetch buffer; $2116/$2117 writes
+        # refill it (no increment), $2139/$213A reads return the buffered byte
+        # and refill + increment depending on VMAIN bit 7.
+        self._vram_prefetch: cython.uint = 0
 
         self.inidisp_set(0)
 
@@ -210,6 +214,25 @@ class Ppu:
         ) + self.vmain_addr_increment_amount
         self.vmaddl = (addr >> 0) & 0xFF
         self.vmaddh = (addr >> 8) & 0xFF
+
+    def refill_vram_prefetch(self) -> None:
+        word_addr = (self.vmaddl | self.vmaddh << 8) & 0x7FFF
+        base_addr = self._remap_vram_addr(word_addr) * 2
+        self._vram_prefetch = self.vram[base_addr] | (self.vram[base_addr + 1] << 8)
+
+    def rdvraml(self) -> cython.uchar:
+        data = self._vram_prefetch & 0xFF
+        if not self.vmain_addr_increment_mode:
+            self.refill_vram_prefetch()
+            self.increment_vmadd()
+        return data
+
+    def rdvramh(self) -> cython.uchar:
+        data = (self._vram_prefetch >> 8) & 0xFF
+        if self.vmain_addr_increment_mode:
+            self.refill_vram_prefetch()
+            self.increment_vmadd()
+        return data
 
     @property
     def cgadd(self) -> int:

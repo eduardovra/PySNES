@@ -170,3 +170,65 @@ class TestVramRemapping:
         # Counter must have advanced from 0x00E0 to 0x00E1
         assert ppu.vmaddl == 0xE1
         assert ppu.vmaddh == 0x00
+
+
+# ---------------------------------------------------------------------------
+# VRAM read port: RDVRAML ($2139) / RDVRAMH ($213A)
+# ---------------------------------------------------------------------------
+
+class TestVramReadPort:
+    def _seed(self, ppu: Ppu, word_addr: int, low: int, high: int) -> None:
+        base = word_addr * 2
+        ppu.vram[base + 0] = low
+        ppu.vram[base + 1] = high
+
+    def test_first_read_returns_prefetch_from_vmadd_write(self):
+        """Writing VMADDL/VMADDH fills the prefetch buffer; first $2139 read returns that pre-fetched byte."""
+        ppu = _make_ppu()
+        ppu.vmain = 0x00  # increment on low read, step +1
+        self._seed(ppu, 0x0010, 0xAA, 0xBB)
+        ppu.vmaddl = 0x10
+        ppu.vmaddh = 0x00
+        ppu.refill_vram_prefetch()
+        assert ppu.rdvraml() == 0xAA
+
+    def test_read_low_increments_when_vmain_bit7_clear(self):
+        """VMAIN:7=0 increments after each low-byte read. The buffer is
+        refilled from the PRE-increment address, so there's a one-read lag:
+        read #1 returns the pre-fetched word's low byte, read #2 returns the
+        same byte again (buffer was just refilled from the same address),
+        read #3 returns the next word's low byte."""
+        ppu = _make_ppu()
+        ppu.vmain = 0x00  # increment on low read
+        self._seed(ppu, 0x0020, 0x11, 0x22)
+        self._seed(ppu, 0x0021, 0x33, 0x44)
+        ppu.vmaddl = 0x20
+        ppu.vmaddh = 0x00
+        ppu.refill_vram_prefetch()
+        assert ppu.rdvraml() == 0x11
+        assert ppu.vmaddl == 0x21     # address advanced
+        assert ppu.rdvraml() == 0x11  # still the previous buffer
+        assert ppu.rdvraml() == 0x33  # now the value at $0021
+
+    def test_read_high_increments_when_vmain_bit7_set(self):
+        ppu = _make_ppu()
+        ppu.vmain = 0x80  # increment on high read
+        self._seed(ppu, 0x0030, 0xCC, 0xDD)
+        self._seed(ppu, 0x0031, 0xEE, 0xFF)
+        ppu.vmaddl = 0x30
+        ppu.vmaddh = 0x00
+        ppu.refill_vram_prefetch()
+        assert ppu.rdvramh() == 0xDD
+        assert ppu.vmaddl == 0x31
+        assert ppu.rdvramh() == 0xDD  # one-read lag — buffer still holds $0030
+        assert ppu.rdvramh() == 0xFF
+
+    def test_read_low_does_not_increment_when_vmain_bit7_set(self):
+        ppu = _make_ppu()
+        ppu.vmain = 0x80  # increment on high only
+        self._seed(ppu, 0x0040, 0x55, 0x66)
+        ppu.vmaddl = 0x40
+        ppu.vmaddh = 0x00
+        ppu.refill_vram_prefetch()
+        ppu.rdvraml()
+        assert ppu.vmaddl == 0x40      # no increment on low read

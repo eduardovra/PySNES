@@ -571,3 +571,101 @@ def test_sram_upper_half_still_rom():
     # (bank $70 $8000 -> ROM offset 0x380000 which is OOB on 512KB StubRom -> 0)
     assert bus[0x708000] != 0xCC         # not SRAM
     assert bus[0x708000] == 0             # OOB ROM read returns 0 from StubRom
+
+
+# ---------------------------------------------------------------------------
+# RDVRAML / RDVRAMH  ($2139 / $213A) bus dispatch
+# ---------------------------------------------------------------------------
+
+def test_rdvraml_routes_to_ppu():
+    """$2139 returns the low byte of the PPU's VRAM prefetch buffer."""
+    bus, _, _, _, ppu = make_bus()
+    ppu.vram[0x0010 * 2 + 0] = 0xAA
+    ppu.vram[0x0010 * 2 + 1] = 0xBB
+    bus[0x002115] = 0x00            # VMAIN: increment on low read
+    bus[0x002116] = 0x10            # VMADDL — triggers prefetch
+    bus[0x002117] = 0x00            # VMADDH — triggers prefetch
+    assert bus[0x002139] == 0xAA
+
+
+def test_rdvramh_routes_to_ppu():
+    """$213A returns the high byte of the PPU's VRAM prefetch buffer."""
+    bus, _, _, _, ppu = make_bus()
+    ppu.vram[0x0020 * 2 + 0] = 0x11
+    ppu.vram[0x0020 * 2 + 1] = 0x22
+    bus[0x002115] = 0x80
+    bus[0x002116] = 0x20
+    bus[0x002117] = 0x00
+    assert bus[0x00213A] == 0x22
+
+
+# ---------------------------------------------------------------------------
+# Open-bus behavior for unmapped regions in banks $00-$3F
+# ---------------------------------------------------------------------------
+# Real hardware returns the last value on the CPU data bus (MDR). We return 0
+# as a simplification — the important thing is that reads don't raise.
+
+def test_open_bus_unmapped_2000_range():
+    """Reads in $2000-$20FF (unmapped, below PPU regs) must not raise."""
+    bus, *_ = make_bus()
+    assert bus[0x0020F1] == 0    # Final Fight / SimCity touch this region
+
+
+def test_open_bus_unmapped_2200_range():
+    """Reads in $2200-$3FFF (unmapped, above PPU regs) must not raise."""
+    bus, *_ = make_bus()
+    assert bus[0x0027A8] == 0    # Zelda touches this
+
+
+def test_open_bus_unmapped_mirrored_bank():
+    """The same open-bus behavior applies through the $80-$BF LoROM mirror."""
+    bus, *_ = make_bus()
+    assert bus[0x8020F1] == 0
+    assert bus[0x8027A8] == 0
+
+
+# ---------------------------------------------------------------------------
+# WRAM mirror: banks $FE-$FF shadow $7E-$7F
+# ---------------------------------------------------------------------------
+
+def test_wram_mirror_bank_fe_low_ram():
+    """Bank $FE addr $0000-$1FFF mirrors Low RAM."""
+    bus, *_ = make_bus()
+    bus[0x7E0100] = 0x42
+    assert bus[0xFE0100] == 0x42
+
+
+def test_wram_mirror_bank_fe_high_ram():
+    """Bank $FE addr $2000-$7FFF mirrors High RAM (Zelda reads $FE2002)."""
+    bus, *_ = make_bus()
+    bus[0x7E2002] = 0xA5
+    assert bus[0xFE2002] == 0xA5
+
+
+def test_wram_mirror_bank_ff_extended_ram():
+    """Bank $FF addr $0000-$FFFF mirrors the $7F page of WRAM."""
+    bus, *_ = make_bus()
+    bus[0x7F8000] = 0x5A
+    assert bus[0xFF8000] == 0x5A
+
+
+# ---------------------------------------------------------------------------
+# Unmapped writes in the system area should be silently dropped (open-bus)
+# ---------------------------------------------------------------------------
+
+def test_write_unmapped_2000_range_is_dropped():
+    """Writes to $2000-$20FF must not raise (Final Fight hits this)."""
+    bus, *_ = make_bus()
+    bus[0x0020B4] = 0xE1   # must not raise
+
+
+def test_write_unmapped_2200_range_is_dropped():
+    """Writes to $2200-$3FFF must not raise."""
+    bus, *_ = make_bus()
+    bus[0x003000] = 0xFF
+
+
+def test_write_unmapped_stack_region_dropped():
+    """Writes to $7FFF in bank $00 (above LowRAM, not a register) must not raise."""
+    bus, *_ = make_bus()
+    bus[0x007FFF] = 0x00   # Zelda's stack push hits this

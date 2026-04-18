@@ -118,9 +118,13 @@ class Bus:
         bank: cython.uint = abs_addr >> 16 & 0xFF
         addr: cython.uint = abs_addr & 0xFFFF
 
-        # mirror LoROM sections
-        if 0x80 <= bank <= 0xFD:
+        # Mirror: banks $80-$FF shadow $00-$7F.
+        # $80-$FD → $00-$7D maps the LoROM program area; $FE-$FF mirror the
+        # $7E-$7F WRAM banks. The abs_addr rewrite is needed because the
+        # WRAM/high-RAM branches below match on abs_addr, not on bank.
+        if 0x80 <= bank <= 0xFF:
             bank = bank - 0x80
+            abs_addr = abs_addr - 0x800000
 
         if ((0x00 <= bank <= 0x6F) and 0x8000 <= addr <= 0xFFFF) or \
             ((0x40 <= bank <= 0x6F) and (0x0000 <= addr <= 0xFFFF)) or \
@@ -155,6 +159,12 @@ class Bus:
 
                 if addr == 0x2138:  # # OAMDATAREAD
                     return self.ppu.oamdata
+
+                if addr == 0x2139:  # RDVRAML
+                    return self.ppu.rdvraml()
+
+                if addr == 0x213A:  # RDVRAMH
+                    return self.ppu.rdvramh()
 
                 if addr == 0x213B:  # CGDATAREAD
                     return self.ppu.cgdata
@@ -217,6 +227,12 @@ class Bus:
 
                 return self.dma_ppu2_hw_registers[addr - 0x4200]
 
+            # Unmapped CPU-side regions in the system area ($2000-$20FF,
+            # $2200-$3FFF, $4018-$41FF, $4500-$7FFF): real hardware returns
+            # the MDR (last bus value). Simplified to 0 — matches what many
+            # games read into these gaps and keeps boot past unmapped probes.
+            return 0
+
         raise RuntimeError(f"Reading unmapped memory region: 0x{abs_addr:06X}")
 
     def __getitem__(self, abs_addr: cython.uint) -> cython.uchar:
@@ -228,9 +244,10 @@ class Bus:
         bank: cython.uint = abs_addr >> 16 & 0xFF
         addr: cython.uint = abs_addr & 0xFFFF
 
-        # mirror LoROM sections
-        if 0x80 <= bank <= 0xFD:
+        # See read(): mirror $80-$FF to $00-$7F (covers WRAM mirror at $FE-$FF).
+        if 0x80 <= bank <= 0xFF:
             bank = bank - 0x80
+            abs_addr = abs_addr - 0x800000
 
         if ((0x00 <= bank <= 0x6F) and 0x8000 <= addr <= 0xFFFF) or \
             ((0x40 <= bank <= 0x6F) and (0x0000 <= addr <= 0xFFFF)) or \
@@ -344,9 +361,11 @@ class Bus:
                     return
                 if addr == 0x2116:  # VMADDL
                     self.ppu.vmaddl = data
+                    self.ppu.refill_vram_prefetch()
                     return
                 if addr == 0x2117:  # VMADDH
                     self.ppu.vmaddh = data
+                    self.ppu.refill_vram_prefetch()
                     return
                 if addr == 0x2118:  # VMDATAL
                     self.ppu.vmdatal = data
@@ -533,6 +552,10 @@ class Bus:
 
                 self.dma_ppu2_hw_registers[addr - 0x4200] = data
                 return
+
+            # Unmapped system-area writes: drop silently (open-bus write). See
+            # the matching read() fallthrough for the rationale.
+            return
 
         if 0x7E2000 <= abs_addr <= 0x7E7FFF:
             self.high_ram[abs_addr - 0x7E2000] = data

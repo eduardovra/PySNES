@@ -79,12 +79,21 @@ def Interrupt(cpu: Cpu, get_vector: Callable):
 
 def Stop(cpu: Cpu):
     cpu.stp = True
+    # Two ghost reads of PC+1 plus the first "stopped" cycle are visible on
+    # the bus before the core actually halts (see TomHarte db.*.json traces).
+    cpu.idle()
+    cpu.idle()
+    cpu.idle()
     while cpu.stp and not cpu.synchronizing():
         cpu.idle()
 
 
 def Wait(cpu: Cpu):
     cpu.wai = True
+    # Two ghost reads of PC+1 plus the first "waiting" cycle are visible on
+    # the bus before the core blocks on an interrupt (cb.*.json traces).
+    cpu.idle()
+    cpu.idle()
     while cpu.wai and not cpu.synchronizing():
         cpu.idle()
     cpu.idle()

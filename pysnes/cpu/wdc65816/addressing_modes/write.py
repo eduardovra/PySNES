@@ -61,12 +61,14 @@ def DirectWrite(cpu: Cpu, mode_8bit: bool, f: str, i: str = ""):
     if mode_8bit:
         cpu.U.l = cpu.fetch()
         cpu.idle2()
-        cpu.idle()
+        if i:
+            cpu.idle()
         cpu.writeDirect(cpu.U.l + I.w + 0, F.l)
     else:
         cpu.U.l = cpu.fetch()
         cpu.idle2()
-        cpu.idle()
+        if i:
+            cpu.idle()
         cpu.writeDirect(cpu.U.l + I.w + 0, F.l)
         cpu.writeDirect(cpu.U.l + I.w + 1, F.h)
 

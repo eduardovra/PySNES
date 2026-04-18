@@ -725,6 +725,14 @@ class Ppu:
                 w1_enable = bool(self.w34sel >> 5 & 1)
                 w1_invert = bool(self.w34sel >> 4 & 1)
 
+        # Mosaic: when enabled for this BG with size > 1, every S×S block of
+        # screen pixels shows the color sampled from the block's top-left
+        # pixel. We apply mosaic by rounding the effective scrx/scry down to
+        # the nearest S multiple (in screen-space) before doing the tilemap/
+        # tile fetch. The OUTPUT position (orgx, orgy) is unchanged.
+        mosaic_on: cython.bint = self.mosaic_enabled[bg_idx]
+        mosaic_size: cython.uint = self.mosaic_size
+
         # Find the tilemap entry for the requested screen position
 
         # Assuming 256 dots per scanline
@@ -754,6 +762,15 @@ class Ppu:
                 masked: cython.bint = inside ^ w1_invert  # invert=1 → outside is masked
                 if masked:
                     continue
+
+            # Mosaic: snap scrx/scry to the block anchor before tile fetch.
+            if mosaic_on and mosaic_size > 1:
+                scrx = scrx - (scrx % mosaic_size)
+                # scanline is v_counter (1-based); orgy = scanline - 1. Snap
+                # in orgy-space to get natural 0-based block anchors, then
+                # convert back to scanline-space for the tile-row math below.
+                anchor_orgy: cython.uint = orgy - (orgy % mosaic_size)
+                scry = anchor_orgy + 1
 
             scry: cython.uint = (scry + scroll_y) % (8 * bg_size_h)
             scrx: cython.uint = (scrx + scroll_x) % (8 * bg_size_w)

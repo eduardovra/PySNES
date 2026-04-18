@@ -20,7 +20,11 @@ class MappingMode(IntEnum):
     EXHIROM_FAST = 0x35
 
 
-SUPPORTED_MAPPING_MODES = frozenset({MappingMode.LOROM, MappingMode.LOROM_FAST})
+SUPPORTED_MAPPING_MODES = frozenset({
+    MappingMode.TEST_PROGRAM,
+    MappingMode.LOROM,
+    MappingMode.LOROM_FAST,
+})
 
 
 class CartridgeType(IntEnum):

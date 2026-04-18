@@ -19,19 +19,13 @@ https://doc.pypy.org/en/latest/install.html
 ## Running the emulator
 
 ```
-python -m pysnes.pysnes
-```
-
-### With uv
-
-```
-uv run --python pypy3.10 -m pysnes.pysnes
+uv run pysnes roms/game.sfc
 ```
 
 ### Running tests with uv
 
 ```
-uv run --python pypy3.10 pytest
+uv run pytest
 ```
 
 

@@ -15,16 +15,16 @@ The codebase is in active development. CPU and SPC700 instruction tests pass aga
 
 ### Commands
 ```bash
-# Install dependencies
-uv sync --python pypy@3.10
+# Install dependencies (interpreter is pinned in .python-version → pypy@3.10)
+uv sync
 
 # Build (Cython compile all .py files into a .so)
 make build          # uses PyPy 3.10 by default
 
 # Run
-uv run --python pypy3.10 pysnes roms/game.sfc                     # script entry point (recommended)
-uv run --python pypy3.10 pysnes roms/game.sfc --trace roms/game-trace.log  # with CPU trace
-uv run --python pypy3.10 -m pysnes.pysnes roms/game.sfc           # equivalent module form
+uv run pysnes roms/game.sfc                     # script entry point (recommended)
+uv run pysnes roms/game.sfc --trace roms/game-trace.log  # with CPU trace
+uv run -m pysnes.pysnes roms/game.sfc           # equivalent module form
 
 # Clean build artifacts
 make clean
@@ -39,7 +39,7 @@ The emulator has built-in debug tools controllable via Unix signals (no GUI requ
 
 ```bash
 # Run emulator — PID is printed to stdout on startup
-uv run --python pypy@3.10 -m pysnes.pysnes roms/game.sfc &
+uv run -m pysnes.pysnes roms/game.sfc &
 
 # Trigger screenshot → saves screenshot.bmp (Claude can read as image)
 kill -USR1 <pid>
@@ -56,7 +56,7 @@ kill -USR2 <pid>
 Use signal-driven screenshots, direct framebuffer reads, or Lua-dumped .bin artifacts for snapshots. Interactive launches are the user's job, not Claude's.
 
 ```bash
-PYSNES_HEADLESS=1 uv run --python pypy@3.10 -m pysnes.pysnes roms/game.sfc &
+PYSNES_HEADLESS=1 uv run -m pysnes.pysnes roms/game.sfc &
 
 # Mesen2 headless (writes a screenshot at MESEN_OUTPUT_BIN):
 MESEN_FRAMES=400 MESEN_OUTPUT_BIN=/tmp/mesen.bin \
@@ -191,16 +191,16 @@ Without these, the Lua oracle scripts cannot use file I/O or open sockets to com
 
 ```bash
 # Tier 1 — find first diverging frame (CPU/SPC registers + WRAM CRC32):
-uv run --python pypy@3.10 pytest pysnes/test_integration.py::test_frame_divergence -v -s
+uv run pytest pysnes/test_integration.py::test_frame_divergence -v -s
 
 # Tier 2 — find exact diverging CPU instruction:
-uv run --python pypy@3.10 pytest pysnes/test_integration.py::test_instruction_divergence -v -s
+uv run pytest pysnes/test_integration.py::test_instruction_divergence -v -s
 
 # Custom ROM / frame count / instruction count:
-SNES_ROM="roms/mygame.sfc" uv run --python pypy@3.10 pytest pysnes/test_integration.py -v -s --frames 120 --instructions 200000
+SNES_ROM="roms/mygame.sfc" uv run pytest pysnes/test_integration.py -v -s --frames 120 --instructions 200000
 
 # Skip integration tests in normal suite:
-uv run --python pypy@3.10 pytest pysnes/ -m "not integration"
+uv run pytest pysnes/ -m "not integration"
 ```
 
 - Mesen Lua scripts are in `scripts/mesen_oracle.lua` (Tier 1) and `scripts/mesen_trace.lua` (Tier 2)
@@ -212,33 +212,33 @@ uv run --python pypy@3.10 pytest pysnes/ -m "not integration"
 
 ```bash
 # All tests
-uv run --python pypy@3.10 pytest pysnes/
+uv run pytest pysnes/
 
 # CPU tests (TomHarte's ProcessorTests / SingleStepTests 65816)
-uv run --python pypy@3.10 pytest pysnes/cpu/test_cpu.py
+uv run pytest pysnes/cpu/test_cpu.py
 
 # SPC700 instruction tests (SingleStepTests spc700)
-uv run --python pypy@3.10 pytest pysnes/apu/test_spc700.py
+uv run pytest pysnes/apu/test_spc700.py
 
 # APU / timer / interrupt / scheduler unit tests
-uv run --python pypy@3.10 pytest pysnes/apu/test_apu.py pysnes/apu/test_timers.py pysnes/bus/test_interrupts.py pysnes/scheduler/test_scheduler.py
+uv run pytest pysnes/apu/test_apu.py pysnes/apu/test_timers.py pysnes/bus/test_interrupts.py pysnes/scheduler/test_scheduler.py
 
 # PPU scroll unit tests (synthetic, no ROM needed):
-uv run --python pypy@3.10 pytest pysnes/ppu/test_ppu_scroll.py -v
+uv run pytest pysnes/ppu/test_ppu_scroll.py -v
 
 # PPU screenshot regression tests (requires reference PNGs in tests/ppu_references/)
-uv run --python pypy@3.10 pytest pysnes/ppu/test_ppu.py -m ppu
+uv run pytest pysnes/ppu/test_ppu.py -m ppu
 # Generate/update reference PNGs from Mesen (run once, then commit the PNGs):
-uv run --python pypy@3.10 pytest pysnes/ppu/test_ppu.py -m ppu --update-refs
+uv run pytest pysnes/ppu/test_ppu.py -m ppu --update-refs
 
 # Filter options (apply to test_cpu.py and test_spc700.py)
-uv run --python pypy@3.10 pytest pysnes/cpu/test_cpu.py --opcode ea           # single opcode
-uv run --python pypy@3.10 pytest pysnes/apu/test_spc700.py --opcode d0        # single opcode
-uv run --python pypy@3.10 pytest pysnes/cpu/test_cpu.py --max-per-opcode 0    # all cases (unlimited)
-uv run --python pypy@3.10 pytest pysnes/cpu/test_cpu.py --max-per-opcode 10   # 10 cases per opcode
-uv run --python pypy@3.10 pytest pysnes/cpu/test_cpu.py --mode e              # emulation mode only (65816)
-uv run --python pypy@3.10 pytest pysnes/cpu/test_cpu.py --mode n              # native mode only (65816)
-uv run --python pypy@3.10 pytest pysnes/cpu/test_cpu.py --opcode ea --mode n  # combine filters
+uv run pytest pysnes/cpu/test_cpu.py --opcode ea           # single opcode
+uv run pytest pysnes/apu/test_spc700.py --opcode d0        # single opcode
+uv run pytest pysnes/cpu/test_cpu.py --max-per-opcode 0    # all cases (unlimited)
+uv run pytest pysnes/cpu/test_cpu.py --max-per-opcode 10   # 10 cases per opcode
+uv run pytest pysnes/cpu/test_cpu.py --mode e              # emulation mode only (65816)
+uv run pytest pysnes/cpu/test_cpu.py --mode n              # native mode only (65816)
+uv run pytest pysnes/cpu/test_cpu.py --opcode ea --mode n  # combine filters
 ```
 
 - 65816 test data is at `submodules/65816/v1/` (files named `{opcode}.{e|n}.json`)
@@ -260,10 +260,10 @@ uv run --python pypy@3.10 pytest pysnes/cpu/test_cpu.py --opcode ea --mode n  # 
 
 ### Benchmarking Rule
 **Before and after every performance change, measure and record results.** Use the relevant benchmark for the component being optimized:
-- **CPU throughput**: `uv run --python pypy@3.10 pytest pysnes/cpu/test_cpu.py --opcode ea -s` — look for "instr/sec" in output
-- **APU throughput**: `uv run --python pypy@3.10 pytest pysnes/apu/test_spc700.py --opcode 00 -s` — look for "instr/sec"
+- **CPU throughput**: `uv run pytest pysnes/cpu/test_cpu.py --opcode ea -s` — look for "instr/sec" in output
+- **APU throughput**: `uv run pytest pysnes/apu/test_spc700.py --opcode 00 -s` — look for "instr/sec"
 - **FPS (full emulator)**: run with a ROM and read the FPS from the window title bar
-- **PPU rendering throughput**: `time uv run --python pypy@3.10 pytest pysnes/ppu/test_ppu.py -m ppu` — wall-clock time dominated by PPU rendering; fully automated and reproducible
+- **PPU rendering throughput**: `time uv run pytest pysnes/ppu/test_ppu.py -m ppu` — wall-clock time dominated by PPU rendering; fully automated and reproducible
 
 Document results in the PR/commit message as: `before: X instr/sec → after: Y instr/sec (+Z%)` or `before: Xs → after: Ys` for PPU.
 

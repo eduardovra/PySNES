@@ -486,8 +486,16 @@ class Bus:
                     self.ppu.coldata_set(data)
                     return
 
-                if addr == 0x2133:  # SETINI
-                    # TODO 4 is overscan mode bit - display 239 lines instead of normal 224
+                if addr == 0x2133:  # SETINI — display control (write-only)
+                    # Bit 0: Screen interlace       (0=progressive, 1=interlaced 448-line field alternation)
+                    # Bit 1: OBJ interlace          (0=normal, 1=split sprite rows across fields)
+                    # Bit 2: Overscan               (0=224 visible lines, 1=239 visible lines)
+                    # Bit 3: Pseudo-hires           (0=256-wide, 1=512-wide via subscreen half-pixel offset)
+                    # Bits 4-5: unused
+                    # Bit 6: EXTBG                  (Mode 7 only; enables BG2 as a second Mode 7 layer)
+                    # Bit 7: External sync          (genlock to external video; no effect in emulation)
+                    # Only value 0 (all off) and 4 (overscan bit alone) are tolerated today;
+                    # any other bit combination will fire this assert until its behavior is wired up.
                     assert data in (0, 4), f"Value not suported: data={data}"
                     return
 

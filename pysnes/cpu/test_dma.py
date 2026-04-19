@@ -460,3 +460,189 @@ def test_hdma_indirect_multiple_entries():
 
     cpu.dma.hdma_scanline()
     assert (bus.ppu.wh0, bus.ppu.wh1) == (100, 200)
+
+
+# ---------------------------------------------------------------------------
+# MDMA — transfer modes 2-7
+# ---------------------------------------------------------------------------
+# These modes define how bytes within one transfer "unit" are distributed
+# across consecutive B-bus target registers. A recording wrapper around
+# bus.write captures the exact (addr, value) sequence emitted by
+# do_transfer() so the per-mode offset pattern is verified independent of
+# how the destination PPU register interprets the byte.
+#
+# Expected unit patterns (from _HDMA_TARGET_OFFSETS):
+#   mode 0: [0]                  (1 byte)
+#   mode 1: [0, 1]               (2 bytes, 2 regs)
+#   mode 2: [0, 0]               (2 bytes, same reg)
+#   mode 3: [0, 0, 1, 1]         (write-twice BG scroll)
+#   mode 4: [0, 1, 2, 3]         (Mode 7 matrix-style)
+#   mode 5: [0, 1, 0, 1]         (alternating pairs)
+#   mode 6: [0, 0]               (same as 2)
+#   mode 7: [0, 0, 1, 1]         (same as 3)
+# ---------------------------------------------------------------------------
+
+
+def _record_writes(bus):
+    """Wrap bus.write to capture (abs_addr, value); returns the shared list."""
+    writes = []
+    orig = bus.write
+
+    def spy(addr, val):
+        writes.append((addr & 0xFFFFFF, val & 0xFF))
+        orig(addr, val)
+
+    bus.write = spy
+    return writes
+
+
+def _run_mode_transfer(mode, source_bytes, target=0x26, size=None):
+    """Configure channel 0, trigger MDMAEN, and return the PPU-register
+    (b-bus) write sequence as (offset_from_$2100, byte) pairs.
+
+    Only writes in $2100-$21FF are returned — the MDMAEN trigger write itself
+    ($00420B) is filtered out by the address range.
+    """
+    bus, rom, cpu = make_bus()
+    for i, b in enumerate(source_bytes):
+        rom.rom[i] = b
+
+    bus[0x004300] = mode & 7
+    bus[0x004301] = target
+    bus[0x004302] = 0x00
+    bus[0x004303] = 0x80                    # source = $008000 (ROM bank 0)
+    bus[0x004304] = 0x00
+    n = size if size is not None else len(source_bytes)
+    bus[0x004305] = n & 0xFF
+    bus[0x004306] = (n >> 8) & 0xFF
+
+    writes = _record_writes(bus)
+    bus[0x00420B] = 0x01                    # trigger
+
+    seq = [(a & 0xFF, v) for (a, v) in writes if 0x2100 <= (a & 0xFFFF) <= 0x21FF]
+    return seq, cpu
+
+
+def test_mdma_mode2_two_bytes_same_target():
+    """Mode 2 unit = [0, 0]: both bytes land on the same $21xx register."""
+    seq, _ = _run_mode_transfer(mode=2, source_bytes=[0xAA, 0xBB])
+    assert seq == [(0x26, 0xAA), (0x26, 0xBB)]
+
+
+def test_mdma_mode3_four_bytes_write_twice():
+    """Mode 3 unit = [0, 0, 1, 1]: write-twice BG scroll pattern."""
+    seq, _ = _run_mode_transfer(mode=3, source_bytes=[0x11, 0x22, 0x33, 0x44])
+    assert seq == [(0x26, 0x11), (0x26, 0x22), (0x27, 0x33), (0x27, 0x44)]
+
+
+def test_mdma_mode4_four_consecutive_registers():
+    """Mode 4 unit = [0, 1, 2, 3]: 4 bytes to 4 adjacent registers."""
+    seq, _ = _run_mode_transfer(mode=4, source_bytes=[0x01, 0x02, 0x03, 0x04])
+    assert seq == [(0x26, 0x01), (0x27, 0x02), (0x28, 0x03), (0x29, 0x04)]
+
+
+def test_mdma_mode5_alternating_pairs():
+    """Mode 5 unit = [0, 1, 0, 1]: 4 bytes alternating across 2 regs."""
+    seq, _ = _run_mode_transfer(mode=5, source_bytes=[0x01, 0x02, 0x03, 0x04])
+    assert seq == [(0x26, 0x01), (0x27, 0x02), (0x26, 0x03), (0x27, 0x04)]
+
+
+def test_mdma_mode6_matches_mode2():
+    """Mode 6 unit = [0, 0]: identical to mode 2."""
+    seq, _ = _run_mode_transfer(mode=6, source_bytes=[0xEE, 0xFF])
+    assert seq == [(0x26, 0xEE), (0x26, 0xFF)]
+
+
+def test_mdma_mode7_matches_mode3():
+    """Mode 7 unit = [0, 0, 1, 1]: identical to mode 3."""
+    seq, _ = _run_mode_transfer(mode=7, source_bytes=[0x0A, 0x0B, 0x0C, 0x0D])
+    assert seq == [(0x26, 0x0A), (0x26, 0x0B), (0x27, 0x0C), (0x27, 0x0D)]
+
+
+def test_mdma_mode_pattern_repeats_for_size_greater_than_unit():
+    """When size > unit_bytes the per-unit offset pattern repeats."""
+    # Mode 1 unit = [0, 1]; 6 source bytes → 3 repeats of the pattern.
+    seq, _ = _run_mode_transfer(
+        mode=1, source_bytes=[0x10, 0x11, 0x12, 0x13, 0x14, 0x15])
+    assert seq == [
+        (0x26, 0x10), (0x27, 0x11),
+        (0x26, 0x12), (0x27, 0x13),
+        (0x26, 0x14), (0x27, 0x15),
+    ]
+
+
+# ---------------------------------------------------------------------------
+# MDMA — reverse / direction / 0-size quirks
+# ---------------------------------------------------------------------------
+
+
+def test_mdma_reverse_transfer_decrements_source():
+    """DMAPx bit 4 = 1: source address decrements by 1 after each byte."""
+    bus, rom, cpu = make_bus()
+    rom.rom[0x0003] = 0x33
+    rom.rom[0x0004] = 0x44
+    rom.rom[0x0005] = 0x55
+
+    bus[0x004300] = 0x10                    # mode=0, reverse_transfer=1
+    bus[0x004301] = 0x26                    # target $2126
+    bus[0x004302] = 0x05
+    bus[0x004303] = 0x80                    # source = $008005
+    bus[0x004304] = 0x00
+    bus[0x004305] = 0x03
+    bus[0x004306] = 0x00
+
+    writes = _record_writes(bus)
+    bus[0x00420B] = 0x01
+
+    seq = [(a & 0xFF, v) for (a, v) in writes if 0x2100 <= (a & 0xFFFF) <= 0x21FF]
+    # Source walks 0x8005 → 0x8004 → 0x8003 → bytes copied in that order.
+    assert seq == [(0x26, 0x55), (0x26, 0x44), (0x26, 0x33)]
+    assert cpu.dma.channels[0].source_address == 0x8002
+
+
+def test_mdma_direction1_reads_b_bus_writes_a_bus():
+    """direction=1: the B-bus byte is written to the A-bus (PPU → WRAM)."""
+    bus, rom, cpu = make_bus()
+
+    # $2134 (MPYL) is a PPU read register; stub its value so the transfer
+    # copies a known byte. Falling back to the real bus preserves DMA-
+    # register writes for channel configuration.
+    orig_read = bus.read
+
+    def fake_read(addr):
+        if (addr & 0xFFFF) == 0x2134:
+            return 0x7E
+        return orig_read(addr)
+
+    bus.read = fake_read
+
+    bus[0x004300] = 0x80                    # direction=1, mode=0
+    bus[0x004301] = 0x34                    # target $2134 (MPYL)
+    bus[0x004302] = 0x00
+    bus[0x004303] = 0x00                    # A-bus dest: low WRAM
+    bus[0x004304] = 0x00
+    bus[0x004305] = 0x01
+    bus[0x004306] = 0x00
+    bus[0x00420B] = 0x01
+
+    assert bus.low_ram[0x0000] == 0x7E
+
+
+def test_mdma_transfer_size_zero_means_65536_bytes():
+    """Hardware quirk: DASxL/DASxH == 0 ⇒ 65536-byte transfer, not zero."""
+    bus, rom, cpu = make_bus()
+    rom.rom[0x0000] = 0xA5
+
+    bus[0x004300] = 0x08                    # mode=0, fixed_transfer=1
+    bus[0x004301] = 0x26
+    bus[0x004302] = 0x00
+    bus[0x004303] = 0x80
+    bus[0x004304] = 0x00
+    bus[0x004305] = 0x00                    # DASxL = 0
+    bus[0x004306] = 0x00                    # DASxH = 0 ⇒ size = 0x10000
+
+    writes = _record_writes(bus)
+    bus[0x00420B] = 0x01
+
+    ppu_writes = [w for w in writes if (w[0] & 0xFFFF) == 0x2126]
+    assert len(ppu_writes) == 0x10000

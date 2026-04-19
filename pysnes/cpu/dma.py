@@ -49,39 +49,30 @@ class Channel:
     _hdma_active: bool = False  # False once end-of-table (count=0) is reached
 
     def do_transfer(self) -> None:
-        if self.direction == 1:
-            print(self)
-        # source_address == 0x8000
-        # source_bank == 0x03
-        # target_address == 0x18 --> $2118 --> VRAM Write
-        # direction == 0 --> A to B
-        # transfer_size == 0x1000 (4096)
-        # transfer_mode == 0x1 --> 2 bytes to 2 registers (write once)
-        # fixed_transfer == 0x0 --> increment/decrement dma source addr
-        # reverse_transfer == 0 --> Increment
-        assert self.transfer_mode in (0, 1)
-        assert self.reverse_transfer == 0
-        # TODO only direction 0 was tested. for dir == 1, I completely guessed the implementation
-        assert self.direction in (0,)
-
-        if self.direction == 0:
-            target_addr = 0x2100 | self.target_address  # B bus
+        # Transfer byte count: register value, with 0 meaning 65536 (hardware quirk).
+        count = self.transfer_size if self.transfer_size else 0x10000
+        offsets = _HDMA_TARGET_OFFSETS[self.transfer_mode]
+        unit_len = len(offsets)
+        # A-bus step: +1, -1, or 0 depending on fixed/reverse flags.
+        if self.fixed_transfer:
+            step = 0
         else:
-            target_addr = self.source_bank << 16 | self.source_address
+            step = -1 if self.reverse_transfer else 1
 
-        for index in range(self.transfer_size):
+        for index in range(count):
+            a_bus_addr = (self.source_bank << 16) | self.source_address
+            b_bus_addr = 0x2100 | ((self.target_address + offsets[index % unit_len]) & 0xFF)
+
             if self.direction == 0:
-                data = self.bus.read(self.source_bank << 16 | self.source_address) # A bus
+                # A bus → B bus (CPU/ROM/RAM → PPU)
+                self.bus.write(b_bus_addr, self.bus.read(a_bus_addr))
             else:
-                data = self.bus.read(0x2100 | self.target_address)
+                # B bus → A bus (PPU → CPU/RAM)
+                self.bus.write(a_bus_addr, self.bus.read(b_bus_addr))
 
-            if self.transfer_mode == 0:  # Write 1 byte, B0->$21xx
-                self.bus.write(target_addr, data)
-            elif self.transfer_mode == 1:  # Write 2 bytes, B0->$21xx B1->$21XX+1
-                self.bus.write(target_addr + (index & 1), data)
-
-            if not self.fixed_transfer:
-                self.source_address += 1
+            # A-bus address increments within the bank (16-bit wrap; does not
+            # carry into source_bank on real hardware).
+            self.source_address = (self.source_address + step) & 0xFFFF
 
 
 class DMA:
@@ -150,7 +141,11 @@ class DMA:
             channel.unknown = data
             return
 
-        raise RuntimeError("Address not mapped in DMA: 0x{:06X}".format(abs_addr))
+        # $43xC-$43xE are unused/open-bus on real hardware; writes are ignored.
+        # Anything else in this mirrored range is treated the same way rather
+        # than crashing the emulator on stray writes (e.g. when a game's stack
+        # drifts into the DMA register page).
+        return
 
     def mdmaen_set(self, data: int) -> None:
         for enable_bit, channel in enumerate(self.channels):

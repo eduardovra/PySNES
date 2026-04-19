@@ -580,6 +580,20 @@ class Ppu:
             self.draw_objects(priority=3)                         # OBJ pri 3
             if self._bgpriority == 1:
                 self.draw_background_scanline(self.bg3, 2, True)  # BG3 pri 1 (high)
+        elif self._bgmode == 2:
+            # Mode 2: BG1 (4bpp) + BG2 (4bpp) with offset-per-tile via BG3.
+            # OPT is not implemented; we render without per-column offsets,
+            # which gets the layout approximately right (enough to boot games
+            # that probe their own title/menu screens).
+            self.draw_scanline_backdrop()
+            self.draw_background_scanline(self.bg2, 4, False)   # BG2 pri 0
+            self.draw_objects(priority=0)                       # OBJ pri 0
+            self.draw_background_scanline(self.bg1, 4, False)   # BG1 pri 0
+            self.draw_objects(priority=1)                       # OBJ pri 1
+            self.draw_background_scanline(self.bg2, 4, True)    # BG2 pri 1
+            self.draw_objects(priority=2)                       # OBJ pri 2
+            self.draw_background_scanline(self.bg1, 4, True)    # BG1 pri 1
+            self.draw_objects(priority=3)                       # OBJ pri 3
         elif self._bgmode == 3:
             """
             In Mode 3, you have one 256-color BG and one 16-color BG. To calculate the
@@ -874,29 +888,33 @@ class Ppu:
                 j: cython.uint = scrx % 8
                 v_shift: cython.uint = i + (-i + 7 - i) * tilemap_v_flip
                 h_shift: cython.uint = (7 - j) + (2 * j - 7) * tilemap_h_flip
+                # VRAM is 64KB and tiledata addresses wrap within it on real
+                # hardware. Mask each byte offset to 16 bits so high-numbered
+                # tiles (e.g. when tiledata_addr sits near the top of VRAM)
+                # don't IndexError our Python bytearray.
                 if bpp == 2:
-                    tile_address: cython.uint = bg.tiledata_addr + tilemap_addr * 16 + v_shift * 2
+                    tile_address: cython.uint = (bg.tiledata_addr + tilemap_addr * 16 + v_shift * 2) & 0xFFFF
                     b_lo: cython.uint = self.vram[tile_address]
-                    b_hi: cython.uint = self.vram[tile_address + 1]
+                    b_hi: cython.uint = self.vram[(tile_address + 1) & 0xFFFF]
                     v: cython.uint = ((b_lo >> h_shift) & 1) + (2 * ((b_hi >> h_shift) & 1))
                 elif bpp == 4:
-                    tile_address: cython.uint = bg.tiledata_addr + tilemap_addr * 32 + v_shift * 2
+                    tile_address: cython.uint = (bg.tiledata_addr + tilemap_addr * 32 + v_shift * 2) & 0xFFFF
                     b_1: cython.uint = self.vram[tile_address]
-                    b_2: cython.uint = self.vram[tile_address + 1]
-                    b_3: cython.uint = self.vram[tile_address + 16]
-                    b_4: cython.uint = self.vram[tile_address + 17]
+                    b_2: cython.uint = self.vram[(tile_address + 1) & 0xFFFF]
+                    b_3: cython.uint = self.vram[(tile_address + 16) & 0xFFFF]
+                    b_4: cython.uint = self.vram[(tile_address + 17) & 0xFFFF]
                     v: cython.uint = ((b_1 >> h_shift) & 1) + (2 * ((b_2 >> h_shift) & 1)) + \
                         (4 * ((b_3 >> h_shift) & 1)) + (8 * ((b_4 >> h_shift) & 1))
                 elif bpp == 8:
-                    tile_address: cython.uint = bg.tiledata_addr + tilemap_addr * 64 + v_shift * 2
+                    tile_address: cython.uint = (bg.tiledata_addr + tilemap_addr * 64 + v_shift * 2) & 0xFFFF
                     b_1: cython.uint = self.vram[tile_address]
-                    b_2: cython.uint = self.vram[tile_address + 1]
-                    b_3: cython.uint = self.vram[tile_address + 16]
-                    b_4: cython.uint = self.vram[tile_address + 17]
-                    b_5: cython.uint = self.vram[tile_address + 32]
-                    b_6: cython.uint = self.vram[tile_address + 33]
-                    b_7: cython.uint = self.vram[tile_address + 48]
-                    b_8: cython.uint = self.vram[tile_address + 49]
+                    b_2: cython.uint = self.vram[(tile_address + 1) & 0xFFFF]
+                    b_3: cython.uint = self.vram[(tile_address + 16) & 0xFFFF]
+                    b_4: cython.uint = self.vram[(tile_address + 17) & 0xFFFF]
+                    b_5: cython.uint = self.vram[(tile_address + 32) & 0xFFFF]
+                    b_6: cython.uint = self.vram[(tile_address + 33) & 0xFFFF]
+                    b_7: cython.uint = self.vram[(tile_address + 48) & 0xFFFF]
+                    b_8: cython.uint = self.vram[(tile_address + 49) & 0xFFFF]
                     v: cython.uint = ((b_1 >> h_shift) & 1) + \
                         (2 * ((b_2 >> h_shift) & 1)) + \
                         (4 * ((b_3 >> h_shift) & 1)) + \
@@ -1034,14 +1052,18 @@ class Ppu:
         mask = 1 << pixel
         assert bpp in (2, 4), bpp
 
-        # offset to the correct vram byte
+        # offset to the correct vram byte. VRAM is 64KB and wraps on real
+        # hardware, so mask each byte index to 16 bits to avoid IndexError
+        # when a sprite's tile data sits near the top of VRAM.
         i += tile_data_index
+        tlen = len(tile_data)
 
-        # 2bpp
-        l, h = tile_data[i + 0], tile_data[i + 1]
+        l = tile_data[(i + 0) % tlen]
+        h = tile_data[(i + 1) % tlen]
         color = (h & mask) >> pixel << 1 | (l & mask) >> pixel << 0
         if bpp >= 4:
-            l, h = tile_data[i + 16], tile_data[i + 17]
+            l = tile_data[(i + 16) % tlen]
+            h = tile_data[(i + 17) % tlen]
             color |= (h & mask) >> pixel << 3 | (l & mask) >> pixel << 2
 
         # color == 0 is transparent — do not overwrite existing pixel

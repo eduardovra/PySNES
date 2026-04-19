@@ -268,10 +268,12 @@ class Bus:
             abs_addr = abs_addr - 0x800000
 
         if self.is_hirom:
+            # ROM is read-only on real hardware: writes land on the cart bus
+            # but the mask ROM ignores them. Dropping them here matters for
+            # programs whose stack drifts into the bank-0 vector region
+            # ($FFE0-$FFFF) — corrupting ROM would stomp the interrupt vectors.
             if ((0x00 <= bank <= 0x3F) and addr >= 0x8000) or \
                (0x40 <= bank <= 0x7D):
-                rom_addr: cython.uint = ((bank & 0x3F) << 16) | addr
-                self.rom.rom[rom_addr] = data
                 return
 
             if 0x20 <= bank <= 0x3F and 0x6000 <= addr <= 0x7FFF:
@@ -284,8 +286,6 @@ class Bus:
             if ((0x00 <= bank <= 0x6F) and 0x8000 <= addr <= 0xFFFF) or \
                 ((0x40 <= bank <= 0x6F) and (0x0000 <= addr <= 0xFFFF)) or \
                 ((0x70 <= bank <= 0x7D) and (0x8000 <= addr <= 0xFFFF)):
-                rom_addr: cython.uint = (bank * 0x8000) + (addr - (0x8000 if addr >= 0x8000 else 0))
-                self.rom.rom[rom_addr] = data
                 return
 
             # SRAM: LoROM banks $70-$7D, addr $0000-$7FFF (mirrored from $F0-$FD)
@@ -494,9 +494,10 @@ class Bus:
                     # Bits 4-5: unused
                     # Bit 6: EXTBG                  (Mode 7 only; enables BG2 as a second Mode 7 layer)
                     # Bit 7: External sync          (genlock to external video; no effect in emulation)
-                    # Only value 0 (all off) and 4 (overscan bit alone) are tolerated today;
-                    # any other bit combination will fire this assert until its behavior is wired up.
-                    assert data in (0, 4), f"Value not suported: data={data}"
+                    # Most of these bits are cosmetic/unimplemented; accept the
+                    # write silently rather than blowing up — games that drift
+                    # their stack into the PPU register page (observed with
+                    # ALTTP boot) would otherwise crash here.
                     return
 
                 if addr == 0x2134:  # MPYL

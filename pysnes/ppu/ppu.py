@@ -794,27 +794,41 @@ class Ppu:
         # Window masking setup for this BG.
         # $212E TMW bit (bg.number-1): window masking enabled for this BG on main screen.
         # $2123 W12SEL (for BG1/BG2) / $2124 W34SEL (for BG3/BG4):
-        #   bit pairs per BG: (enable, invert) for Window 1 and Window 2.
-        # For BG1: W12SEL bits 1:0 = (W1_enable, W1_invert).
-        # invert=0: pixels INSIDE [WH0,WH1] are in the mask zone (not drawn).
-        # invert=1: pixels OUTSIDE [WH0,WH1] are in the mask zone (not drawn).
+        #   bit pairs per BG: (W1 invert, W1 enable, W2 invert, W2 enable).
+        # For BG1: W12SEL bits 3:2:1:0 = (W2_enable, W2_invert, W1_enable, W1_invert).
+        # invert=0: pixels INSIDE [WHx_L,WHx_R] are in the mask zone.
+        # invert=1: pixels OUTSIDE [WHx_L,WHx_R] are in the mask zone.
+        # $212A WBGLOG combines the two window outputs per BG:
+        #   bits 2n..2n+1 for BGn: 0=OR, 1=AND, 2=XOR, 3=XNOR.
         bg_idx: cython.uint = bg.number - 1
         window_active: cython.bint = bool(self.tmw & (1 << bg_idx))
         w1_enable: cython.bint = False
         w1_invert: cython.bint = False
+        w2_enable: cython.bint = False
+        w2_invert: cython.bint = False
+        combine_logic: cython.uint = 0
         if window_active:
             if bg_idx == 0:
-                w1_enable = bool(self.w12sel >> 1 & 1)
+                w1_enable = bool((self.w12sel >> 1) & 1)
                 w1_invert = bool(self.w12sel & 1)
+                w2_enable = bool((self.w12sel >> 3) & 1)
+                w2_invert = bool((self.w12sel >> 2) & 1)
             elif bg_idx == 1:
-                w1_enable = bool(self.w12sel >> 5 & 1)
-                w1_invert = bool(self.w12sel >> 4 & 1)
+                w1_enable = bool((self.w12sel >> 5) & 1)
+                w1_invert = bool((self.w12sel >> 4) & 1)
+                w2_enable = bool((self.w12sel >> 7) & 1)
+                w2_invert = bool((self.w12sel >> 6) & 1)
             elif bg_idx == 2:
-                w1_enable = bool(self.w34sel >> 1 & 1)
+                w1_enable = bool((self.w34sel >> 1) & 1)
                 w1_invert = bool(self.w34sel & 1)
+                w2_enable = bool((self.w34sel >> 3) & 1)
+                w2_invert = bool((self.w34sel >> 2) & 1)
             elif bg_idx == 3:
-                w1_enable = bool(self.w34sel >> 5 & 1)
-                w1_invert = bool(self.w34sel >> 4 & 1)
+                w1_enable = bool((self.w34sel >> 5) & 1)
+                w1_invert = bool((self.w34sel >> 4) & 1)
+                w2_enable = bool((self.w34sel >> 7) & 1)
+                w2_invert = bool((self.w34sel >> 6) & 1)
+            combine_logic = (self.wbglog >> (bg_idx * 2)) & 0x3
 
         # Mosaic: when enabled for this BG with size > 1, every S×S block of
         # screen pixels shows the color sampled from the block's top-left
@@ -848,9 +862,29 @@ class Ppu:
             orgy: cython.uint = scanline - 1   # screen Y (output row)
 
             # Apply window masking: skip this pixel if it falls in the masked zone.
-            if window_active and w1_enable:
-                inside: cython.bint = (self.wh0 <= orgx <= self.wh1)
-                masked: cython.bint = inside ^ w1_invert  # invert=1 → outside is masked
+            if window_active and (w1_enable or w2_enable):
+                w1_val: cython.bint = False
+                if w1_enable:
+                    in_range1: cython.bint = (self.wh0 <= orgx <= self.wh1)
+                    w1_val = in_range1 ^ w1_invert
+                w2_val: cython.bint = False
+                if w2_enable:
+                    in_range2: cython.bint = (self.wh2 <= orgx <= self.wh3)
+                    w2_val = in_range2 ^ w2_invert
+                masked: cython.bint
+                if w1_enable and w2_enable:
+                    if combine_logic == 0:
+                        masked = w1_val or w2_val
+                    elif combine_logic == 1:
+                        masked = w1_val and w2_val
+                    elif combine_logic == 2:
+                        masked = w1_val != w2_val
+                    else:
+                        masked = w1_val == w2_val
+                elif w1_enable:
+                    masked = w1_val
+                else:
+                    masked = w2_val
                 if masked:
                     continue
 

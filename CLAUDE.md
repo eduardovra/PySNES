@@ -49,14 +49,14 @@ kill -USR2 <pid>
 ```
 
 **Headless mode (for Claude and automation):** Always run emulators headless — never launch a windowed emulator from a Claude tool call.
-- PySNES: set `PYSNES_HEADLESS=1`. Suppresses the SDL2 window and avoids the glibc malloc/ctypes crashes seen in windowed pure-Python runs.
+- PySNES: pass `--headless` on the command line. Suppresses the SDL2 window and avoids the glibc malloc/ctypes crashes seen in windowed pure-Python runs.
 - Mesen2: use `--testrunner <lua-script> <rom>` (NOT `--headless --lua`, that still opens a window). The Lua script calls `emu.stop()` / `emu.exit()` when done. Artifacts get written to paths the Lua passes via env vars (e.g. `MESEN_OUTPUT_BIN`).
 - Any other emulator: use its equivalent headless/offscreen flag. If one doesn't exist, stop and ask rather than launching with a window.
 
 Use signal-driven screenshots, direct framebuffer reads, or Lua-dumped .bin artifacts for snapshots. Interactive launches are the user's job, not Claude's.
 
 ```bash
-PYSNES_HEADLESS=1 uv run -m pysnes.pysnes roms/game.sfc &
+uv run -m pysnes.pysnes --headless roms/game.sfc &
 
 # Mesen2 headless (writes a screenshot at MESEN_OUTPUT_BIN):
 MESEN_FRAMES=400 MESEN_OUTPUT_BIN=/tmp/mesen.bin \

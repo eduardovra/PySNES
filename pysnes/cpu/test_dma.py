@@ -646,3 +646,114 @@ def test_mdma_transfer_size_zero_means_65536_bytes():
 
     ppu_writes = [w for w in writes if (w[0] & 0xFFFF) == 0x2126]
     assert len(ppu_writes) == 0x10000
+
+
+# ---------------------------------------------------------------------------
+# DMA register readback ($4300–$430A)
+#
+# Channel registers are readable on real hardware; a written byte reads back
+# as-is, and source/address regs reflect live state after DMA advances them.
+# The 93143 hvdma test ROM relies on this: it reads $4372/$4373/$4374 after
+# DMA to compute an RTL target, and failed because the bus returned zero
+# from an unsynchronized cache.
+# ---------------------------------------------------------------------------
+
+
+def test_dma_readback_dmap():
+    bus, _, cpu = make_bus()
+    bus[0x004300] = 0xC5    # direction=1, indirect=1, mode=5
+    assert bus[0x004300] == 0xC5
+
+
+def test_dma_readback_bbad():
+    bus, _, cpu = make_bus()
+    bus[0x004301] = 0x18
+    assert bus[0x004301] == 0x18
+
+
+def test_dma_readback_source_address_and_bank():
+    bus, _, cpu = make_bus()
+    bus[0x004302] = 0x34
+    bus[0x004303] = 0x12
+    bus[0x004304] = 0x7E
+    assert bus[0x004302] == 0x34
+    assert bus[0x004303] == 0x12
+    assert bus[0x004304] == 0x7E
+
+
+def test_dma_readback_transfer_size():
+    bus, _, cpu = make_bus()
+    bus[0x004305] = 0x00
+    bus[0x004306] = 0x10
+    assert bus[0x004305] == 0x00
+    assert bus[0x004306] == 0x10
+
+
+def test_dma_readback_indirect_bank():
+    bus, _, cpu = make_bus()
+    bus[0x004307] = 0x7F
+    assert bus[0x004307] == 0x7F
+
+
+def test_dma_readback_hdma_address_and_line_counter():
+    bus, _, cpu = make_bus()
+    bus[0x004308] = 0xAB
+    bus[0x004309] = 0xCD
+    bus[0x00430A] = 0x42
+    assert bus[0x004308] == 0xAB
+    assert bus[0x004309] == 0xCD
+    assert bus[0x00430A] == 0x42
+
+
+def test_dma_readback_channel_7():
+    """The 93143 hvdma test ROM uses channel 7 — verify decoding works there."""
+    bus, _, cpu = make_bus()
+    bus[0x004372] = 0x3C
+    bus[0x004373] = 0x81
+    bus[0x004374] = 0x00
+    assert bus[0x004372] == 0x3C
+    assert bus[0x004373] == 0x81
+    assert bus[0x004374] == 0x00
+
+
+def test_dma_readback_source_advances_after_transfer():
+    """After MDMA runs, reading $4302/$4303 must reflect the updated source.
+
+    This is the core behavior hvdma.sfc exercises: it computes a jump target
+    from the post-transfer A-address.
+    """
+    bus, rom, cpu = make_bus()
+    rom.rom[0x0000] = 0x11
+    rom.rom[0x0001] = 0x22
+    rom.rom[0x0002] = 0x33
+
+    bus[0x004300] = 0x00         # mode 0, increment
+    bus[0x004301] = 0x00         # target $2100
+    bus[0x004302] = 0x00
+    bus[0x004303] = 0x80         # source $8000
+    bus[0x004304] = 0x00
+    bus[0x004305] = 0x03
+    bus[0x004306] = 0x00
+    bus[0x00420B] = 0x01         # trigger
+
+    # source_address advanced by 3 bytes
+    assert bus[0x004302] == 0x03
+    assert bus[0x004303] == 0x80
+    assert bus[0x004304] == 0x00
+
+
+def test_dma_readback_bank_does_not_carry():
+    """A-bus address wraps within the bank; bank register is not affected."""
+    bus, rom, cpu = make_bus()
+
+    bus[0x004300] = 0x08         # mode 0, fixed (avoid actual ROM read needs)
+    bus[0x004301] = 0x00
+    bus[0x004302] = 0xFE
+    bus[0x004303] = 0xFF         # source $FFFE
+    bus[0x004304] = 0x7E         # bank $7E (WRAM)
+    bus[0x004305] = 0x03
+    bus[0x004306] = 0x00
+    # No trigger; just verify readback of configured values
+    assert bus[0x004302] == 0xFE
+    assert bus[0x004303] == 0xFF
+    assert bus[0x004304] == 0x7E

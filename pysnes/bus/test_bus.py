@@ -240,6 +240,28 @@ def test_hvbjoy_no_blanks():
 
 
 # ---------------------------------------------------------------------------
+# OPHCT / OPVCT  ($213C / $213D)
+#
+# The H/V counters are 9-bit values (0..339 and 0..261), but the register
+# port is byte-wide. Returning the raw integer lets values > 255 leak out,
+# which crashes CPU opcode fetches that land in the register region.
+# ---------------------------------------------------------------------------
+
+def test_ophct_read_is_byte_sized():
+    bus, *_, ppu = make_bus()
+    ppu.h_counter = 274           # dot count at H-blank start
+    val = bus[0x00213C]
+    assert 0 <= val <= 0xFF
+
+
+def test_opvct_read_is_byte_sized():
+    bus, *_, ppu = make_bus()
+    ppu.v_counter = 261           # last scanline in a non-interlace frame
+    val = bus[0x00213D]
+    assert 0 <= val <= 0xFF
+
+
+# ---------------------------------------------------------------------------
 # Low RAM boundary — first byte
 # ---------------------------------------------------------------------------
 

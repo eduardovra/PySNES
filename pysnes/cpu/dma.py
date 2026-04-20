@@ -147,6 +147,45 @@ class DMA:
         # drifts into the DMA register page).
         return
 
+    def __getitem__(self, abs_addr: int) -> int:
+        channel = self.channels[abs_addr >> 4 & 7]
+        addr = abs_addr & 0xFF8F
+
+        if addr == 0x4300:  # DMAPx
+            return (
+                (channel.transfer_mode & 7)
+                | ((channel.fixed_transfer & 1) << 3)
+                | ((channel.reverse_transfer & 1) << 4)
+                | ((channel.unused & 1) << 5)
+                | ((channel.indirect & 1) << 6)
+                | ((channel.direction & 1) << 7)
+            )
+        if addr == 0x4301:  # BBADx
+            return channel.target_address & 0xFF
+        if addr == 0x4302:  # A1TxL
+            return channel.source_address & 0xFF
+        if addr == 0x4303:  # A1TxH
+            return (channel.source_address >> 8) & 0xFF
+        if addr == 0x4304:  # A1Bx
+            return channel.source_bank & 0xFF
+        if addr == 0x4305:  # DASxL
+            return channel.transfer_size & 0xFF
+        if addr == 0x4306:  # DASxH
+            return (channel.transfer_size >> 8) & 0xFF
+        if addr == 0x4307:  # DASBx
+            return channel.indirect_bank & 0xFF
+        if addr == 0x4308:  # A2AxL
+            return channel.hdma_address & 0xFF
+        if addr == 0x4309:  # A2AxH
+            return (channel.hdma_address >> 8) & 0xFF
+        if addr == 0x430A:  # NTRLx
+            return channel.line_counter & 0xFF
+        if addr == 0x430B or addr == 0x430F:  # UNUSEDx (readable mirror)
+            return channel.unknown & 0xFF
+
+        # $43xC-$43xE are unused/open-bus on real hardware.
+        return 0
+
     def mdmaen_set(self, data: int) -> None:
         for enable_bit, channel in enumerate(self.channels):
             if data & (1 << enable_bit):

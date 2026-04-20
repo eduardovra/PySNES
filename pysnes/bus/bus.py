@@ -187,11 +187,11 @@ class Bus:
                 if addr == 0x213B:  # CGDATAREAD
                     return self.ppu.cgdata
 
-                if addr == 0x213C:  # OPHCT
-                    return self.ppu.h_counter
+                if addr == 0x213C:  # OPHCT (9-bit counter; port is byte-wide)
+                    return self.ppu.h_counter & 0xFF
 
-                if addr == 0x213D:  # OPVCT
-                    return self.ppu.v_counter
+                if addr == 0x213D:  # OPVCT (9-bit counter; port is byte-wide)
+                    return self.ppu.v_counter & 0xFF
 
                 if addr == 0x213E:  # STAT77
                     # TODO PPU Status Flag and Version
@@ -242,6 +242,13 @@ class Bus:
                     return self.controller_port2.joy_l
                 if addr == 0x421B:  # JOY2H
                     return self.controller_port2.joy_h
+
+                # DMA channel registers ($4300–$43FF): return live channel
+                # state. The bytearray cache is never kept in sync, and the
+                # engine mutates source_address/transfer_size during transfers
+                # — games (e.g. the 93143 hvdma test ROM) read these back.
+                if 0x4300 <= addr <= 0x43FF:
+                    return self.cpu.dma[addr]
 
                 return self.dma_ppu2_hw_registers[addr - 0x4200]
 

@@ -282,9 +282,13 @@ def main():
     parser = argparse.ArgumentParser(description="PySNES - SNES emulator")
     parser.add_argument("rom", help="Path to ROM file (.smc/.sfc)")
     parser.add_argument("--trace", metavar="REF", help="Enable CPU trace comparison against reference log")
+    parser.add_argument("--headless", action="store_true", help="Run without opening an SDL2 window")
     args = parser.parse_args()
 
-    pysnes = PySNES(args.rom)
+    settings = settings_module.load()
+    if args.headless:
+        settings["headless"] = True
+    pysnes = PySNES(args.rom, settings=settings)
 
     if args.trace:
         pysnes.start_trace(args.trace)

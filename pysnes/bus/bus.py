@@ -1,5 +1,3 @@
-# cython: profile=True
-
 import os
 from typing import List
 
@@ -18,17 +16,17 @@ class Bus:
     cpu: Cpu
     ppu: Ppu
     scheduler: Scheduler
-    low_ram: cython.uchar[:]
-    high_ram: cython.uchar[:]
-    extended_ram: cython.uchar[:]
-    sram: cython.uchar[:]
-    sram_size: cython.uint
-    sram_mask: cython.uint
-    sram_dirty: cython.bint
-    dma_ppu2_hw_registers: cython.uchar[:]
-    hblank: cython.bint
-    vblank: cython.bint
-    is_hirom: cython.bint
+    low_ram = cython.declare(cython.uchar[:])
+    high_ram = cython.declare(cython.uchar[:])
+    extended_ram = cython.declare(cython.uchar[:])
+    sram = cython.declare(cython.uchar[:])
+    sram_size = cython.declare(cython.uint)
+    sram_mask = cython.declare(cython.uint)
+    sram_dirty = cython.declare(cython.bint)
+    dma_ppu2_hw_registers = cython.declare(cython.uchar[:])
+    hblank = cython.declare(cython.bint)
+    vblank = cython.declare(cython.bint)
+    is_hirom = cython.declare(cython.bint)
 
     def __init__(
         self,
@@ -414,7 +412,6 @@ class Bus:
                     return
 
                 if addr == 0x211A:  # M7SEL
-                    # raise NotImplementedError("M7SEL register not implemented")
                     """
                     7-6   Screen Over (see below)
                     5-2   Not used

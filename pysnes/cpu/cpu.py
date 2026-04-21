@@ -4,10 +4,8 @@ from typing import Any, TYPE_CHECKING
 from rich import print
 import cython
 
-from .dma import DMA
-
 if TYPE_CHECKING:
-    from ...bus import Bus
+    from ..bus import Bus
 
 if cython.compiled:
     print(f"[blue]{__name__} compiled with Cython[/blue]")
@@ -242,10 +240,10 @@ class Cpu:
                 self.debug_symbols[opcode] += f" {args}"
             self.debug_symbols[opcode] = self.debug_symbols[opcode].ljust(30)
 
-    def attach(self, bus: "Bus") -> None:
-        self.bus = bus
+    def attach(self, bus: Bus) -> None:
+        from .dma import DMA
 
-        # NOTE shoehorned to make v2 compatible with v1
+        self.bus = bus
         self.dma = DMA(bus)
 
     # ------------------------------------------------------------------

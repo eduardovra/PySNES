@@ -1,8 +1,8 @@
 from typing import TYPE_CHECKING
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 if TYPE_CHECKING:
-    from ...bus import Bus
+    from ..bus import Bus
 
 # Number of data bytes consumed per transfer unit for each HDMA/DMA mode.
 _HDMA_UNIT_BYTES = [1, 2, 2, 4, 4, 4, 2, 4]

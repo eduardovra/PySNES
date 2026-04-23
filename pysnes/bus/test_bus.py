@@ -845,3 +845,63 @@ def test_hirom_bank_00_hw_registers_still_work():
     bus, _, _, _, ppu = make_bus(mapping_mode=MappingMode.HIROM)
     bus[0x002100] = 0x0F  # INIDISP, display enable
     assert not ppu.display_disable
+
+
+# ---------------------------------------------------------------------------
+# Math hardware ($4202-$4206 write, $4214-$4217 read)
+# ---------------------------------------------------------------------------
+
+def test_multiply_basic():
+    """Writing WRMPYB ($4203) triggers 8x8 unsigned multiply; result in $4216-$4217."""
+    bus, *_ = make_bus()
+    bus[0x004202] = 5   # WRMPYA = 5
+    bus[0x004203] = 3   # WRMPYB = 3 → product = 15
+    assert bus[0x004216] == 15   # RDMPYL low byte
+    assert bus[0x004217] == 0    # RDMPYH high byte
+    assert bus[0x004214] == 0    # RDDIVL cleared after multiply
+    assert bus[0x004215] == 0    # RDDIVH cleared after multiply
+
+
+def test_multiply_overflow():
+    """255 * 255 = 65025 = 0xFE01; verify high byte."""
+    bus, *_ = make_bus()
+    bus[0x004202] = 255
+    bus[0x004203] = 255
+    assert bus[0x004216] == 0x01   # low byte
+    assert bus[0x004217] == 0xFE   # high byte
+
+
+def test_divide_basic():
+    """Writing WRDIVB ($4206) triggers 16÷8 unsigned divide; quotient in $4214-$4215, remainder in $4216-$4217."""
+    bus, *_ = make_bus()
+    bus[0x004204] = 100 & 0xFF    # WRDIVL low byte of 100
+    bus[0x004205] = 100 >> 8      # WRDIVH high byte of 100
+    bus[0x004206] = 7             # WRDIVB = 7 → 100 / 7 = 14 rem 2
+    assert bus[0x004214] == 14    # RDDIVL quotient low
+    assert bus[0x004215] == 0     # RDDIVH quotient high
+    assert bus[0x004216] == 2     # RDMPYL remainder low
+    assert bus[0x004217] == 0     # RDMPYH remainder high
+
+
+def test_divide_high_dividend():
+    """16-bit dividend: WRDIVL=0, WRDIVH=1 → dividend=256; 256/16=16 rem 0."""
+    bus, *_ = make_bus()
+    bus[0x004205] = 1   # high byte → dividend = 256
+    bus[0x004204] = 0   # low byte
+    bus[0x004206] = 16  # divisor
+    assert bus[0x004214] == 16
+    assert bus[0x004215] == 0
+    assert bus[0x004216] == 0
+    assert bus[0x004217] == 0
+
+
+def test_divide_by_zero():
+    """Divide by zero: quotient=$FFFF, remainder=dividend."""
+    bus, *_ = make_bus()
+    bus[0x004204] = 0x34
+    bus[0x004205] = 0x12   # dividend = 0x1234
+    bus[0x004206] = 0      # divide by zero
+    assert bus[0x004214] == 0xFF
+    assert bus[0x004215] == 0xFF
+    assert bus[0x004216] == 0x34  # remainder = dividend low
+    assert bus[0x004217] == 0x12  # remainder = dividend high

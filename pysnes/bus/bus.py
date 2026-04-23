@@ -61,6 +61,10 @@ class Bus:
         # WRAM port address register (17-bit, 0x2181-0x2183)
         self._wmadd = 0
 
+        # Math hardware registers ($4202-$4206 write, $4214-$4217 read)
+        self._wrmpya: cython.uchar = 0   # $4202 multiplicand
+        self._wrdiv: cython.uint = 0     # $4204-$4205 dividend (16-bit)
+
     def load_sram(self, path: str) -> int:
         """Load SRAM bytes from `path`. Returns the number of bytes loaded (0 if no SRAM or file missing)."""
         i: cython.uint
@@ -545,6 +549,44 @@ class Bus:
 
             elif addr == 0x4017:  # JOYSER1
                 return  # Writes to this addr are ignored
+
+            elif addr == 0x4202:  # WRMPYA - multiplicand
+                self._wrmpya = data
+                self.dma_ppu2_hw_registers[addr - 0x4200] = data
+                return
+
+            elif addr == 0x4203:  # WRMPYB - multiplier (triggers multiply)
+                product: cython.uint = self._wrmpya * data
+                self.dma_ppu2_hw_registers[0x4203 - 0x4200] = data
+                self.dma_ppu2_hw_registers[0x4214 - 0x4200] = 0
+                self.dma_ppu2_hw_registers[0x4215 - 0x4200] = 0
+                self.dma_ppu2_hw_registers[0x4216 - 0x4200] = product & 0xFF
+                self.dma_ppu2_hw_registers[0x4217 - 0x4200] = (product >> 8) & 0xFF
+                return
+
+            elif addr == 0x4204:  # WRDIVL - dividend low byte
+                self._wrdiv = (self._wrdiv & 0xFF00) | data
+                self.dma_ppu2_hw_registers[addr - 0x4200] = data
+                return
+
+            elif addr == 0x4205:  # WRDIVH - dividend high byte
+                self._wrdiv = (self._wrdiv & 0x00FF) | (data << 8)
+                self.dma_ppu2_hw_registers[addr - 0x4200] = data
+                return
+
+            elif addr == 0x4206:  # WRDIVB - divisor (triggers divide)
+                self.dma_ppu2_hw_registers[addr - 0x4200] = data
+                if data == 0:
+                    quotient: cython.uint = 0xFFFF
+                    remainder: cython.uint = self._wrdiv
+                else:
+                    quotient = self._wrdiv // data
+                    remainder = self._wrdiv % data
+                self.dma_ppu2_hw_registers[0x4214 - 0x4200] = quotient & 0xFF
+                self.dma_ppu2_hw_registers[0x4215 - 0x4200] = (quotient >> 8) & 0xFF
+                self.dma_ppu2_hw_registers[0x4216 - 0x4200] = remainder & 0xFF
+                self.dma_ppu2_hw_registers[0x4217 - 0x4200] = (remainder >> 8) & 0xFF
+                return
 
             elif addr == 0x420B:  # MDMAEN
                 self.cpu.dma.mdmaen_set(data)

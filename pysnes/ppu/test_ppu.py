@@ -166,6 +166,16 @@ def _run_mesen(mesen: str, rom_path: Path, n_frames: int) -> list:
 # Test cases
 # Each entry: (test_id, rom_rel, n_frames)
 # Paths are relative to PPU_ROMS (submodules/SNES/PPU/).
+#
+# NOTE ON FRAME COUNTS
+# PySNES DMA is not cycle-accurate: transfers complete instantly rather than
+# consuming 8 master-clock cycles per byte (see dma.py do_transfer TODO).
+# Because of this, VRAM/CGRAM loads finish before the first NMI fires, so
+# the ROM's NMI-driven fade-in counter is ~5 frames ahead of Mesen's.
+# Concretely: PySNES reaches brightness=15 at frame 15, Mesen at frame ~20.
+# The n_frames values below are chosen so that both emulators land on the
+# same stable, fully-lit frame.  Once DMA timing is fixed, these can be
+# reduced back to 15 (or whatever the ROM's natural fade-in length is).
 # ---------------------------------------------------------------------------
 
 PPU_TEST_ROMS = [

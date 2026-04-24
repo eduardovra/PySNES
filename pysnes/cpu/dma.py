@@ -49,7 +49,13 @@ class Channel:
     _hdma_active: bool = False  # False once end-of-table (count=0) is reached
 
     def do_transfer(self) -> None:
-        # Transfer byte count: register value, with 0 meaning 65536 (hardware quirk).
+        # TODO: DMA timing is not cycle-accurate.  On real hardware each byte
+        # costs 8 master-clock cycles and the CPU is halted for the duration.
+        # A 32 KB VRAM load takes ~262 K MC ≈ 0.73 frames; Mesen models this
+        # correctly, which is why test ROMs that fade in via NMI appear
+        # several frames "ahead" in PySNES (the DMA finishes instantly here,
+        # so NMI-driven state changes start one frame earlier than in Mesen).
+        # Fix: after the loop, advance scheduler.master_clock by count * 8 MC.
         count = self.transfer_size if self.transfer_size else 0x10000
         offsets = _HDMA_TARGET_OFFSETS[self.transfer_mode]
         unit_len = len(offsets)

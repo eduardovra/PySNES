@@ -49,13 +49,11 @@ class Channel:
     _hdma_active: bool = False  # False once end-of-table (count=0) is reached
 
     def do_transfer(self) -> None:
-        # TODO: DMA timing is not cycle-accurate.  On real hardware each byte
-        # costs 8 master-clock cycles and the CPU is halted for the duration.
-        # A 32 KB VRAM load takes ~262 K MC ≈ 0.73 frames; Mesen models this
-        # correctly, which is why test ROMs that fade in via NMI appear
-        # several frames "ahead" in PySNES (the DMA finishes instantly here,
-        # so NMI-driven state changes start one frame earlier than in Mesen).
-        # Fix: after the loop, advance scheduler.master_clock by count * 8 MC.
+        # On real hardware each GDMA byte costs 8 master-clock cycles and the
+        # CPU is halted for the duration.  We charge those cycles to cpu.cycles
+        # so the scheduler sees the correct elapsed time and NMI fires at the
+        # right frame boundary.  Per-channel overhead (8 MC bus-lock + 8 MC
+        # bus-unlock) is included via the +16 constant below.
         count = self.transfer_size if self.transfer_size else 0x10000
         offsets = _HDMA_TARGET_OFFSETS[self.transfer_mode]
         unit_len = len(offsets)
@@ -79,6 +77,13 @@ class Channel:
             # A-bus address increments within the bank (16-bit wrap; does not
             # carry into source_bank on real hardware).
             self.source_address = (self.source_address + step) & 0xFFFF
+
+        # Advance master_clock directly by the DMA cost (8 MC/byte + 16 MC
+        # per-channel overhead for bus-lock/unlock).  Bypassing cpu.cycles
+        # means the CPU's next _step() sees the correct clock position without
+        # triggering the scheduler's event loop mid-transfer — on real hardware
+        # the CPU is halted during GDMA so no instruction events should fire.
+        self.bus.scheduler.master_clock += count * 8 + 16
 
 
 class DMA:

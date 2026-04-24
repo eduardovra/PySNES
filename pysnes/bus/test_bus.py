@@ -148,10 +148,10 @@ def test_lorom_mirror_high_bank():
 
 
 def test_lorom_write_to_rom_region_stored():
-    """Writes to ROM-mapped addresses go to rom.rom (test harness behaviour)."""
+    """Writes to ROM-mapped addresses are silently dropped (ROM is read-only on hardware)."""
     bus, rom, *_ = make_bus()
     bus[0x008100] = 0x7F
-    assert rom.rom[0x0100] == 0x7F
+    assert rom.rom[0x0100] == 0  # write ignored; ROM unchanged
 
 
 # ---------------------------------------------------------------------------
@@ -327,10 +327,10 @@ def test_lorom_region3_not_ram():
 # ---------------------------------------------------------------------------
 
 def test_lorom_mirror_write():
-    """Write through a mirrored bank ($80+) lands in the same ROM slot as $00."""
+    """Write through a mirrored bank ($80+) is silently dropped (ROM is read-only on hardware)."""
     bus, rom, *_ = make_bus()
     bus[0x808010] = 0x55      # bank $80 mirrors bank $00
-    assert rom.rom[0x0010] == 0x55
+    assert rom.rom[0x0010] == 0  # write ignored; ROM unchanged
 
 
 # ---------------------------------------------------------------------------
@@ -753,10 +753,10 @@ def test_hirom_read_bank_80_mirrors_bank_00_upper_half():
 
 
 def test_hirom_write_to_rom_region():
-    """Writes to HiROM-mapped addresses go to rom.rom (test harness behaviour)."""
+    """Writes to HiROM-mapped addresses are silently dropped (ROM is read-only on hardware)."""
     bus, rom, *_ = make_bus(mapping_mode=MappingMode.HIROM)
     bus[0xC00001] = 0x7F
-    assert rom.rom[0x000001] == 0x7F
+    assert rom.rom[0x000001] == 0  # write ignored; ROM unchanged
 
 
 def test_hirom_bank_00_low_half_is_lowram_not_rom():

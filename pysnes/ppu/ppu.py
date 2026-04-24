@@ -1103,7 +1103,11 @@ class Ppu:
         # color == 0 is transparent — do not overwrite existing pixel
         if color and 0 <= x < SCREEN_WIDTH:
             u32_color = self.get_u32_color(bpp, palette, color)
-            self.main_bgs[(y - 1) * SCREEN_WIDTH + x] = u32_color
+            idx: cython.uint = (y - 1) * SCREEN_WIDTH + x
+            self.main_bgs[idx] = u32_color
+            # OBJ palettes 4-7 (stored as 12-15 in the global palette space) participate
+            # in color math (layer 5). Palettes 0-3 are immune (layer 6, never matched).
+            self.main_layer[idx] = 5 if palette >= 12 else 6
 
     def get_u32_color(self, bpp: int, palette: int, color: int, color_offset: int = 0) -> int:
         palette_index = palette * (bpp ** 2)

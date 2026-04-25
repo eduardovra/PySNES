@@ -293,11 +293,11 @@ class Ppu:
 
     @property
     def oamaddh(self) -> int:
-        return (int(self._oam_priority_activation) << 7) | ((self._oamadd >> 8) & 1)
+        return (self._oam_priority_activation << 7) | ((self._oamadd >> 8) & 1)
 
     @oamaddh.setter
     def oamaddh(self, data: int) -> None:
-        self._oam_priority_activation = data & 0x80
+        self._oam_priority_activation = (data >> 7) & 1
         self._oamadd = (self._oamadd & 0x0FF) | (data & 1) << 8
         self._oamodd = 0
 
@@ -1238,7 +1238,7 @@ class OAM:
             obj = self.objects[obj_num]
             sx = data >> (obj_index * 2)
             obj.x = (obj.x & 0xFF) | (sx & 0x01) << 8
-            obj.size = sx & 0x02
+            obj.size = (sx >> 1) & 1
 
     def update_low_table(self, addr: int) -> None:
         obj_num = addr // 4

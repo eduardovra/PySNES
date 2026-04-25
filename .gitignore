@@ -142,5 +142,5 @@ imgui.ini
 
 # Claude Code local settings
 .claude/
+.codex
 tools/
-

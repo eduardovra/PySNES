@@ -23,9 +23,10 @@ import pytest
 
 pytestmark = pytest.mark.ppu
 
-REPO_ROOT    = Path(__file__).parent.parent.parent
-PPU_ROMS     = REPO_ROOT / "submodules" / "SNES" / "PPU"
-ACTUALS_DIR  = REPO_ROOT / "tests" / "ppu_references"
+REPO_ROOT     = Path(__file__).parent.parent.parent
+PPU_ROMS      = REPO_ROOT / "submodules" / "SNES" / "PPU"
+LIDNARIQ_ROMS = REPO_ROOT / "submodules" / "snes-test-roms"
+ACTUALS_DIR   = REPO_ROOT / "tests" / "ppu_references"
 MC_PER_FRAME = 262 * 1364
 SCREEN_W     = 256
 SCREEN_H     = 224
@@ -121,8 +122,10 @@ def _run_mesen(mesen: str, rom_path: Path, n_frames: int) -> list:
     import subprocess  # noqa: PLC0415
 
     lua_script = REPO_ROOT / "scripts" / "mesen_screenshot.lua"
-    with tempfile.NamedTemporaryFile(suffix=".bin", delete=False, dir="/tmp") as tf:
-        out_bin = tf.name
+    # Use a path that doesn't exist yet; the Lua script writes atomically via temp+rename.
+    fd, out_bin = tempfile.mkstemp(suffix=".bin", dir="/tmp")
+    os.close(fd)
+    os.unlink(out_bin)
 
     try:
         env = os.environ.copy()
@@ -133,10 +136,9 @@ def _run_mesen(mesen: str, rom_path: Path, n_frames: int) -> list:
             [mesen, "--testrunner", str(lua_script), str(rom_path)],
             env=env,
         )
-        expected_size = SCREEN_W * MESEN_BUF_H * 4
         deadline = time.monotonic() + 30
         while time.monotonic() < deadline:
-            if Path(out_bin).stat().st_size >= expected_size:
+            if Path(out_bin).exists():
                 break
             time.sleep(0.1)
         proc.kill()
@@ -144,15 +146,22 @@ def _run_mesen(mesen: str, rom_path: Path, n_frames: int) -> list:
 
         raw = Path(out_bin).read_bytes()
         count = len(raw) // 4
-        assert count == SCREEN_W * MESEN_BUF_H, (
-            f"Expected {SCREEN_W * MESEN_BUF_H} pixels, got {count}"
-        )
         pixels_u32 = struct.unpack(f"<{count}I", raw)
+
+        # Mesen returns 256×239 normally; hi-res modes (5/6) produce 512×478.
+        # Detect hi-res by checking the total pixel count and downsample if needed.
+        hires = count == (SCREEN_W * 2) * (MESEN_BUF_H * 2)
+        if not hires and count != SCREEN_W * MESEN_BUF_H:
+            pytest.fail(f"Unexpected Mesen buffer size: {count} pixels")
+        buf_w      = SCREEN_W * 2 if hires else SCREEN_W
+        row_offset = MESEN_ROW_OFFSET * 2 if hires else MESEN_ROW_OFFSET
+        col_step   = 2 if hires else 1
+        row_step   = 2 if hires else 1
 
         pixels = []
         for row in range(SCREEN_H):
             for col in range(SCREEN_W):
-                v = pixels_u32[(MESEN_ROW_OFFSET + row) * SCREEN_W + col]
+                v = pixels_u32[(row_offset + row * row_step) * buf_w + col * col_step]
                 r = (v >> 16) & 0xFF
                 g = (v >>  8) & 0xFF
                 b =  v        & 0xFF
@@ -160,6 +169,7 @@ def _run_mesen(mesen: str, rom_path: Path, n_frames: int) -> list:
         return pixels
     finally:
         Path(out_bin).unlink(missing_ok=True)
+        Path(out_bin + ".tmp").unlink(missing_ok=True)
 
 
 # ---------------------------------------------------------------------------
@@ -224,6 +234,13 @@ PPU_TEST_ROMS = [
         "Mosaic/Mode3/MosaicMode3.sfc",
         25,
     ),
+    pytest.param(
+        "ppubusact",
+        LIDNARIQ_ROMS / "lidnariq-ppu-bus-activity" / "ppubusact.sfc",
+        20,
+        marks=pytest.mark.xfail(reason="Modes 3/4 (8BPP/OPT) and 5/6 (hi-res) not fully implemented", strict=False),
+        id="ppubusact",
+    ),
 ]
 
 
@@ -234,7 +251,8 @@ PPU_TEST_ROMS = [
 )
 def test_ppu_screenshot(request, test_id, rom_rel, n_frames):
     """Compare PySNES framebuffer against Mesen oracle at the same frame count."""
-    rom_path = PPU_ROMS / rom_rel
+    rom_rel_path = Path(rom_rel)
+    rom_path = rom_rel_path if rom_rel_path.is_absolute() else PPU_ROMS / rom_rel
 
     if not rom_path.exists():
         pytest.skip(f"ROM not found: {rom_path}")

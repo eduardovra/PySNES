@@ -18,7 +18,8 @@ emu.addEventCallback(function()
     frame_count = frame_count + 1
     if frame_count >= n_frames then
         local buf = emu.getScreenBuffer()
-        local f = io.open(out_path, "wb")
+        local tmp_path = out_path .. ".tmp"
+        local f = io.open(tmp_path, "wb")
         for i = 1, #buf do
             local v = buf[i]
             f:write(string.char(
@@ -29,6 +30,7 @@ emu.addEventCallback(function()
             ))
         end
         f:close()
+        os.rename(tmp_path, out_path)
         emu.stop()
     end
 end, emu.eventType.endFrame)

@@ -13,9 +13,11 @@ from ..scheduler import Scheduler
 
 @cython.cclass
 class Bus:
-    cpu: Cpu
-    ppu: Ppu
-    scheduler: Scheduler
+    cpu = cython.declare(object, visibility="public")
+    ppu = cython.declare(object, visibility="public")
+    apu = cython.declare(object, visibility="public")
+    scheduler = cython.declare(object, visibility="public")
+    rom = cython.declare(object, visibility="public")
     low_ram = cython.declare(cython.uchar[:])
     high_ram = cython.declare(cython.uchar[:])
     extended_ram = cython.declare(cython.uchar[:])

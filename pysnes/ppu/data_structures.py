@@ -5,7 +5,7 @@ import cython
 
 @cython.cclass
 class Background:
-    screen_size = cython.declare(cython.uint)
+    screen_size = cython.declare(cython.uint, visibility="public")
 
     def __init__(
         self,

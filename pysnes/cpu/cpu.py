@@ -26,7 +26,7 @@ class Reg:
         return self.value & 0xFF
 
     @l.setter
-    def l(self, value: cython.uchar):
+    def l(self, value: cython.uint):
         """Low byte setter"""
         self.value &= 0xFFFF00
         self.value |= value & 0xFF
@@ -37,7 +37,7 @@ class Reg:
         return self.value >> 8 & 0xFF
 
     @h.setter
-    def h(self, value: cython.uchar):
+    def h(self, value: cython.uint):
         """High byte setter"""
         self.value &= 0xFF00FF
         self.value |= value << 8 & 0xFF00
@@ -48,7 +48,7 @@ class Reg:
         return self.value >> 16 & 0xFF
 
     @b.setter
-    def b(self, value: cython.uchar):
+    def b(self, value: cython.uint):
         """Bank byte setter"""
         self.value &= 0xFFFF
         self.value |= value << 16 & 0xFF0000
@@ -59,7 +59,7 @@ class Reg:
         return self.value & 0xFFFF
 
     @w.setter
-    def w(self, value: cython.ushort):
+    def w(self, value: cython.uint):
         """Low word setter"""
         self.value &= 0xFF0000
         self.value |= value & 0xFFFF
@@ -284,28 +284,28 @@ class Cpu:
         if self.status.nmi_enable:
             self._nmi_pending = True
 
-    @cython.cfunc
+    @cython.ccall
     def idleIRQ(self):
         self.cycles += 6
         self.icycles += 1
 
-    @cython.cfunc
+    @cython.ccall
     def idle(self):
         self.cycles += 6
         self.icycles += 1
 
-    @cython.cfunc
+    @cython.ccall
     def idle2(self):
         if (self.D.l):
             self.idle()
 
-    @cython.cfunc
+    @cython.ccall
     def idle4(self, x: cython.uint, y: cython.uint):
         """if(!XF || x >> 8 != y >> 8) idle();"""
         if not self.XFlag or (x >> 8) != (y >> 8):
             self.idle()
 
-    @cython.cfunc
+    @cython.ccall
     def idle6(self, address: cython.uint):
         """if(EF && PC.h != address >> 8) idle();"""
         if self.EF and (self.PC.w >> 8) != (address >> 8):
@@ -323,19 +323,19 @@ class Cpu:
         # I changed to True to make test for opcode 0xCB (WAI) pass
         return True
 
-    @cython.cfunc
+    @cython.ccall
     def write(self, addr: cython.uint, data: cython.uchar):
         self.cycles += self.get_clock_cycles(addr)
         self.icycles += 1
         self.bus.write(addr, data)
 
-    @cython.cfunc
+    @cython.ccall
     def read(self, addr: cython.uint) -> cython.uchar:
         self.cycles += self.get_clock_cycles(addr)
         self.icycles += 1
         return self.bus.read(addr)
 
-    @cython.cfunc
+    @cython.ccall
     def readDirect(self, address: cython.uint) -> cython.uchar:
         # this is not part of bsnes implementation but it seems
         # tests expect the page to wrap around when in emulation mode
@@ -348,48 +348,48 @@ class Cpu:
             return self.read(self.D.w | address & 0xff)
         return self.read(self.D.w + address & 0xffff)
 
-    @cython.cfunc
+    @cython.ccall
     def writeDirect(self, address: cython.uint, data: cython.uchar):
         if self.EF and self.D.l == 0:
             self.write(self.D.w | address & 0xff, data)
         else:
             self.write(self.D.w + address & 0xffff, data)
 
-    @cython.cfunc
+    @cython.ccall
     def readDirectN(self, address: cython.uint) -> cython.uchar:
         return self.read(self.D.w + address & 0xffff)
 
-    @cython.cfunc
+    @cython.ccall
     def readBank(self, address: cython.uint) -> cython.uchar:
         return self.read((self.DB.l << 16) + address & 0xffffff)
 
-    @cython.cfunc
+    @cython.ccall
     def writeBank(self, address: cython.uint, data: cython.uchar):
         self.write((self.DB.l << 16) + address & 0xffffff, data)
 
-    @cython.cfunc
+    @cython.ccall
     def readLong(self, address: cython.uint) -> cython.uchar:
         return self.read(address & 0xffffff)
 
-    @cython.cfunc
+    @cython.ccall
     def writeLong(self, address: cython.uint, data: cython.uchar):
         self.write(address & 0xffffff, data)
 
-    @cython.cfunc
+    @cython.ccall
     def readStack(self, address: cython.uint) -> cython.uchar:
         return self.read(self.S.w + address & 0xffff)
 
-    @cython.cfunc
+    @cython.ccall
     def writeStack(self, address: cython.uint, data: cython.uchar):
         self.write(self.S.w + address & 0xffff, data)
 
-    @cython.cfunc
+    @cython.ccall
     def fetch(self) -> cython.uchar:
         data = self.read(self.PC.d)
         self.PC.w += 1
         return data
 
-    @cython.cfunc
+    @cython.ccall
     def pull(self) -> cython.uchar:
         if self.EF:
             self.S.l += 1
@@ -397,7 +397,7 @@ class Cpu:
             self.S.w += 1
         return self.read(self.S.w)
 
-    @cython.cfunc
+    @cython.ccall
     def push(self, data: cython.uchar):
         self.write(self.S.w, data)
         if self.EF:
@@ -405,12 +405,12 @@ class Cpu:
         else:
             self.S.w -= 1
 
-    @cython.cfunc
+    @cython.ccall
     def pullN(self) -> cython.uchar:
         self.S.w += 1
         return self.read(self.S.w)
 
-    @cython.cfunc
+    @cython.ccall
     def pushN(self, data: cython.uchar):
         self.write(self.S.w, data)
         self.S.w -= 1

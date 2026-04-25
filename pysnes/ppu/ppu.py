@@ -780,7 +780,7 @@ class Ppu:
             self.sub_bgs[row + x] = sub_u32
             self.main_layer[row + x] = 0
 
-    @cython.cfunc
+    @cython.ccall
     def draw_background_scanline(self, bg: Background, bpp: cython.uchar, priority_selector: cython.bint):
         scanline = self.v_counter  # TODO move to method argument
 
@@ -1039,7 +1039,7 @@ class Ppu:
     def draw_tile(
         self,
         tile: Tilemap | Object,
-        tile_data: bytes,
+        tile_data,
         tile_data_index: int,
         bpp: int,
         x_offset: int,
@@ -1075,7 +1075,7 @@ class Ppu:
     def draw_point(
         self,
         i: int,
-        tile_data: bytes,
+        tile_data,
         tile_data_index: int,
         bpp: int,
         palette: int,
@@ -1180,7 +1180,7 @@ class Ppu:
                 tile_character=obj.character,
             )
 
-    def get_obj_dimensions(self, obj_size: int) -> Tuple[int, int]:
+    def get_obj_dimensions(self, obj_size: cython.bint) -> Tuple[int, int]:
         """
         000 =  8x8  and 16x16 sprites
         001 =  8x8  and 32x32 sprites

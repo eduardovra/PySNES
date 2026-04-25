@@ -297,7 +297,7 @@ class Ppu:
 
     @oamaddh.setter
     def oamaddh(self, data: int) -> None:
-        self._oam_priority_activation = bool(data & 0x80)
+        self._oam_priority_activation = data & 0x80
         self._oamadd = (self._oamadd & 0x0FF) | (data & 1) << 8
         self._oamodd = 0
 
@@ -363,18 +363,18 @@ class Ppu:
         self.bg4.tiledata_addr = (data >> 4 & 15) << 13
 
     def tm_set(self, data: int) -> None:
-        self.bg1.main_screen_enable = bool(data >> 0 & 1)
-        self.bg2.main_screen_enable = bool(data >> 1 & 1)
-        self.bg3.main_screen_enable = bool(data >> 2 & 1)
-        self.bg4.main_screen_enable = bool(data >> 3 & 1)
-        self.oam_main_screen_enable = bool(data >> 4 & 1)
+        self.bg1.main_screen_enable = data >> 0 & 1
+        self.bg2.main_screen_enable = data >> 1 & 1
+        self.bg3.main_screen_enable = data >> 2 & 1
+        self.bg4.main_screen_enable = data >> 3 & 1
+        self.oam_main_screen_enable = data >> 4 & 1
 
     def ts_set(self, data: int) -> None:
-        self.bg1.sub_screen_enable = bool(data >> 0 & 1)
-        self.bg2.sub_screen_enable = bool(data >> 1 & 1)
-        self.bg3.sub_screen_enable = bool(data >> 2 & 1)
-        self.bg4.sub_screen_enable = bool(data >> 3 & 1)
-        self.oam_sub_screen_enable = bool(data >> 4 & 1)
+        self.bg1.sub_screen_enable = data >> 0 & 1
+        self.bg2.sub_screen_enable = data >> 1 & 1
+        self.bg3.sub_screen_enable = data >> 2 & 1
+        self.bg4.sub_screen_enable = data >> 3 & 1
+        self.oam_sub_screen_enable = data >> 4 & 1
 
     def m7_write(self, reg: int, data: int) -> None:
         """Handle 2-write Mode 7 matrix registers (M7A-M7Y, 0x211B-0x2120)."""
@@ -650,22 +650,22 @@ class Ppu:
         cmath_mode: cython.uint = (cgwsel >> 4) & 0x3  # 00..11
         if cgadsub == 0 or cmath_mode == 0x3:
             return
-        subtract: cython.bint = bool(cgadsub & 0x80)
-        half: cython.bint = bool(cgadsub & 0x40)
-        enable_bg1: cython.bint = bool(cgadsub & 0x01)
-        enable_bg2: cython.bint = bool(cgadsub & 0x02)
-        enable_bg3: cython.bint = bool(cgadsub & 0x04)
-        enable_bg4: cython.bint = bool(cgadsub & 0x08)
-        enable_obj: cython.bint = bool(cgadsub & 0x10)
-        enable_back: cython.bint = bool(cgadsub & 0x20)
+        subtract: cython.bint = cgadsub & 0x80
+        half: cython.bint = cgadsub & 0x40
+        enable_bg1: cython.bint = cgadsub & 0x01
+        enable_bg2: cython.bint = cgadsub & 0x02
+        enable_bg3: cython.bint = cgadsub & 0x04
+        enable_bg4: cython.bint = cgadsub & 0x08
+        enable_obj: cython.bint = cgadsub & 0x10
+        enable_back: cython.bint = cgadsub & 0x20
 
         # Color-window (math window) setup: WOBJSEL bits 4-7, WOBJLOG bits 2-3.
         # Per $2125 spec (matching $2123 W12SEL convention): bit 0=invert, bit 1=enable.
         # Pairs: bits 0-1 OBJ W1, 2-3 OBJ W2, 4-5 MATH W1, 6-7 MATH W2.
-        math_w1_invert: cython.bint = bool((self.wobjsel >> 4) & 1)
-        math_w1_enable: cython.bint = bool((self.wobjsel >> 5) & 1)
-        math_w2_invert: cython.bint = bool((self.wobjsel >> 6) & 1)
-        math_w2_enable: cython.bint = bool((self.wobjsel >> 7) & 1)
+        math_w1_invert: cython.bint = (self.wobjsel >> 4) & 1
+        math_w1_enable: cython.bint = (self.wobjsel >> 5) & 1
+        math_w2_invert: cython.bint = (self.wobjsel >> 6) & 1
+        math_w2_enable: cython.bint = (self.wobjsel >> 7) & 1
         math_logic: cython.uint = (self.wobjlog >> 2) & 0x3  # 0=OR,1=AND,2=XOR,3=XNOR
 
         y: cython.int = self.v_counter - 1
@@ -801,7 +801,7 @@ class Ppu:
         # $212A WBGLOG combines the two window outputs per BG:
         #   bits 2n..2n+1 for BGn: 0=OR, 1=AND, 2=XOR, 3=XNOR.
         bg_idx: cython.uint = bg.number - 1
-        window_active: cython.bint = bool(self.tmw & (1 << bg_idx))
+        window_active: cython.bint = self.tmw & (1 << bg_idx)
         w1_enable: cython.bint = False
         w1_invert: cython.bint = False
         w2_enable: cython.bint = False
@@ -809,25 +809,25 @@ class Ppu:
         combine_logic: cython.uint = 0
         if window_active:
             if bg_idx == 0:
-                w1_enable = bool((self.w12sel >> 1) & 1)
-                w1_invert = bool(self.w12sel & 1)
-                w2_enable = bool((self.w12sel >> 3) & 1)
-                w2_invert = bool((self.w12sel >> 2) & 1)
+                w1_enable = (self.w12sel >> 1) & 1
+                w1_invert = self.w12sel & 1
+                w2_enable = (self.w12sel >> 3) & 1
+                w2_invert = (self.w12sel >> 2) & 1
             elif bg_idx == 1:
-                w1_enable = bool((self.w12sel >> 5) & 1)
-                w1_invert = bool((self.w12sel >> 4) & 1)
-                w2_enable = bool((self.w12sel >> 7) & 1)
-                w2_invert = bool((self.w12sel >> 6) & 1)
+                w1_enable = (self.w12sel >> 5) & 1
+                w1_invert = (self.w12sel >> 4) & 1
+                w2_enable = (self.w12sel >> 7) & 1
+                w2_invert = (self.w12sel >> 6) & 1
             elif bg_idx == 2:
-                w1_enable = bool((self.w34sel >> 1) & 1)
-                w1_invert = bool(self.w34sel & 1)
-                w2_enable = bool((self.w34sel >> 3) & 1)
-                w2_invert = bool((self.w34sel >> 2) & 1)
+                w1_enable = (self.w34sel >> 1) & 1
+                w1_invert = self.w34sel & 1
+                w2_enable = (self.w34sel >> 3) & 1
+                w2_invert = (self.w34sel >> 2) & 1
             elif bg_idx == 3:
-                w1_enable = bool((self.w34sel >> 5) & 1)
-                w1_invert = bool((self.w34sel >> 4) & 1)
-                w2_enable = bool((self.w34sel >> 7) & 1)
-                w2_invert = bool((self.w34sel >> 6) & 1)
+                w1_enable = (self.w34sel >> 5) & 1
+                w1_invert = (self.w34sel >> 4) & 1
+                w2_enable = (self.w34sel >> 7) & 1
+                w2_invert = (self.w34sel >> 6) & 1
             combine_logic = (self.wbglog >> (bg_idx * 2)) & 0x3
 
         # Mosaic: when enabled for this BG with size > 1, every S×S block of
@@ -1238,7 +1238,7 @@ class OAM:
             obj = self.objects[obj_num]
             sx = data >> (obj_index * 2)
             obj.x = (obj.x & 0xFF) | (sx & 0x01) << 8
-            obj.size = bool(sx & 0x02)
+            obj.size = sx & 0x02
 
     def update_low_table(self, addr: int) -> None:
         obj_num = addr // 4
@@ -1255,10 +1255,10 @@ class OAM:
         obj.character = obj.character & 0x100 | data & 0xFF
 
         data = self.oam[addr + 3]
-        obj.name_select = bool(data & 0x01)
+        obj.name_select = data & 0x01
         obj.palette = (
             (data >> 1) & 0x07
         ) + 8  # Objects use the palettes present in the second half of CGRAM
         obj.priority = (data >> 4) & 0x03
-        obj.h_flip = bool(data & 0x40)
-        obj.v_flip = bool(data & 0x80)
+        obj.h_flip = data & 0x40
+        obj.v_flip = data & 0x80

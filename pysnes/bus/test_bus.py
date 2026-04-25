@@ -625,25 +625,23 @@ def test_rdvramh_routes_to_ppu():
 
 
 # ---------------------------------------------------------------------------
-# Open-bus behavior for unmapped regions in banks $00-$3F
+# Open-bus behavior for known system-area holes
 # ---------------------------------------------------------------------------
-# Real hardware returns the last value on the CPU data bus (MDR). We return 0
-# as a simplification — the important thing is that reads don't raise.
 
 def test_open_bus_unmapped_2000_range():
-    """Reads in $2000-$20FF (unmapped, below PPU regs) must not raise."""
+    """Reads in $2000-$20FF use the temporary open-bus fallback."""
     bus, *_ = make_bus()
-    assert bus[0x0020F1] == 0    # Final Fight / SimCity touch this region
+    assert bus[0x0020F1] == 0
 
 
 def test_open_bus_unmapped_2200_range():
-    """Reads in $2200-$3FFF (unmapped, above PPU regs) must not raise."""
+    """Reads in $2200-$3FFF use the temporary open-bus fallback."""
     bus, *_ = make_bus()
-    assert bus[0x0027A8] == 0    # Zelda touches this
+    assert bus[0x0027A8] == 0
 
 
 def test_open_bus_unmapped_mirrored_bank():
-    """The same open-bus behavior applies through the $80-$BF LoROM mirror."""
+    """The same open-bus fallback applies through the $80-$BF mirror."""
     bus, *_ = make_bus()
     assert bus[0x8020F1] == 0
     assert bus[0x8027A8] == 0
@@ -675,25 +673,25 @@ def test_wram_mirror_bank_ff_extended_ram():
 
 
 # ---------------------------------------------------------------------------
-# Unmapped writes in the system area should be silently dropped (open-bus)
+# Open-bus writes for known system-area holes
 # ---------------------------------------------------------------------------
 
 def test_write_unmapped_2000_range_is_dropped():
-    """Writes to $2000-$20FF must not raise (Final Fight hits this)."""
+    """Writes to $2000-$20FF use the temporary open-bus fallback."""
     bus, *_ = make_bus()
-    bus[0x0020B4] = 0xE1   # must not raise
+    bus[0x0020B4] = 0xE1
 
 
 def test_write_unmapped_2200_range_is_dropped():
-    """Writes to $2200-$3FFF must not raise."""
+    """Writes to $2200-$3FFF use the temporary open-bus fallback."""
     bus, *_ = make_bus()
     bus[0x003000] = 0xFF
 
 
 def test_write_unmapped_stack_region_dropped():
-    """Writes to $7FFF in bank $00 (above LowRAM, not a register) must not raise."""
+    """Writes to $7FFF in bank $00 use the temporary open-bus fallback."""
     bus, *_ = make_bus()
-    bus[0x007FFF] = 0x00   # Zelda's stack push hits this
+    bus[0x007FFF] = 0x00
 
 
 # ---------------------------------------------------------------------------
@@ -822,13 +820,11 @@ def test_hirom_sram_no_sram_returns_open_bus():
 def test_hirom_sram_window_bounds():
     """Bank $20 addr $5FFF is NOT SRAM (below the $6000-$7FFF window)."""
     bus, *_ = make_bus(sram_size=0x2000, mapping_mode=MappingMode.HIROM)
-    # $5FFF is above LowRAM ($0000-$1FFF) and hits the system-area fallthrough.
-    # Must not be routed as SRAM; a write there must not persist as a readable
-    # SRAM byte at offset $5FFF & sram_mask.
+    # $5FFF is above LowRAM ($0000-$1FFF) and outside the HiROM SRAM window.
+    # It currently uses the known system-area open-bus fallback rather than
+    # aliasing SRAM.
     bus[0x206000] = 0xAA          # SRAM byte 0
-    # $205FFF would alias SRAM offset $5FFF & 0x1FFF = 0x1FFF if we wrongly
-    # routed it; ensure it does NOT overwrite byte 0.
-    bus[0x205FFF] = 0x00          # should be dropped (system area)
+    bus[0x205FFF] = 0x00
     assert bus[0x206000] == 0xAA
 
 

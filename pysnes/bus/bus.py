@@ -256,13 +256,21 @@ class Bus:
 
                 return self.dma_ppu2_hw_registers[addr - 0x4200]
 
-            # Unmapped CPU-side regions in the system area ($2000-$20FF,
-            # $2200-$3FFF, $4018-$41FF, $4500-$7FFF): real hardware returns
-            # the MDR (last bus value). Simplified to 0 — matches what many
-            # games read into these gaps and keeps boot past unmapped probes.
-            return 0
+            # TODO: Implement true open-bus/MDR behavior instead of returning 0
+            # in these known system-area holes.
+            if (
+                0x2000 <= addr <= 0x20FF
+                or 0x2200 <= addr <= 0x3FFF
+                or 0x4018 <= addr <= 0x41FF
+                or 0x4500 <= addr <= 0x7FFF
+            ):
+                return 0
 
-        raise RuntimeError(f"Reading unmapped memory region: 0x{abs_addr:06X}")
+            raise NotImplementedError(
+                f"Reading unmapped memory region: 0x{abs_addr:06X}"
+            )
+
+        raise NotImplementedError(f"Reading unmapped memory region: 0x{abs_addr:06X}")
 
     def __getitem__(self, abs_addr: cython.uint) -> cython.uchar:
         return self.read(abs_addr)
@@ -642,9 +650,19 @@ class Bus:
                 self.dma_ppu2_hw_registers[addr - 0x4200] = data
                 return
 
-            # Unmapped system-area writes: drop silently (open-bus write). See
-            # the matching read() fallthrough for the rationale.
-            return
+            # TODO: Implement true open-bus side effects/MDR behavior instead
+            # of silently dropping writes in these known system-area holes.
+            if (
+                0x2000 <= addr <= 0x20FF
+                or 0x2200 <= addr <= 0x3FFF
+                or 0x4018 <= addr <= 0x41FF
+                or 0x4500 <= addr <= 0x7FFF
+            ):
+                return
+
+            raise NotImplementedError(
+                f"Writting unmapped memory region: 0x{abs_addr:06X} = 0x{data:02X}"
+            )
 
         if 0x7E2000 <= abs_addr <= 0x7E7FFF:
             self.high_ram[abs_addr - 0x7E2000] = data
@@ -654,7 +672,9 @@ class Bus:
             self.extended_ram[abs_addr - 0x7E8000] = data
             return
 
-        raise RuntimeError(f"Writting unmapped memory region: 0x{abs_addr:06X} = 0x{data:02X}")
+        raise NotImplementedError(
+            f"Writting unmapped memory region: 0x{abs_addr:06X} = 0x{data:02X}"
+        )
 
     def __setitem__(self, abs_addr: cython.uint, data: cython.uchar):
         self.write(abs_addr, data)

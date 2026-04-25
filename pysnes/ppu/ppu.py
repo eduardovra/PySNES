@@ -133,8 +133,19 @@ class Ppu:
         # internal OAM address must be reloaded from OAMADDL/OAMADDH. The reload
         # also fires at V-Blank entry when forced-blank is off. Not yet wired —
         # belongs in the V-Blank transition in _vblank_start, not here.
-        self.display_brightness = data >> 0 & 15
-        self.display_disable = data >> 7 & 1
+        new_disable = (data >> 7) & 1
+        if new_disable and not self.display_disable and 0 < self.v_counter < _VBLANK_START_LINE:
+            # Forced blank just asserted during active display. Rows 0..v_counter-1
+            # have already been rendered with display enabled; retroactively clear
+            # them so stale pixels don't appear at the top of the frame.
+            black = 0x000000FF
+            limit = self.v_counter * SCREEN_WIDTH
+            for i in range(limit):
+                self.main_bgs[i] = black
+                self.sub_bgs[i] = black
+                self.main_layer[i] = 0
+        self.display_brightness = data & 0xF
+        self.display_disable = new_disable
 
     @property
     def bgmode(self) -> int:
@@ -501,12 +512,46 @@ class Ppu:
         Render current scanline in self.v_counter
         https://bin.smwcentral.net/u/4842/regs.txt
         """
-        # Check F-Blank
+        # Forced blank outputs black, not the previous framebuffer contents.
         if self.display_disable:
+            self.draw_scanline_forced_blank()
             return
 
         self._render_layers()
         self.composite_scanline()
+        if self.display_brightness < 15:
+            self.apply_brightness_scanline()
+
+    def draw_scanline_forced_blank(self) -> None:
+        y = self.v_counter - 1
+        row = y * SCREEN_WIDTH
+        black_u32 = 0x000000FF
+        for x in range(SCREEN_WIDTH):
+            self.main_bgs[row + x] = black_u32
+            self.sub_bgs[row + x] = black_u32
+            self.main_layer[row + x] = 0
+
+    def apply_brightness_scanline(self) -> None:
+        """Scale the rendered scanline by the master brightness (0–15).
+
+        Brightness 15 = full; brightness 0 = black.  Called only when
+        display_brightness < 15 to avoid the overhead on the common case.
+        """
+        brightness: cython.uint = self.display_brightness
+        y: cython.int = self.v_counter - 1
+        row: cython.uint = y * SCREEN_WIDTH
+        if brightness == 0:
+            black: cython.uint = 0x000000FF
+            for x in range(SCREEN_WIDTH):
+                self.main_bgs[row + x] = black
+            return
+        for x in range(SCREEN_WIDTH):
+            idx: cython.uint = row + x
+            p: cython.uint = self.main_bgs[idx]
+            r: cython.uint = ((p >> 24) & 0xFF) * brightness // 15
+            g: cython.uint = ((p >> 16) & 0xFF) * brightness // 15
+            b: cython.uint = ((p >> 8) & 0xFF) * brightness // 15
+            self.main_bgs[idx] = (r << 24) | (g << 16) | (b << 8) | (p & 0xFF)
 
     def _render_layers(self):
         # Draw picture

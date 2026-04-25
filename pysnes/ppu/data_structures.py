@@ -5,7 +5,7 @@ import cython
 
 @cython.cclass
 class Background:
-    screen_size = cython.declare(cython.uint)
+    screen_size = cython.declare(cython.uint, visibility="public")
 
     def __init__(
         self,
@@ -103,9 +103,9 @@ class Object:
 class Tilemap:
     addr: int
     palette: int
-    priority: bool
-    h_flip: bool
-    v_flip: bool
+    priority: int
+    h_flip: int
+    v_flip: int
 
     @classmethod
     def from_buffer(cls, data: bytearray, addr: int) -> "Tilemap":
@@ -114,9 +114,9 @@ class Tilemap:
         return cls(
             addr=(high & 3) << 8 | low,
             palette=(high >> 2) & 7,
-            priority=bool((high >> 5) & 1),
-            h_flip=bool((high >> 6) & 1),
-            v_flip=bool((high >> 7) & 1),
+            priority=(high >> 5) & 1,
+            h_flip=(high >> 6) & 1,
+            v_flip=(high >> 7) & 1,
         )
 
 

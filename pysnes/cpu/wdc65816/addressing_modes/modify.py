@@ -21,9 +21,12 @@ def BankModify(cpu: Cpu, mode_8bit: bool, func):
         cpu.V.l = cpu.fetch()
         cpu.V.h = cpu.fetch()
         cpu.W.l = cpu.readBank(cpu.V.w + 0)
-        if cpu.EF:  # TODO only added to make tests pass
-            cpu.writeBank(cpu.V.w + 0, cpu.W.l)  # TODO only added to make tests pass
-        cpu.idle()
+        # 65816 emulation (EF=1) replays the 6502-era RMW dummy write-back of
+        # the unmodified value in place of the native-mode internal idle.
+        if cpu.EF:
+            cpu.writeBank(cpu.V.w + 0, cpu.W.l)
+        else:
+            cpu.idle()
         cpu.W.l = func(cpu, mode_8bit, cpu.W.l)
         cpu.writeBank(cpu.V.w + 0, cpu.W.l)
     else:
@@ -44,9 +47,11 @@ def BankIndexedModify(cpu: Cpu, mode_8bit: bool, func):
         cpu.V.h = cpu.fetch()
         cpu.idle()
         cpu.W.l = cpu.readBank(cpu.V.w + cpu.X.w + 0)
-        if cpu.EF:  # TODO only added to make tests pass
-            cpu.writeBank(cpu.V.w + cpu.X.w + 0, cpu.W.l)  # TODO only added to make tests pass
-        cpu.idle()
+        # See BankModify: EF=1 dummy write-back in place of the native idle.
+        if cpu.EF:
+            cpu.writeBank(cpu.V.w + cpu.X.w + 0, cpu.W.l)
+        else:
+            cpu.idle()
         cpu.W.l = func(cpu, mode_8bit, cpu.W.l)
         cpu.writeBank(cpu.V.w + cpu.X.w + 0, cpu.W.l)
     else:
@@ -67,9 +72,11 @@ def DirectModify(cpu: Cpu, mode_8bit: bool, func):
         cpu.U.l = cpu.fetch()
         cpu.idle2()
         cpu.W.l = cpu.readDirect(cpu.U.l + 0)
-        if cpu.EF:  # TODO only added to make tests pass
-            cpu.writeDirect(cpu.U.l + 0, cpu.W.l)  # TODO only added to make tests pass
-        cpu.idle()
+        # See BankModify: EF=1 dummy write-back in place of the native idle.
+        if cpu.EF:
+            cpu.writeDirect(cpu.U.l + 0, cpu.W.l)
+        else:
+            cpu.idle()
         cpu.W.l = func(cpu, mode_8bit, cpu.W.l)
         cpu.writeDirect(cpu.U.l + 0, cpu.W.l)
     else:
@@ -90,9 +97,11 @@ def DirectIndexedModify(cpu: Cpu, mode_8bit: bool, func):
         cpu.idle2()
         cpu.idle()
         cpu.W.l = cpu.readDirect(cpu.U.l + cpu.X.w + 0)
-        if cpu.EF:  # TODO only added to make tests pass
-            cpu.writeDirect(cpu.U.l + cpu.X.w + 0, cpu.W.l)  # TODO only added to make tests pass
-        cpu.idle()
+        # See BankModify: EF=1 dummy write-back in place of the native idle.
+        if cpu.EF:
+            cpu.writeDirect(cpu.U.l + cpu.X.w + 0, cpu.W.l)
+        else:
+            cpu.idle()
         cpu.W.l = func(cpu, mode_8bit, cpu.W.l)
         cpu.writeDirect(cpu.U.l + cpu.X.w + 0, cpu.W.l)
     else:

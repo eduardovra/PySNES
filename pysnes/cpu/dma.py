@@ -1,8 +1,8 @@
 from typing import TYPE_CHECKING
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 if TYPE_CHECKING:
-    from ...bus import Bus
+    from ..bus import Bus
 
 # Number of data bytes consumed per transfer unit for each HDMA/DMA mode.
 _HDMA_UNIT_BYTES = [1, 2, 2, 4, 4, 4, 2, 4]
@@ -49,39 +49,41 @@ class Channel:
     _hdma_active: bool = False  # False once end-of-table (count=0) is reached
 
     def do_transfer(self) -> None:
-        if self.direction == 1:
-            print(self)
-        # source_address == 0x8000
-        # source_bank == 0x03
-        # target_address == 0x18 --> $2118 --> VRAM Write
-        # direction == 0 --> A to B
-        # transfer_size == 0x1000 (4096)
-        # transfer_mode == 0x1 --> 2 bytes to 2 registers (write once)
-        # fixed_transfer == 0x0 --> increment/decrement dma source addr
-        # reverse_transfer == 0 --> Increment
-        assert self.transfer_mode in (0, 1)
-        assert self.reverse_transfer == 0
-        # TODO only direction 0 was tested. for dir == 1, I completely guessed the implementation
-        assert self.direction in (0,)
-
-        if self.direction == 0:
-            target_addr = 0x2100 | self.target_address  # B bus
+        # On real hardware each GDMA byte costs 8 master-clock cycles and the
+        # CPU is halted for the duration.  We charge those cycles to cpu.cycles
+        # so the scheduler sees the correct elapsed time and NMI fires at the
+        # right frame boundary.  Per-channel overhead (8 MC bus-lock + 8 MC
+        # bus-unlock) is included via the +16 constant below.
+        count = self.transfer_size if self.transfer_size else 0x10000
+        offsets = _HDMA_TARGET_OFFSETS[self.transfer_mode]
+        unit_len = len(offsets)
+        # A-bus step: +1, -1, or 0 depending on fixed/reverse flags.
+        if self.fixed_transfer:
+            step = 0
         else:
-            target_addr = self.source_bank << 16 | self.source_address
+            step = -1 if self.reverse_transfer else 1
 
-        for index in range(self.transfer_size):
+        for index in range(count):
+            a_bus_addr = (self.source_bank << 16) | self.source_address
+            b_bus_addr = 0x2100 | ((self.target_address + offsets[index % unit_len]) & 0xFF)
+
             if self.direction == 0:
-                data = self.bus.read(self.source_bank << 16 | self.source_address) # A bus
+                # A bus → B bus (CPU/ROM/RAM → PPU)
+                self.bus.write(b_bus_addr, self.bus.read(a_bus_addr))
             else:
-                data = self.bus.read(0x2100 | self.target_address)
+                # B bus → A bus (PPU → CPU/RAM)
+                self.bus.write(a_bus_addr, self.bus.read(b_bus_addr))
 
-            if self.transfer_mode == 0:  # Write 1 byte, B0->$21xx
-                self.bus.write(target_addr, data)
-            elif self.transfer_mode == 1:  # Write 2 bytes, B0->$21xx B1->$21XX+1
-                self.bus.write(target_addr + (index & 1), data)
+            # A-bus address increments within the bank (16-bit wrap; does not
+            # carry into source_bank on real hardware).
+            self.source_address = (self.source_address + step) & 0xFFFF
 
-            if not self.fixed_transfer:
-                self.source_address += 1
+        # Advance master_clock directly by the DMA cost (8 MC/byte + 16 MC
+        # per-channel overhead for bus-lock/unlock).  Bypassing cpu.cycles
+        # means the CPU's next _step() sees the correct clock position without
+        # triggering the scheduler's event loop mid-transfer — on real hardware
+        # the CPU is halted during GDMA so no instruction events should fire.
+        self.bus.scheduler.master_clock += count * 8 + 16
 
 
 class DMA:
@@ -150,7 +152,50 @@ class DMA:
             channel.unknown = data
             return
 
-        raise RuntimeError("Address not mapped in DMA: 0x{:06X}".format(abs_addr))
+        # $43xC-$43xE are unused/open-bus on real hardware; writes are ignored.
+        # Anything else in this mirrored range is treated the same way rather
+        # than crashing the emulator on stray writes (e.g. when a game's stack
+        # drifts into the DMA register page).
+        return
+
+    def __getitem__(self, abs_addr: int) -> int:
+        channel = self.channels[abs_addr >> 4 & 7]
+        addr = abs_addr & 0xFF8F
+
+        if addr == 0x4300:  # DMAPx
+            return (
+                (channel.transfer_mode & 7)
+                | ((channel.fixed_transfer & 1) << 3)
+                | ((channel.reverse_transfer & 1) << 4)
+                | ((channel.unused & 1) << 5)
+                | ((channel.indirect & 1) << 6)
+                | ((channel.direction & 1) << 7)
+            )
+        if addr == 0x4301:  # BBADx
+            return channel.target_address & 0xFF
+        if addr == 0x4302:  # A1TxL
+            return channel.source_address & 0xFF
+        if addr == 0x4303:  # A1TxH
+            return (channel.source_address >> 8) & 0xFF
+        if addr == 0x4304:  # A1Bx
+            return channel.source_bank & 0xFF
+        if addr == 0x4305:  # DASxL
+            return channel.transfer_size & 0xFF
+        if addr == 0x4306:  # DASxH
+            return (channel.transfer_size >> 8) & 0xFF
+        if addr == 0x4307:  # DASBx
+            return channel.indirect_bank & 0xFF
+        if addr == 0x4308:  # A2AxL
+            return channel.hdma_address & 0xFF
+        if addr == 0x4309:  # A2AxH
+            return (channel.hdma_address >> 8) & 0xFF
+        if addr == 0x430A:  # NTRLx
+            return channel.line_counter & 0xFF
+        if addr == 0x430B or addr == 0x430F:  # UNUSEDx (readable mirror)
+            return channel.unknown & 0xFF
+
+        # $43xC-$43xE are unused/open-bus on real hardware.
+        return 0
 
     def mdmaen_set(self, data: int) -> None:
         for enable_bit, channel in enumerate(self.channels):

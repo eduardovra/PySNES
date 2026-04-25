@@ -1,10 +1,9 @@
-# cython: profile=True
-
+import os
 from typing import List
 
 import cython
 
-from ..rom import Rom
+from ..rom import MappingMode, Rom
 from ..cpu import Cpu
 from ..apu import Apu
 from ..ppu import Ppu
@@ -14,15 +13,22 @@ from ..scheduler import Scheduler
 
 @cython.cclass
 class Bus:
-    cpu: Cpu
-    ppu: Ppu
-    scheduler: Scheduler
-    low_ram: cython.uchar[:]
-    high_ram: cython.uchar[:]
-    extended_ram: cython.uchar[:]
-    dma_ppu2_hw_registers: cython.uchar[:]
-    hblank: cython.bint
-    vblank: cython.bint
+    cpu = cython.declare(object, visibility="public")
+    ppu = cython.declare(object, visibility="public")
+    apu = cython.declare(object, visibility="public")
+    scheduler = cython.declare(object, visibility="public")
+    rom = cython.declare(object, visibility="public")
+    low_ram = cython.declare(cython.uchar[:])
+    high_ram = cython.declare(cython.uchar[:])
+    extended_ram = cython.declare(cython.uchar[:])
+    sram = cython.declare(cython.uchar[:])
+    sram_size = cython.declare(cython.uint)
+    sram_mask = cython.declare(cython.uint)
+    sram_dirty = cython.declare(cython.bint)
+    dma_ppu2_hw_registers = cython.declare(cython.uchar[:])
+    hblank = cython.declare(cython.bint)
+    vblank = cython.declare(cython.bint)
+    is_hirom = cython.declare(cython.bint)
 
     def __init__(
         self,
@@ -33,7 +39,9 @@ class Bus:
         controllers: List[Controller],
         scheduler: Scheduler,
     ) -> None:
-        self.rom = rom  # LoROM section (program memory)
+        self.rom = rom  # program memory (LoROM or HiROM, selected below)
+        mapping_mode = rom.snes_header.mapping_mode
+        self.is_hirom = mapping_mode == MappingMode.HIROM or mapping_mode == MappingMode.HIROM_FAST
         self.cpu = cpu
         self.apu = apu  # Sound system [0x2140-0x217F]
         self.ppu = ppu
@@ -42,6 +50,10 @@ class Bus:
         self.high_ram = bytearray(0xE000)
         self.dma_ppu2_hw_registers = bytearray(0x44FF - 0x4200 + 1)
         self.extended_ram = bytearray(0x7FFFFF - 0x7E8000 + 1)
+        self.sram_size = getattr(rom, "sram_size", 0)
+        self.sram_mask = self.sram_size - 1 if self.sram_size else 0
+        self.sram = bytearray(self.sram_size if self.sram_size else 1)
+        self.sram_dirty = False
         self.controller_port1, self.controller_port2 = controllers
 
         # H/V blank flags owned by the bus; set by the PPU scheduler events
@@ -51,6 +63,33 @@ class Bus:
         # WRAM port address register (17-bit, 0x2181-0x2183)
         self._wmadd = 0
 
+        # Math hardware registers ($4202-$4206 write, $4214-$4217 read)
+        self._wrmpya: cython.uchar = 0   # $4202 multiplicand
+        self._wrdiv: cython.uint = 0     # $4204-$4205 dividend (16-bit)
+
+    def load_sram(self, path: str) -> int:
+        """Load SRAM bytes from `path`. Returns the number of bytes loaded (0 if no SRAM or file missing)."""
+        i: cython.uint
+        n: cython.uint
+        if self.sram_size == 0 or not os.path.exists(path):
+            return 0
+        with open(path, "rb") as f:
+            data: bytes = f.read()
+        n = min(len(data), self.sram_size)
+        for i in range(n):
+            self.sram[i] = data[i]
+        self.sram_dirty = False
+        return n
+
+    def save_sram(self, path: str) -> int:
+        """Write SRAM bytes to `path` if dirty. Returns bytes written (0 if no SRAM or not dirty)."""
+        if self.sram_size == 0 or not self.sram_dirty:
+            return 0
+        with open(path, "wb") as f:
+            f.write(bytes(self.sram[:self.sram_size]))
+        self.sram_dirty = False
+        return self.sram_size
+
     def raise_nmi(self) -> None:
         """Called by PPU at V-Blank start (rising NMI edge)."""
         self.cpu.status.nmi_line = True
@@ -59,8 +98,14 @@ class Bus:
         self.cpu.nmi_rising_edge()
 
     def lower_nmi(self) -> None:
-        """Called by PPU at V-Blank end (falling NMI edge)."""
-        self.cpu.status.nmi_line = False
+        """Called by PPU at V-Blank end.
+
+        Per SNES hardware, $4210 bit 7 is NOT auto-cleared at V-Blank end —
+        the flag persists until the CPU reads $4210. So this is a no-op for
+        now; we keep the hook for future use (e.g. dropping the NMI interrupt
+        line when NMITIMEN bit 7 is cleared by the game).
+        """
+        # Intentionally no-op on nmi_line. Kept as a named hook.
 
     def _update_controller_autojoypad_read(self) -> None:
         self.controller_port1.latch(0)
@@ -80,15 +125,41 @@ class Bus:
         bank: cython.uint = abs_addr >> 16 & 0xFF
         addr: cython.uint = abs_addr & 0xFFFF
 
-        # mirror LoROM sections
-        if 0x80 <= bank <= 0xFD:
+        # Mirror: banks $80-$FF shadow $00-$7F.
+        # $80-$FD → $00-$7D maps the LoROM program area; $FE-$FF mirror the
+        # $7E-$7F WRAM banks. The abs_addr rewrite is needed because the
+        # WRAM/high-RAM branches below match on abs_addr, not on bank.
+        if 0x80 <= bank <= 0xFF:
             bank = bank - 0x80
+            abs_addr = abs_addr - 0x800000
 
-        if ((0x00 <= bank <= 0x6F) and 0x8000 <= addr <= 0xFFFF) or \
-            ((0x40 <= bank <= 0x6F) and (0x0000 <= addr <= 0xFFFF)) or \
-            ((0x70 <= bank <= 0x7D) and (0x8000 <= addr <= 0xFFFF)):
-            rom_addr: cython.uint = (bank * 0x8000) + (addr - (0x8000 if addr >= 0x8000 else 0))
-            return self.rom[rom_addr]
+        if self.is_hirom:
+            # HiROM ROM: banks $00-$3F at $8000-$FFFF, banks $40-$7D full.
+            # rom_addr = (bank & 0x3F) << 16 | addr works for both regions.
+            if ((0x00 <= bank <= 0x3F) and addr >= 0x8000) or \
+               (0x40 <= bank <= 0x7D):
+                rom_addr: cython.uint = ((bank & 0x3F) << 16) | addr
+                return self.rom[rom_addr]
+
+            # HiROM SRAM: banks $20-$3F at $6000-$7FFF, 8KB window per bank.
+            if 0x20 <= bank <= 0x3F and 0x6000 <= addr <= 0x7FFF:
+                if self.sram_size:
+                    sram_addr: cython.uint = (((bank - 0x20) << 13) | (addr - 0x6000)) & self.sram_mask
+                    return self.sram[sram_addr]
+                return 0xFF
+        else:
+            if ((0x00 <= bank <= 0x6F) and 0x8000 <= addr <= 0xFFFF) or \
+                ((0x40 <= bank <= 0x6F) and (0x0000 <= addr <= 0xFFFF)) or \
+                ((0x70 <= bank <= 0x7D) and (0x8000 <= addr <= 0xFFFF)):
+                rom_addr: cython.uint = (bank * 0x8000) + (addr - (0x8000 if addr >= 0x8000 else 0))
+                return self.rom[rom_addr]
+
+            # SRAM: LoROM banks $70-$7D, addr $0000-$7FFF (mirrored from $F0-$FD)
+            if 0x70 <= bank <= 0x7D and addr < 0x8000:
+                if self.sram_size:
+                    sram_addr: cython.uint = (((bank - 0x70) << 15) | addr) & self.sram_mask
+                    return self.sram[sram_addr]
+                return 0xFF
 
         if 0x7E2000 <= abs_addr <= 0x7E7FFF:
             return self.high_ram[abs_addr - 0x7E2000]
@@ -111,14 +182,20 @@ class Bus:
                 if addr == 0x2138:  # # OAMDATAREAD
                     return self.ppu.oamdata
 
+                if addr == 0x2139:  # RDVRAML
+                    return self.ppu.rdvraml()
+
+                if addr == 0x213A:  # RDVRAMH
+                    return self.ppu.rdvramh()
+
                 if addr == 0x213B:  # CGDATAREAD
                     return self.ppu.cgdata
 
-                if addr == 0x213C:  # OPHCT
-                    return self.ppu.h_counter
+                if addr == 0x213C:  # OPHCT (9-bit counter; port is byte-wide)
+                    return self.ppu.h_counter & 0xFF
 
-                if addr == 0x213D:  # OPVCT
-                    return self.ppu.v_counter
+                if addr == 0x213D:  # OPVCT (9-bit counter; port is byte-wide)
+                    return self.ppu.v_counter & 0xFF
 
                 if addr == 0x213E:  # STAT77
                     # TODO PPU Status Flag and Version
@@ -170,7 +247,20 @@ class Bus:
                 if addr == 0x421B:  # JOY2H
                     return self.controller_port2.joy_h
 
+                # DMA channel registers ($4300–$43FF): return live channel
+                # state. The bytearray cache is never kept in sync, and the
+                # engine mutates source_address/transfer_size during transfers
+                # — games (e.g. the 93143 hvdma test ROM) read these back.
+                if 0x4300 <= addr <= 0x43FF:
+                    return self.cpu.dma[addr]
+
                 return self.dma_ppu2_hw_registers[addr - 0x4200]
+
+            # Unmapped CPU-side regions in the system area ($2000-$20FF,
+            # $2200-$3FFF, $4018-$41FF, $4500-$7FFF): real hardware returns
+            # the MDR (last bus value). Simplified to 0 — matches what many
+            # games read into these gaps and keeps boot past unmapped probes.
+            return 0
 
         raise RuntimeError(f"Reading unmapped memory region: 0x{abs_addr:06X}")
 
@@ -183,16 +273,39 @@ class Bus:
         bank: cython.uint = abs_addr >> 16 & 0xFF
         addr: cython.uint = abs_addr & 0xFFFF
 
-        # mirror LoROM sections
-        if 0x80 <= bank <= 0xFD:
+        # See read(): mirror $80-$FF to $00-$7F (covers WRAM mirror at $FE-$FF).
+        if 0x80 <= bank <= 0xFF:
             bank = bank - 0x80
+            abs_addr = abs_addr - 0x800000
 
-        if ((0x00 <= bank <= 0x6F) and 0x8000 <= addr <= 0xFFFF) or \
-            ((0x40 <= bank <= 0x6F) and (0x0000 <= addr <= 0xFFFF)) or \
-            ((0x70 <= bank <= 0x7D) and (0x8000 <= addr <= 0xFFFF)):
-            rom_addr: cython.uint = (bank * 0x8000) + (addr - (0x8000 if addr >= 0x8000 else 0))
-            self.rom.rom[rom_addr] = data
-            return
+        if self.is_hirom:
+            # ROM is read-only on real hardware: writes land on the cart bus
+            # but the mask ROM ignores them. Dropping them here matters for
+            # programs whose stack drifts into the bank-0 vector region
+            # ($FFE0-$FFFF) — corrupting ROM would stomp the interrupt vectors.
+            if ((0x00 <= bank <= 0x3F) and addr >= 0x8000) or \
+               (0x40 <= bank <= 0x7D):
+                return
+
+            if 0x20 <= bank <= 0x3F and 0x6000 <= addr <= 0x7FFF:
+                if self.sram_size:
+                    sram_addr: cython.uint = (((bank - 0x20) << 13) | (addr - 0x6000)) & self.sram_mask
+                    self.sram[sram_addr] = data
+                    self.sram_dirty = True
+                return
+        else:
+            if ((0x00 <= bank <= 0x6F) and 0x8000 <= addr <= 0xFFFF) or \
+                ((0x40 <= bank <= 0x6F) and (0x0000 <= addr <= 0xFFFF)) or \
+                ((0x70 <= bank <= 0x7D) and (0x8000 <= addr <= 0xFFFF)):
+                return
+
+            # SRAM: LoROM banks $70-$7D, addr $0000-$7FFF (mirrored from $F0-$FD)
+            if 0x70 <= bank <= 0x7D and addr < 0x8000:
+                if self.sram_size:
+                    sram_addr: cython.uint = (((bank - 0x70) << 15) | addr) & self.sram_mask
+                    self.sram[sram_addr] = data
+                    self.sram_dirty = True
+                return
 
         if (0x00 <= bank <= 0x3F) or bank == 0x7E:
             if 0x0000 <= addr <= 0x1FFF:
@@ -291,9 +404,11 @@ class Bus:
                     return
                 if addr == 0x2116:  # VMADDL
                     self.ppu.vmaddl = data
+                    self.ppu.refill_vram_prefetch()
                     return
                 if addr == 0x2117:  # VMADDH
                     self.ppu.vmaddh = data
+                    self.ppu.refill_vram_prefetch()
                     return
                 if addr == 0x2118:  # VMDATAL
                     self.ppu.vmdatal = data
@@ -303,7 +418,6 @@ class Bus:
                     return
 
                 if addr == 0x211A:  # M7SEL
-                    # raise NotImplementedError("M7SEL register not implemented")
                     """
                     7-6   Screen Over (see below)
                     5-2   Not used
@@ -382,9 +496,18 @@ class Bus:
                     self.ppu.coldata_set(data)
                     return
 
-                if addr == 0x2133:  # SETINI
-                    # TODO 4 is overscan mode bit - display 239 lines instead of normal 224
-                    assert data in (0, 4), f"Value not suported: data={data}"
+                if addr == 0x2133:  # SETINI — display control (write-only)
+                    # Bit 0: Screen interlace       (0=progressive, 1=interlaced 448-line field alternation)
+                    # Bit 1: OBJ interlace          (0=normal, 1=split sprite rows across fields)
+                    # Bit 2: Overscan               (0=224 visible lines, 1=239 visible lines)
+                    # Bit 3: Pseudo-hires           (0=256-wide, 1=512-wide via subscreen half-pixel offset)
+                    # Bits 4-5: unused
+                    # Bit 6: EXTBG                  (Mode 7 only; enables BG2 as a second Mode 7 layer)
+                    # Bit 7: External sync          (genlock to external video; no effect in emulation)
+                    # Most of these bits are cosmetic/unimplemented; accept the
+                    # write silently rather than blowing up — games that drift
+                    # their stack into the PPU register page (observed with
+                    # ALTTP boot) would otherwise crash here.
                     return
 
                 if addr == 0x2134:  # MPYL
@@ -396,7 +519,7 @@ class Bus:
                 if addr == 0x2137:  # SLHV
                     return  # Not writable
 
-                if 0x2140 <= addr <= 0x2143:  # TODO ugly
+                if 0x2140 <= addr <= 0x2143:  # APUIO0-APUIO3 (CPU→SPC ports)
                     self.apu.sync_to(self.scheduler.master_clock + (self.cpu.cycles - self.cpu.prev_cycles))
                     self.apu.ports_r[addr - 0x2140] = data
                     return
@@ -428,6 +551,44 @@ class Bus:
 
             elif addr == 0x4017:  # JOYSER1
                 return  # Writes to this addr are ignored
+
+            elif addr == 0x4202:  # WRMPYA - multiplicand
+                self._wrmpya = data
+                self.dma_ppu2_hw_registers[addr - 0x4200] = data
+                return
+
+            elif addr == 0x4203:  # WRMPYB - multiplier (triggers multiply)
+                product: cython.uint = self._wrmpya * data
+                self.dma_ppu2_hw_registers[0x4203 - 0x4200] = data
+                self.dma_ppu2_hw_registers[0x4214 - 0x4200] = 0
+                self.dma_ppu2_hw_registers[0x4215 - 0x4200] = 0
+                self.dma_ppu2_hw_registers[0x4216 - 0x4200] = product & 0xFF
+                self.dma_ppu2_hw_registers[0x4217 - 0x4200] = (product >> 8) & 0xFF
+                return
+
+            elif addr == 0x4204:  # WRDIVL - dividend low byte
+                self._wrdiv = (self._wrdiv & 0xFF00) | data
+                self.dma_ppu2_hw_registers[addr - 0x4200] = data
+                return
+
+            elif addr == 0x4205:  # WRDIVH - dividend high byte
+                self._wrdiv = (self._wrdiv & 0x00FF) | (data << 8)
+                self.dma_ppu2_hw_registers[addr - 0x4200] = data
+                return
+
+            elif addr == 0x4206:  # WRDIVB - divisor (triggers divide)
+                self.dma_ppu2_hw_registers[addr - 0x4200] = data
+                if data == 0:
+                    quotient: cython.uint = 0xFFFF
+                    remainder: cython.uint = self._wrdiv
+                else:
+                    quotient = self._wrdiv // data
+                    remainder = self._wrdiv % data
+                self.dma_ppu2_hw_registers[0x4214 - 0x4200] = quotient & 0xFF
+                self.dma_ppu2_hw_registers[0x4215 - 0x4200] = (quotient >> 8) & 0xFF
+                self.dma_ppu2_hw_registers[0x4216 - 0x4200] = remainder & 0xFF
+                self.dma_ppu2_hw_registers[0x4217 - 0x4200] = (remainder >> 8) & 0xFF
+                return
 
             elif addr == 0x420B:  # MDMAEN
                 self.cpu.dma.mdmaen_set(data)
@@ -480,6 +641,10 @@ class Bus:
 
                 self.dma_ppu2_hw_registers[addr - 0x4200] = data
                 return
+
+            # Unmapped system-area writes: drop silently (open-bus write). See
+            # the matching read() fallthrough for the rationale.
+            return
 
         if 0x7E2000 <= abs_addr <= 0x7E7FFF:
             self.high_ram[abs_addr - 0x7E2000] = data

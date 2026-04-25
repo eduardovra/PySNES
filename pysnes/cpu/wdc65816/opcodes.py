@@ -246,14 +246,14 @@ def ROL(cpu: Cpu, mode_8bit: bool, data: int):
     if mode_8bit:
         carry = cpu.CFlag
         cpu.CFlag = bool(data & 0x80)
-        data = data << 1 | carry  # do i need to mask this?
+        data = (data << 1 | carry) & 0xFF
         cpu.ZFlag = data == 0
         cpu.NFlag = bool(data & 0x80)
         return data
     else:
         carry = cpu.CFlag
         cpu.CFlag = bool(data & 0x8000)
-        data = data << 1 | carry
+        data = (data << 1 | carry) & 0xFFFF
         cpu.ZFlag = data == 0
         cpu.NFlag = bool(data & 0x8000)
         return data

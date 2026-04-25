@@ -51,15 +51,15 @@ class InstructionSlot:
 @cython.cclass
 class Timer:
     apu = cython.declare(object)
-    frequency = cython.declare(cython.uint)
-    stage0 = cython.declare(cython.uchar)
-    stage1 = cython.declare(cython.uchar)
-    stage2 = cython.declare(cython.uchar)
-    stage3 = cython.declare(cython.uchar)
-    stage3_shadow = cython.declare(cython.uchar)
-    line = cython.declare(cython.bint)
-    enable = cython.declare(cython.bint)
-    target = cython.declare(cython.uchar)
+    frequency = cython.declare(cython.uint, visibility="public")
+    stage0 = cython.declare(cython.uchar, visibility="public")
+    stage1 = cython.declare(cython.uchar, visibility="public")
+    stage2 = cython.declare(cython.uchar, visibility="public")
+    stage3 = cython.declare(cython.uchar, visibility="public")
+    stage3_shadow = cython.declare(cython.uchar, visibility="public")
+    line = cython.declare(cython.bint, visibility="public")
+    enable = cython.declare(cython.bint, visibility="public")
+    target = cython.declare(cython.uchar, visibility="public")
 
     def __init__(self, apu: "Apu", frequency: int) -> None:
         self.apu = apu
@@ -120,56 +120,56 @@ class Timer:
 @cython.cclass
 class Apu:
     # Registers
-    PC = cython.declare(cython.uint)
-    A = cython.declare(cython.uchar)
-    X = cython.declare(cython.uchar)
-    Y = cython.declare(cython.uchar)
-    S = cython.declare(cython.uchar)
+    PC = cython.declare(cython.uint, visibility="public")
+    A = cython.declare(cython.uchar, visibility="public")
+    X = cython.declare(cython.uchar, visibility="public")
+    Y = cython.declare(cython.uchar, visibility="public")
+    S = cython.declare(cython.uchar, visibility="public")
     # Flags
-    NF = cython.declare(cython.bint)
-    VF = cython.declare(cython.bint)
-    PF = cython.declare(cython.bint)
-    BF = cython.declare(cython.bint)
-    HF = cython.declare(cython.bint)
-    IF = cython.declare(cython.bint)
-    ZF = cython.declare(cython.bint)
-    CF = cython.declare(cython.bint)
+    NF = cython.declare(cython.bint, visibility="public")
+    VF = cython.declare(cython.bint, visibility="public")
+    PF = cython.declare(cython.bint, visibility="public")
+    BF = cython.declare(cython.bint, visibility="public")
+    HF = cython.declare(cython.bint, visibility="public")
+    IF = cython.declare(cython.bint, visibility="public")
+    ZF = cython.declare(cython.bint, visibility="public")
+    CF = cython.declare(cython.bint, visibility="public")
     # Timing
-    timers = cython.declare(object)
-    _last_synced_mc = cython.declare(cython.long)
-    _ports_w_dirty = cython.declare(cython.bint)
-    cycles = cython.declare(cython.uint)
+    timers = cython.declare(object, visibility="public")
+    _last_synced_mc = cython.declare(cython.long, visibility="public")
+    _ports_w_dirty = cython.declare(cython.bint, visibility="public")
+    cycles = cython.declare(cython.uint, visibility="public")
     # Registers (raw storage)
-    _control_register_raw = cython.declare(cython.uchar)
-    dsp_register_address = cython.declare(cython.uchar)
-    dsp_register_data = cython.declare(cython.uchar)
-    f8 = cython.declare(cython.uchar)
-    f9 = cython.declare(cython.uchar)
-    ipl_rom_enable = cython.declare(cython.bint)
+    _control_register_raw = cython.declare(cython.uchar, visibility="public")
+    dsp_register_address = cython.declare(cython.uchar, visibility="public")
+    dsp_register_data = cython.declare(cython.uchar, visibility="public")
+    auxio4 = cython.declare(cython.uchar, visibility="public")
+    auxio5 = cython.declare(cython.uchar, visibility="public")
+    ipl_rom_enable = cython.declare(cython.bint, visibility="public")
     # Test register ($F0) fields
-    timers_disable = cython.declare(cython.bint)
-    ram_writable = cython.declare(cython.bint)
-    ram_disable = cython.declare(cython.bint)
-    timers_enable = cython.declare(cython.bint)
-    external_wait_states = cython.declare(cython.uchar)
-    internal_wait_states = cython.declare(cython.uchar)
+    timers_disable = cython.declare(cython.bint, visibility="public")
+    ram_writable = cython.declare(cython.bint, visibility="public")
+    ram_disable = cython.declare(cython.bint, visibility="public")
+    timers_enable = cython.declare(cython.bint, visibility="public")
+    external_wait_states = cython.declare(cython.uchar, visibility="public")
+    internal_wait_states = cython.declare(cython.uchar, visibility="public")
     # Debug
-    address = cython.declare(cython.uint)
-    data = cython.declare(cython.uint)
-    breakpoint = cython.declare(object)
-    print_debug = cython.declare(cython.bint)
+    address = cython.declare(cython.uint, visibility="public")
+    data = cython.declare(cython.uint, visibility="public")
+    breakpoint = cython.declare(object, visibility="public")
+    print_debug = cython.declare(cython.bint, visibility="public")
     # Memory regions
-    memory = cython.declare(object)
-    ipl_rom = cython.declare(object)
-    page_0 = cython.declare(object)
-    page_1 = cython.declare(object)
-    ports_r = cython.declare(object)
-    ports_w = cython.declare(object)
+    memory = cython.declare(object, visibility="public")
+    ipl_rom = cython.declare(object, visibility="public")
+    page_0 = cython.declare(object, visibility="public")
+    page_1 = cython.declare(object, visibility="public")
+    ports_r = cython.declare(object, visibility="public")
+    ports_w = cython.declare(object, visibility="public")
     # Instruction dispatch
-    instructions = cython.declare(object)
-    debug_symbols = cython.declare(object)
+    instructions = cython.declare(object, visibility="public")
+    debug_symbols = cython.declare(object, visibility="public")
     # Memory access tracing (None = disabled; set to [] in tests to capture accesses)
-    _mem_log = cython.declare(object)
+    _mem_log = cython.declare(object, visibility="public")
 
     def __init__(self) -> None:
         self.reset_registers()
@@ -208,7 +208,7 @@ class Apu:
         self.A =  0x00    # Accumulator (8 bit)
         self.X =  0x00    # X Index Register (8 bit)
         self.Y =  0x00    # Y Index Register (8 bit)
-        self.S =  0xEF    # Stack Pointer (8 bit) - always on page 1 --> TODO first version used 0x1EF
+        self.S =  0xEF    # Stack Pointer (8 bit) - always on page 1
 
         # Flags stored in PSW Register
         self.NF = False  # Negative
@@ -245,8 +245,9 @@ class Apu:
         self.dsp_register_data = 0x00  # F3 (r/w)
         # self.timers = bytearray(3)  # FA/FB/FC (/w)
         # self.counters = bytearray(3)  # FD/FE/FF (r/)
-        self.f8 = 0  # TODO don't remember what this is
-        self.f9 = 0  # TODO don't remember what this is
+        # $F8/$F9 AUXIO4/AUXIO5: general-purpose 8-bit R/W scratch registers
+        self.auxio4 = 0
+        self.auxio5 = 0
 
         # Control register 0xF1
         self.ipl_rom_enable = True
@@ -318,9 +319,9 @@ class Apu:
         elif addr <= 0x00F7:
             result = self.ports_r[addr - 0x00F4]
         elif addr == 0x00F8:
-            result = self.f8
+            result = self.auxio4
         elif addr == 0x00F9:
-            result = self.f9
+            result = self.auxio5
         elif addr <= 0x00FC:
             result = cython.cast(Timer, self.timers[addr - 0x00FA]).target
         elif addr <= 0x00FF:
@@ -360,9 +361,9 @@ class Apu:
             self.ports_w[addr - 0x00F4] = value
             self._ports_w_dirty = True
         elif addr == 0x00F8:
-            self.f8 = value
+            self.auxio4 = value
         elif addr == 0x00F9:
-            self.f9 = value
+            self.auxio5 = value
         elif addr <= 0x00FC:
             cython.cast(Timer, self.timers[addr - 0x00FA]).target = value
         elif addr <= 0x00FF:
@@ -458,7 +459,7 @@ class Apu:
                 return
         self._last_synced_mc += apu_clocks_run * self._APU_MC_NUM // self._APU_MC_DEN
 
-    @cython.cfunc
+    @cython.ccall
     def step_timers(self, clocks: cython.uint):
         cython.cast(Timer, self.timers[0]).step(clocks)
         cython.cast(Timer, self.timers[1]).step(clocks)

@@ -1,51 +1,41 @@
 from collections import defaultdict
 import os
 import ijson
+import pytest
 from unittest.mock import patch
 
 from rich import print
 
 from .cpu import Cpu
+from pysnes._ss_cache import get_or_build
 
 
 TESTS_PATH = "submodules/65816/v1"
 
-# Opcodes for which cycle counts are verified (expand as coverage grows).
-# Branch opcodes: idle6 fires on emulation-mode page cross (adds 1 null cycle).
-# Index-page-cross opcodes: idle4 fires when XFlag=0 or base/indexed addresses cross pages.
-CYCLE_CHECK_OPCODES = {
-    "ea", "1a", "3a", "18", "38",
-    # Branches (idle6: page-cross penalty in emulation mode)
-    "10", "30", "50", "70", "80", "90", "b0", "d0", "f0",
-    # BankRead indexed (idle4: page-cross or 16-bit index penalty)
-    "bd", "bc",  # LDA abs,X  LDY abs,X
-    # IndirectIndexed (idle4: page-cross or 16-bit index penalty)
-    "b1", "d1", "f1", "11", "31", "51", "71", "91",  # LDA/CMP/SBC/ORA/AND/EOR/ADC/STA (dp),Y
-}
+
+_FILE_CACHE_KEY: str | None = None
+_FILE_CACHE_VAL: list | None = None
+
 
 def _load_case(file_path: str, index: int) -> dict:
-    with open(file_path, 'rb') as f:
-        for i, item in enumerate(ijson.items(f, 'item')):
-            if i == index:
-                return item
-    raise IndexError(f"{file_path}[{index}]")
+    global _FILE_CACHE_KEY, _FILE_CACHE_VAL
+    if _FILE_CACHE_KEY != file_path:
+        with open(file_path, 'rb') as f:
+            _FILE_CACHE_VAL = list(ijson.items(f, 'item'))
+        _FILE_CACHE_KEY = file_path
+    return _FILE_CACHE_VAL[index]
 
 
-def get_test_cases(opcode_filter=None, max_per_opcode=None, mode=None):
-    """Load test cases from the SingleStepTests suite.
+def _parse_test_index(opcode_filter, max_per_opcode, mode):
+    """Stream test names from every matching JSON and build the (file,index) index.
 
-    opcode_filter:   optional hex prefix (e.g. "29") to restrict to one opcode.
-    max_per_opcode:  max cases per opcode variant; 0 = unlimited (default: 1).
-    mode:            optional "e" or "n" to restrict to emulation/native mode.
+    Uses ijson sub-path 'item.name' so only name strings are materialized — the
+    bulky `ram`/`cycles` arrays are never converted to Python objects.
     """
-    if not os.path.isdir(TESTS_PATH):
-        return [], []
-
     limit = 1 if max_per_opcode is None else max_per_opcode
     prefix = opcode_filter.upper() if opcode_filter else None
 
     def _include(filename):
-        # filename format: {opcode}.{mode}.json  e.g. "29.e.json"
         parts = filename.split(".")
         if len(parts) != 3 or parts[2].lower() != "json":
             return False
@@ -61,23 +51,44 @@ def get_test_cases(opcode_filter=None, max_per_opcode=None, mode=None):
     )
 
     test_counter = defaultdict(int)
-
-    test_cases, test_ids = [], []
+    params, test_ids = [], []
     for file_path in onlyfiles:
         with open(file_path, 'rb') as f:
-            for i, test_case in enumerate(ijson.items(f, 'item')):
-                test_id = test_case["name"].replace(" ", "_")
-
+            for i, name in enumerate(ijson.items(f, 'item.name')):
+                test_id = name.replace(" ", "_")
                 if limit > 0 and test_counter[test_id[0:4]] >= limit:
                     continue
                 test_counter[test_id[0:4]] += 1
-
                 test_ids.append(test_id)
-                test_cases.append((file_path, i))
+                params.append((file_path, i))
+                if len(params) >= 1_000_000:
+                    return params, test_ids
+    return params, test_ids
 
-                if len(test_cases) >= 1_000_000:
-                    return test_cases, test_ids
 
+def get_test_cases(opcode_filter=None, max_per_opcode=None, mode=None):
+    """Load test cases from the SingleStepTests suite.
+
+    opcode_filter:   optional hex prefix (e.g. "29") to restrict to one opcode.
+    max_per_opcode:  max cases per opcode variant; 0 = unlimited (default: 1).
+    mode:            optional "e" or "n" to restrict to emulation/native mode.
+    """
+    if not os.path.isdir(TESTS_PATH):
+        return [], []
+
+    filter_args = (opcode_filter, max_per_opcode, mode)
+    raw_params, test_ids = get_or_build(
+        "cpu",
+        TESTS_PATH,
+        filter_args,
+        lambda: _parse_test_index(opcode_filter, max_per_opcode, mode),
+    )
+    # Apply xdist_group markers at collection time (cache stores plain tuples).
+    # With --dist=loadgroup, all cases from one JSON file route to the same worker,
+    # so the single-slot _load_case cache stays warm.
+    test_cases = [
+        pytest.param(rp, marks=pytest.mark.xdist_group(rp[0])) for rp in raw_params
+    ]
     return test_cases, test_ids
 
 
@@ -141,13 +152,20 @@ def test_cpu(test_case):
         elif outputs[3] == 'w':
             calls_expected.append(f"setitem({hex(address)}, {hex(value)})")
 
+    class _BudgetExceeded(Exception):
+        pass
+
     real_read = FakeBus.read
     def read(self, address):
+        if len(calls_performed) >= len(calls_expected):
+            raise _BudgetExceeded()
         value = real_read(self, address)
         calls_performed.append(f"getitem({hex(address)}) -> {hex(value)}")
         return value
     real_write = FakeBus.write
     def write(self, address, value):
+        if len(calls_performed) >= len(calls_expected):
+            raise _BudgetExceeded()
         calls_performed.append(f"setitem({hex(address)}, {hex(value)})")
         return real_write(self, address, value)
 
@@ -156,13 +174,15 @@ def test_cpu(test_case):
             patch.object(FakeBus, "write", autospec=True) as mock_setitem:
         mock_getitem.side_effect = read
         mock_setitem.side_effect = write
-        # while cpu.PC.w != final["pc"]:  # TODO consider PBR
-        while len(calls_performed) < len(calls_expected):
-            cpu.fetch_and_execute()
+        try:
+            while len(calls_performed) < len(calls_expected):
+                cpu.fetch_and_execute()
 
-            # safety check to avoid infinite loops
-            if len(calls_performed) > 0xFFFF:
-                raise Exception("Infinite loop detected")
+                # safety check to avoid infinite loops
+                if len(calls_performed) > 0xFFFF:
+                    raise Exception("Infinite loop detected")
+        except _BudgetExceeded:
+            pass
 
     # check on registers and ram
     assert cpu.PC.w == final["pc"], f"{hex(cpu.PC.w)} != {hex(final['pc'])}"
@@ -181,13 +201,11 @@ def test_cpu(test_case):
     # check on read/write cycles
     assert calls_performed == calls_expected
 
-    # cycle count check (only for opcodes in CYCLE_CHECK_OPCODES)
-    opcode_name = test_case["name"].split()[0].lower()
-    if opcode_name in CYCLE_CHECK_OPCODES:
-        expected_cycle_count = len(test_case["cycles"])
-        assert cpu.icycles == expected_cycle_count, (
-            f"cycle count: {cpu.icycles} != {expected_cycle_count}"
-        )
+    # cycle count check
+    expected_cycle_count = len(test_case["cycles"])
+    assert cpu.icycles == expected_cycle_count, (
+        f"cycle count: {cpu.icycles} != {expected_cycle_count}"
+    )
 
 
 # VP == VPB

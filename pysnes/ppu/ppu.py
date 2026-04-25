@@ -47,6 +47,10 @@ class Ppu:
         self.vmaddh: cython.uchar = 0
         self._vmdatal: cython.uchar = 0
         self._vmdatah: cython.uchar = 0
+        # VRAM read port has a 16-bit prefetch buffer; $2116/$2117 writes
+        # refill it (no increment), $2139/$213A reads return the buffered byte
+        # and refill + increment depending on VMAIN bit 7.
+        self._vram_prefetch: cython.uint = 0
 
         self.inidisp_set(0)
 
@@ -125,7 +129,10 @@ class Ppu:
         self.main_layer = bytearray(256 * 262)
 
     def inidisp_set(self, data: int) -> None:
-        # TODO reset OAM addr if writing while on first blank line
+        # Missing: when clearing forced-blank (bit 7 → 0) during V-Blank, the
+        # internal OAM address must be reloaded from OAMADDL/OAMADDH. The reload
+        # also fires at V-Blank entry when forced-blank is off. Not yet wired —
+        # belongs in the V-Blank transition in _vblank_start, not here.
         self.display_brightness = data >> 0 & 15
         self.display_disable = data >> 7 & 1
 
@@ -208,6 +215,25 @@ class Ppu:
         self.vmaddl = (addr >> 0) & 0xFF
         self.vmaddh = (addr >> 8) & 0xFF
 
+    def refill_vram_prefetch(self) -> None:
+        word_addr = (self.vmaddl | self.vmaddh << 8) & 0x7FFF
+        base_addr = self._remap_vram_addr(word_addr) * 2
+        self._vram_prefetch = self.vram[base_addr] | (self.vram[base_addr + 1] << 8)
+
+    def rdvraml(self) -> cython.uchar:
+        data = self._vram_prefetch & 0xFF
+        if not self.vmain_addr_increment_mode:
+            self.refill_vram_prefetch()
+            self.increment_vmadd()
+        return data
+
+    def rdvramh(self) -> cython.uchar:
+        data = (self._vram_prefetch >> 8) & 0xFF
+        if self.vmain_addr_increment_mode:
+            self.refill_vram_prefetch()
+            self.increment_vmadd()
+        return data
+
     @property
     def cgadd(self) -> int:
         return self._cgadd.value
@@ -267,11 +293,11 @@ class Ppu:
 
     @property
     def oamaddh(self) -> int:
-        return (int(self._oam_priority_activation) << 7) | ((self._oamadd >> 8) & 1)
+        return (self._oam_priority_activation << 7) | ((self._oamadd >> 8) & 1)
 
     @oamaddh.setter
     def oamaddh(self, data: int) -> None:
-        self._oam_priority_activation = bool(data & 0x80)
+        self._oam_priority_activation = (data >> 7) & 1
         self._oamadd = (self._oamadd & 0x0FF) | (data & 1) << 8
         self._oamodd = 0
 
@@ -337,18 +363,18 @@ class Ppu:
         self.bg4.tiledata_addr = (data >> 4 & 15) << 13
 
     def tm_set(self, data: int) -> None:
-        self.bg1.main_screen_enable = bool(data >> 0 & 1)
-        self.bg2.main_screen_enable = bool(data >> 1 & 1)
-        self.bg3.main_screen_enable = bool(data >> 2 & 1)
-        self.bg4.main_screen_enable = bool(data >> 3 & 1)
-        self.oam_main_screen_enable = bool(data >> 4 & 1)
+        self.bg1.main_screen_enable = data >> 0 & 1
+        self.bg2.main_screen_enable = data >> 1 & 1
+        self.bg3.main_screen_enable = data >> 2 & 1
+        self.bg4.main_screen_enable = data >> 3 & 1
+        self.oam_main_screen_enable = data >> 4 & 1
 
     def ts_set(self, data: int) -> None:
-        self.bg1.sub_screen_enable = bool(data >> 0 & 1)
-        self.bg2.sub_screen_enable = bool(data >> 1 & 1)
-        self.bg3.sub_screen_enable = bool(data >> 2 & 1)
-        self.bg4.sub_screen_enable = bool(data >> 3 & 1)
-        self.oam_sub_screen_enable = bool(data >> 4 & 1)
+        self.bg1.sub_screen_enable = data >> 0 & 1
+        self.bg2.sub_screen_enable = data >> 1 & 1
+        self.bg3.sub_screen_enable = data >> 2 & 1
+        self.bg4.sub_screen_enable = data >> 3 & 1
+        self.oam_sub_screen_enable = data >> 4 & 1
 
     def m7_write(self, reg: int, data: int) -> None:
         """Handle 2-write Mode 7 matrix registers (M7A-M7Y, 0x211B-0x2120)."""
@@ -554,6 +580,20 @@ class Ppu:
             self.draw_objects(priority=3)                         # OBJ pri 3
             if self._bgpriority == 1:
                 self.draw_background_scanline(self.bg3, 2, True)  # BG3 pri 1 (high)
+        elif self._bgmode == 2:
+            # Mode 2: BG1 (4bpp) + BG2 (4bpp) with offset-per-tile via BG3.
+            # OPT is not implemented; we render without per-column offsets,
+            # which gets the layout approximately right (enough to boot games
+            # that probe their own title/menu screens).
+            self.draw_scanline_backdrop()
+            self.draw_background_scanline(self.bg2, 4, False)   # BG2 pri 0
+            self.draw_objects(priority=0)                       # OBJ pri 0
+            self.draw_background_scanline(self.bg1, 4, False)   # BG1 pri 0
+            self.draw_objects(priority=1)                       # OBJ pri 1
+            self.draw_background_scanline(self.bg2, 4, True)    # BG2 pri 1
+            self.draw_objects(priority=2)                       # OBJ pri 2
+            self.draw_background_scanline(self.bg1, 4, True)    # BG1 pri 1
+            self.draw_objects(priority=3)                       # OBJ pri 3
         elif self._bgmode == 3:
             """
             In Mode 3, you have one 256-color BG and one 16-color BG. To calculate the
@@ -583,6 +623,55 @@ class Ppu:
             self.draw_objects(priority=2)                       # OBJ pri 2
             self.draw_background_scanline(self.bg1, 8, True)    # BG1 pri 1
             self.draw_objects(priority=3)                       # OBJ pri 3
+        elif self._bgmode == 4:
+            # Mode 4: BG1 (4bpp) + BG2 (2bpp) with OPT (offset-per-tile, not
+            # implemented — same simplification as Mode 2).
+            self.draw_scanline_backdrop()
+            self.draw_background_scanline(self.bg2, 2, False)   # BG2 pri 0
+            self.draw_objects(priority=0)                       # OBJ pri 0
+            self.draw_background_scanline(self.bg1, 4, False)   # BG1 pri 0
+            self.draw_objects(priority=1)                       # OBJ pri 1
+            self.draw_background_scanline(self.bg2, 2, True)    # BG2 pri 1
+            self.draw_objects(priority=2)                       # OBJ pri 2
+            self.draw_background_scanline(self.bg1, 4, True)    # BG1 pri 1
+            self.draw_objects(priority=3)                       # OBJ pri 3
+        elif self._bgmode == 5:
+            # Mode 5: BG1 (4bpp) + BG2 (2bpp).
+            # APPROXIMATION: Mode 5 is natively hi-res — the SNES PPU outputs
+            # 512 pixels/scanline by interleaving main screen (even cols) and
+            # sub screen (odd cols). We render at 256px (main screen only)
+            # because the framebuffer is 256px wide; sub-screen interleaving
+            # is not implemented. hoffset is in hi-res (512px) coordinates,
+            # so we halve it to approximate correct scroll speed at 256px.
+            orig_hoff1 = self.bg1.hoffset
+            orig_hoff2 = self.bg2.hoffset
+            self.bg1.hoffset = self.bg1.hoffset >> 1
+            self.bg2.hoffset = self.bg2.hoffset >> 1
+            self.draw_scanline_backdrop()
+            self.draw_background_scanline(self.bg2, 2, False)   # BG2 pri 0
+            self.draw_objects(priority=0)                       # OBJ pri 0
+            self.draw_background_scanline(self.bg1, 4, False)   # BG1 pri 0
+            self.draw_objects(priority=1)                       # OBJ pri 1
+            self.draw_background_scanline(self.bg2, 2, True)    # BG2 pri 1
+            self.draw_objects(priority=2)                       # OBJ pri 2
+            self.draw_background_scanline(self.bg1, 4, True)    # BG1 pri 1
+            self.draw_objects(priority=3)                       # OBJ pri 3
+            self.bg1.hoffset = orig_hoff1
+            self.bg2.hoffset = orig_hoff2
+        elif self._bgmode == 6:
+            # Mode 6: BG1 (4bpp) only, hi-res + OPT (OPT not implemented).
+            # APPROXIMATION: same hi-res handling as Mode 5 — rendered at
+            # 256px (main screen only); hoffset halved from hi-res coordinates.
+            orig_hoff1 = self.bg1.hoffset
+            self.bg1.hoffset = self.bg1.hoffset >> 1
+            self.draw_scanline_backdrop()
+            self.draw_objects(priority=0)                       # OBJ pri 0
+            self.draw_background_scanline(self.bg1, 4, False)   # BG1 pri 0
+            self.draw_objects(priority=1)                       # OBJ pri 1
+            self.draw_objects(priority=2)                       # OBJ pri 2
+            self.draw_background_scanline(self.bg1, 4, True)    # BG1 pri 1
+            self.draw_objects(priority=3)                       # OBJ pri 3
+            self.bg1.hoffset = orig_hoff1
         else:
             raise NotImplementedError(f"BG Mode {self._bgmode} not implemented")
 
@@ -596,21 +685,37 @@ class Ppu:
           bit 4: OBJ palettes 4-7 participate
           bit 3..0: BG4..BG1 participate
 
-        Not implemented: clip-to-black, color-math windowing (CGWSEL bits 4-7),
-        CGWSEL bit 1 sub-source select (we always use sub_bgs, which already
-        holds COLDATA when no sub layer covered the pixel).
+        CGWSEL ($2130) bits 5-4 gate WHEN color math applies per pixel:
+          00 = always, 01 = inside color window, 10 = outside, 11 = never.
+        The color window uses W1/W2 with WOBJSEL bits 4-7 for enable/invert
+        and WOBJLOG bits 2-3 for combining W1+W2 (OR/AND/XOR/XNOR).
+
+        Not yet implemented: CGWSEL bits 7-6 clip-to-black, bit 1 sub-source
+        select (we always use sub_bgs, which already holds COLDATA where no
+        sub layer covered the pixel).
         """
         cgadsub: cython.uint = self.cgadsub
-        if cgadsub == 0:
+        cgwsel: cython.uint = self.cgwsel
+        cmath_mode: cython.uint = (cgwsel >> 4) & 0x3  # 00..11
+        if cgadsub == 0 or cmath_mode == 0x3:
             return
-        subtract: cython.bint = bool(cgadsub & 0x80)
-        half: cython.bint = bool(cgadsub & 0x40)
-        enable_bg1: cython.bint = bool(cgadsub & 0x01)
-        enable_bg2: cython.bint = bool(cgadsub & 0x02)
-        enable_bg3: cython.bint = bool(cgadsub & 0x04)
-        enable_bg4: cython.bint = bool(cgadsub & 0x08)
-        enable_obj: cython.bint = bool(cgadsub & 0x10)
-        enable_back: cython.bint = bool(cgadsub & 0x20)
+        subtract: cython.bint = cgadsub & 0x80
+        half: cython.bint = cgadsub & 0x40
+        enable_bg1: cython.bint = cgadsub & 0x01
+        enable_bg2: cython.bint = cgadsub & 0x02
+        enable_bg3: cython.bint = cgadsub & 0x04
+        enable_bg4: cython.bint = cgadsub & 0x08
+        enable_obj: cython.bint = cgadsub & 0x10
+        enable_back: cython.bint = cgadsub & 0x20
+
+        # Color-window (math window) setup: WOBJSEL bits 4-7, WOBJLOG bits 2-3.
+        # Per $2125 spec (matching $2123 W12SEL convention): bit 0=invert, bit 1=enable.
+        # Pairs: bits 0-1 OBJ W1, 2-3 OBJ W2, 4-5 MATH W1, 6-7 MATH W2.
+        math_w1_invert: cython.bint = (self.wobjsel >> 4) & 1
+        math_w1_enable: cython.bint = (self.wobjsel >> 5) & 1
+        math_w2_invert: cython.bint = (self.wobjsel >> 6) & 1
+        math_w2_enable: cython.bint = (self.wobjsel >> 7) & 1
+        math_logic: cython.uint = (self.wobjlog >> 2) & 0x3  # 0=OR,1=AND,2=XOR,3=XNOR
 
         y: cython.int = self.v_counter - 1
         row: cython.uint = y * SCREEN_WIDTH
@@ -632,6 +737,41 @@ class Ppu:
                 participate = enable_obj
             if not participate:
                 continue
+
+            # Color-window gating (CGWSEL bits 5-4).
+            if cmath_mode != 0:
+                # Compute the color window value at this x.
+                in_w1: cython.bint = False
+                if math_w1_enable:
+                    in_range1: cython.bint = (self.wh0 <= x <= self.wh1)
+                    in_w1 = in_range1 ^ math_w1_invert
+                in_w2: cython.bint = False
+                if math_w2_enable:
+                    in_range2: cython.bint = (self.wh2 <= x <= self.wh3)
+                    in_w2 = in_range2 ^ math_w2_invert
+                if math_w1_enable and math_w2_enable:
+                    if math_logic == 0:
+                        in_window: cython.bint = in_w1 or in_w2
+                    elif math_logic == 1:
+                        in_window = in_w1 and in_w2
+                    elif math_logic == 2:
+                        in_window = in_w1 != in_w2  # XOR
+                    else:
+                        in_window = in_w1 == in_w2  # XNOR
+                elif math_w1_enable:
+                    in_window = in_w1
+                elif math_w2_enable:
+                    in_window = in_w2
+                else:
+                    # No window active; treat as "always inside" (all pixels
+                    # qualify as inside, none qualify as outside). This matches
+                    # the observed Mesen semantic where a disabled window acts
+                    # as if inside-of-nothing = full-screen inside.
+                    in_window = True
+                if cmath_mode == 1 and not in_window:
+                    continue  # inside only → skip outside
+                if cmath_mode == 2 and in_window:
+                    continue  # outside only → skip inside
             m: cython.uint = self.main_bgs[idx]
             s: cython.uint = self.sub_bgs[idx]
             mr: cython.int = (m >> 24) & 0xFF
@@ -689,7 +829,7 @@ class Ppu:
             self.sub_bgs[row + x] = sub_u32
             self.main_layer[row + x] = 0
 
-    @cython.cfunc
+    @cython.ccall
     def draw_background_scanline(self, bg: Background, bpp: cython.uchar, priority_selector: cython.bint):
         scanline = self.v_counter  # TODO move to method argument
 
@@ -703,27 +843,49 @@ class Ppu:
         # Window masking setup for this BG.
         # $212E TMW bit (bg.number-1): window masking enabled for this BG on main screen.
         # $2123 W12SEL (for BG1/BG2) / $2124 W34SEL (for BG3/BG4):
-        #   bit pairs per BG: (enable, invert) for Window 1 and Window 2.
-        # For BG1: W12SEL bits 1:0 = (W1_enable, W1_invert).
-        # invert=0: pixels INSIDE [WH0,WH1] are in the mask zone (not drawn).
-        # invert=1: pixels OUTSIDE [WH0,WH1] are in the mask zone (not drawn).
+        #   bit pairs per BG: (W1 invert, W1 enable, W2 invert, W2 enable).
+        # For BG1: W12SEL bits 3:2:1:0 = (W2_enable, W2_invert, W1_enable, W1_invert).
+        # invert=0: pixels INSIDE [WHx_L,WHx_R] are in the mask zone.
+        # invert=1: pixels OUTSIDE [WHx_L,WHx_R] are in the mask zone.
+        # $212A WBGLOG combines the two window outputs per BG:
+        #   bits 2n..2n+1 for BGn: 0=OR, 1=AND, 2=XOR, 3=XNOR.
         bg_idx: cython.uint = bg.number - 1
-        window_active: cython.bint = bool(self.tmw & (1 << bg_idx))
+        window_active: cython.bint = self.tmw & (1 << bg_idx)
         w1_enable: cython.bint = False
         w1_invert: cython.bint = False
+        w2_enable: cython.bint = False
+        w2_invert: cython.bint = False
+        combine_logic: cython.uint = 0
         if window_active:
             if bg_idx == 0:
-                w1_enable = bool(self.w12sel >> 1 & 1)
-                w1_invert = bool(self.w12sel & 1)
+                w1_enable = (self.w12sel >> 1) & 1
+                w1_invert = self.w12sel & 1
+                w2_enable = (self.w12sel >> 3) & 1
+                w2_invert = (self.w12sel >> 2) & 1
             elif bg_idx == 1:
-                w1_enable = bool(self.w12sel >> 5 & 1)
-                w1_invert = bool(self.w12sel >> 4 & 1)
+                w1_enable = (self.w12sel >> 5) & 1
+                w1_invert = (self.w12sel >> 4) & 1
+                w2_enable = (self.w12sel >> 7) & 1
+                w2_invert = (self.w12sel >> 6) & 1
             elif bg_idx == 2:
-                w1_enable = bool(self.w34sel >> 1 & 1)
-                w1_invert = bool(self.w34sel & 1)
+                w1_enable = (self.w34sel >> 1) & 1
+                w1_invert = self.w34sel & 1
+                w2_enable = (self.w34sel >> 3) & 1
+                w2_invert = (self.w34sel >> 2) & 1
             elif bg_idx == 3:
-                w1_enable = bool(self.w34sel >> 5 & 1)
-                w1_invert = bool(self.w34sel >> 4 & 1)
+                w1_enable = (self.w34sel >> 5) & 1
+                w1_invert = (self.w34sel >> 4) & 1
+                w2_enable = (self.w34sel >> 7) & 1
+                w2_invert = (self.w34sel >> 6) & 1
+            combine_logic = (self.wbglog >> (bg_idx * 2)) & 0x3
+
+        # Mosaic: when enabled for this BG with size > 1, every S×S block of
+        # screen pixels shows the color sampled from the block's top-left
+        # pixel. We apply mosaic by rounding the effective scrx/scry down to
+        # the nearest S multiple (in screen-space) before doing the tilemap/
+        # tile fetch. The OUTPUT position (orgx, orgy) is unchanged.
+        mosaic_on: cython.bint = self.mosaic_enabled[bg_idx]
+        mosaic_size: cython.uint = self.mosaic_size
 
         # Find the tilemap entry for the requested screen position
 
@@ -749,11 +911,40 @@ class Ppu:
             orgy: cython.uint = scanline - 1   # screen Y (output row)
 
             # Apply window masking: skip this pixel if it falls in the masked zone.
-            if window_active and w1_enable:
-                inside: cython.bint = (self.wh0 <= orgx <= self.wh1)
-                masked: cython.bint = inside ^ w1_invert  # invert=1 → outside is masked
+            if window_active and (w1_enable or w2_enable):
+                w1_val: cython.bint = False
+                if w1_enable:
+                    in_range1: cython.bint = (self.wh0 <= orgx <= self.wh1)
+                    w1_val = in_range1 ^ w1_invert
+                w2_val: cython.bint = False
+                if w2_enable:
+                    in_range2: cython.bint = (self.wh2 <= orgx <= self.wh3)
+                    w2_val = in_range2 ^ w2_invert
+                masked: cython.bint
+                if w1_enable and w2_enable:
+                    if combine_logic == 0:
+                        masked = w1_val or w2_val
+                    elif combine_logic == 1:
+                        masked = w1_val and w2_val
+                    elif combine_logic == 2:
+                        masked = w1_val != w2_val
+                    else:
+                        masked = w1_val == w2_val
+                elif w1_enable:
+                    masked = w1_val
+                else:
+                    masked = w2_val
                 if masked:
                     continue
+
+            # Mosaic: snap scrx/scry to the block anchor before tile fetch.
+            if mosaic_on and mosaic_size > 1:
+                scrx = scrx - (scrx % mosaic_size)
+                # scanline is v_counter (1-based); orgy = scanline - 1. Snap
+                # in orgy-space to get natural 0-based block anchors, then
+                # convert back to scanline-space for the tile-row math below.
+                anchor_orgy: cython.uint = orgy - (orgy % mosaic_size)
+                scry = anchor_orgy + 1
 
             scry: cython.uint = (scry + scroll_y) % (8 * bg_size_h)
             scrx: cython.uint = (scrx + scroll_x) % (8 * bg_size_w)
@@ -780,29 +971,33 @@ class Ppu:
                 j: cython.uint = scrx % 8
                 v_shift: cython.uint = i + (-i + 7 - i) * tilemap_v_flip
                 h_shift: cython.uint = (7 - j) + (2 * j - 7) * tilemap_h_flip
+                # VRAM is 64KB and tiledata addresses wrap within it on real
+                # hardware. Mask each byte offset to 16 bits so high-numbered
+                # tiles (e.g. when tiledata_addr sits near the top of VRAM)
+                # don't IndexError our Python bytearray.
                 if bpp == 2:
-                    tile_address: cython.uint = bg.tiledata_addr + tilemap_addr * 16 + v_shift * 2
+                    tile_address: cython.uint = (bg.tiledata_addr + tilemap_addr * 16 + v_shift * 2) & 0xFFFF
                     b_lo: cython.uint = self.vram[tile_address]
-                    b_hi: cython.uint = self.vram[tile_address + 1]
+                    b_hi: cython.uint = self.vram[(tile_address + 1) & 0xFFFF]
                     v: cython.uint = ((b_lo >> h_shift) & 1) + (2 * ((b_hi >> h_shift) & 1))
                 elif bpp == 4:
-                    tile_address: cython.uint = bg.tiledata_addr + tilemap_addr * 32 + v_shift * 2
+                    tile_address: cython.uint = (bg.tiledata_addr + tilemap_addr * 32 + v_shift * 2) & 0xFFFF
                     b_1: cython.uint = self.vram[tile_address]
-                    b_2: cython.uint = self.vram[tile_address + 1]
-                    b_3: cython.uint = self.vram[tile_address + 16]
-                    b_4: cython.uint = self.vram[tile_address + 17]
+                    b_2: cython.uint = self.vram[(tile_address + 1) & 0xFFFF]
+                    b_3: cython.uint = self.vram[(tile_address + 16) & 0xFFFF]
+                    b_4: cython.uint = self.vram[(tile_address + 17) & 0xFFFF]
                     v: cython.uint = ((b_1 >> h_shift) & 1) + (2 * ((b_2 >> h_shift) & 1)) + \
                         (4 * ((b_3 >> h_shift) & 1)) + (8 * ((b_4 >> h_shift) & 1))
                 elif bpp == 8:
-                    tile_address: cython.uint = bg.tiledata_addr + tilemap_addr * 64 + v_shift * 2
+                    tile_address: cython.uint = (bg.tiledata_addr + tilemap_addr * 64 + v_shift * 2) & 0xFFFF
                     b_1: cython.uint = self.vram[tile_address]
-                    b_2: cython.uint = self.vram[tile_address + 1]
-                    b_3: cython.uint = self.vram[tile_address + 16]
-                    b_4: cython.uint = self.vram[tile_address + 17]
-                    b_5: cython.uint = self.vram[tile_address + 32]
-                    b_6: cython.uint = self.vram[tile_address + 33]
-                    b_7: cython.uint = self.vram[tile_address + 48]
-                    b_8: cython.uint = self.vram[tile_address + 49]
+                    b_2: cython.uint = self.vram[(tile_address + 1) & 0xFFFF]
+                    b_3: cython.uint = self.vram[(tile_address + 16) & 0xFFFF]
+                    b_4: cython.uint = self.vram[(tile_address + 17) & 0xFFFF]
+                    b_5: cython.uint = self.vram[(tile_address + 32) & 0xFFFF]
+                    b_6: cython.uint = self.vram[(tile_address + 33) & 0xFFFF]
+                    b_7: cython.uint = self.vram[(tile_address + 48) & 0xFFFF]
+                    b_8: cython.uint = self.vram[(tile_address + 49) & 0xFFFF]
                     v: cython.uint = ((b_1 >> h_shift) & 1) + \
                         (2 * ((b_2 >> h_shift) & 1)) + \
                         (4 * ((b_3 >> h_shift) & 1)) + \
@@ -893,7 +1088,7 @@ class Ppu:
     def draw_tile(
         self,
         tile: Tilemap | Object,
-        tile_data: bytes,
+        tile_data,
         tile_data_index: int,
         bpp: int,
         x_offset: int,
@@ -929,7 +1124,7 @@ class Ppu:
     def draw_point(
         self,
         i: int,
-        tile_data: bytes,
+        tile_data,
         tile_data_index: int,
         bpp: int,
         palette: int,
@@ -940,25 +1135,36 @@ class Ppu:
         mask = 1 << pixel
         assert bpp in (2, 4), bpp
 
-        # offset to the correct vram byte
+        # offset to the correct vram byte. VRAM is 64KB and wraps on real
+        # hardware, so mask each byte index to 16 bits to avoid IndexError
+        # when a sprite's tile data sits near the top of VRAM.
         i += tile_data_index
+        tlen = len(tile_data)
 
-        # 2bpp
-        l, h = tile_data[i + 0], tile_data[i + 1]
+        l = tile_data[(i + 0) % tlen]
+        h = tile_data[(i + 1) % tlen]
         color = (h & mask) >> pixel << 1 | (l & mask) >> pixel << 0
         if bpp >= 4:
-            l, h = tile_data[i + 16], tile_data[i + 17]
+            l = tile_data[(i + 16) % tlen]
+            h = tile_data[(i + 17) % tlen]
             color |= (h & mask) >> pixel << 3 | (l & mask) >> pixel << 2
 
         # color == 0 is transparent — do not overwrite existing pixel
         if color and 0 <= x < SCREEN_WIDTH:
             u32_color = self.get_u32_color(bpp, palette, color)
-            self.main_bgs[(y - 1) * SCREEN_WIDTH + x] = u32_color
+            idx: cython.uint = (y - 1) * SCREEN_WIDTH + x
+            self.main_bgs[idx] = u32_color
+            # OBJ palettes 4-7 (stored as 12-15 in the global palette space) participate
+            # in color math (layer 5). Palettes 0-3 are immune (layer 6, never matched).
+            self.main_layer[idx] = 5 if palette >= 12 else 6
 
     def get_u32_color(self, bpp: int, palette: int, color: int, color_offset: int = 0) -> int:
-        palette_index = palette * (bpp ** 2)
-        color_index = palette_index + color
-        color_index += color_offset  # CGRAM offset for BG2, BG3, BG4 in mode 0
+        if bpp == 8:
+            # 8BPP uses the entire 256-entry CGRAM as a single palette; palette field ignored.
+            color_index = color
+        else:
+            palette_index = palette * (2 ** bpp)
+            color_index = palette_index + color + color_offset
         color_index *= 2  # 2 bytes per color
         data = self.cgram[color_index] | self.cgram[color_index + 1] << 8
 
@@ -1006,28 +1212,27 @@ class Ppu:
             return
 
         for obj in self.oam.objects:
-            # Draw object if it's within the visible area (256x224)
-            # TODO handle wrapping
-            # x_visible = obj.x > -8 and obj.x < 256 - 8  # TODO hardcoded tile size
-            # y_visible = obj.y > -8 and obj.y < 224  # TODO probably wrong
-            # if x_visible and y_visible:
             if priority >= 0 and obj.priority != priority:
                 continue
-            if obj.y != 240:  # Games seem to use this value to hide the objects
-                tile_width, tile_height = self.get_obj_dimensions(obj.size)
+            if obj.y == 240:  # Games use y=240 to hide a sprite entirely off-screen.
+                continue
+            # OBJ X is 9-bit signed (Anomie/fullsnes): values 256..511 represent
+            # -256..-1, letting sprites straddle the left edge. draw_point's
+            # 0 ≤ x < 256 guard clips the off-screen pixels.
+            x_screen = obj.x - 512 if obj.x >= 256 else obj.x
+            tile_width, tile_height = self.get_obj_dimensions(obj.size)
+            self.draw_tiles(
+                bpp=4,  # Always 4bpp for objects
+                x_offset=x_screen,
+                y_offset=obj.y,
+                tile=obj,
+                tile_base_addr=self.oam_tiledata_address * 2,  # Indexed in words
+                tile_width=tile_width,
+                tile_height=tile_height,
+                tile_character=obj.character,
+            )
 
-                self.draw_tiles(
-                    bpp=4,  # Always 4bpp for objects
-                    x_offset=obj.x,
-                    y_offset=obj.y,
-                    tile=obj,
-                    tile_base_addr=self.oam_tiledata_address * 2,  # Indexed in words
-                    tile_width=tile_width,
-                    tile_height=tile_height,
-                    tile_character=obj.character,
-                )
-
-    def get_obj_dimensions(self, obj_size: int) -> Tuple[int, int]:
+    def get_obj_dimensions(self, obj_size: cython.bint) -> Tuple[int, int]:
         """
         000 =  8x8  and 16x16 sprites
         001 =  8x8  and 32x32 sprites
@@ -1085,7 +1290,7 @@ class OAM:
             obj = self.objects[obj_num]
             sx = data >> (obj_index * 2)
             obj.x = (obj.x & 0xFF) | (sx & 0x01) << 8
-            obj.size = bool(sx & 0x02)
+            obj.size = (sx >> 1) & 1
 
     def update_low_table(self, addr: int) -> None:
         obj_num = addr // 4
@@ -1102,10 +1307,10 @@ class OAM:
         obj.character = obj.character & 0x100 | data & 0xFF
 
         data = self.oam[addr + 3]
-        obj.name_select = bool(data & 0x01)
+        obj.name_select = data & 0x01
         obj.palette = (
             (data >> 1) & 0x07
         ) + 8  # Objects use the palettes present in the second half of CGRAM
         obj.priority = (data >> 4) & 0x03
-        obj.h_flip = bool(data & 0x40)
-        obj.v_flip = bool(data & 0x80)
+        obj.h_flip = data & 0x40
+        obj.v_flip = data & 0x80

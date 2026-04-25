@@ -18,6 +18,8 @@ from ..cpu import Cpu
 from ..apu import Apu
 from ..ppu import Ppu
 from ..controller import Controller
+from ..rom import HardwareVectors, InterruptVectors, MappingMode
+from types import SimpleNamespace
 
 
 # ---------------------------------------------------------------------------
@@ -30,12 +32,13 @@ ROM_SIZE = 512 * 1024
 class StubRom:
     def __init__(self, size=ROM_SIZE):
         self.rom = bytearray(size)
-        self.hardware_vectors = {
-            "emulation": {"RESET": 0x8000, "NMI": 0x8000, "IRQ": 0x8000,
-                          "COP": 0x8000, "ABORT": 0x8000},
-            "native":    {"RESET": 0x8000, "NMI": 0x8000, "IRQ": 0x8000,
-                          "BRK": 0x8000, "COP": 0x8000, "ABORT": 0x8000},
-        }
+        self.snes_header = SimpleNamespace(mapping_mode=MappingMode.LOROM)
+        self.hardware_vectors = HardwareVectors(
+            native=InterruptVectors(cop=0x8000, brk=0x8000, abort=0x8000,
+                                    nmi=0x8000, reset=0, irq=0x8000),
+            emulation=InterruptVectors(cop=0x8000, brk=0, abort=0x8000,
+                                       nmi=0x8000, reset=0x8000, irq=0x8000),
+        )
 
     def __getitem__(self, addr):
         if 0 <= addr < len(self.rom):
@@ -147,11 +150,16 @@ def test_raise_nmi_sets_nmi_line():
     assert cpu.status.nmi_line is True
 
 
-def test_lower_nmi_clears_nmi_line():
+def test_lower_nmi_does_not_clear_nmi_line():
+    """Per SNES hardware, V-Blank end does not auto-clear $4210 bit 7.
+
+    lower_nmi() is a no-op on the NMI flag; the flag persists until the
+    CPU reads $4210 (see test_rdnmi_bit7_persists_through_vblank_end).
+    """
     bus, cpu = make_bus()
     bus.raise_nmi()
     bus.lower_nmi()
-    assert cpu.status.nmi_line is False
+    assert cpu.status.nmi_line is True
 
 
 # ---------------------------------------------------------------------------
@@ -184,6 +192,22 @@ def test_rdnmi_bit7_clear_when_line_low():
     cpu.status.nmi_line = False
     val = bus[0x004210]
     assert not (val & 0x80)
+
+
+def test_rdnmi_bit7_persists_through_vblank_end():
+    """Per SNES spec, $4210 bit 7 is set at V-Blank start and cleared ONLY by
+    a read of $4210. V-Blank end does NOT auto-clear it."""
+    bus, cpu = make_bus()
+    bus.raise_nmi()        # simulate V-Blank start
+    assert cpu.status.nmi_line is True
+    bus.lower_nmi()        # simulate V-Blank end
+    # Hardware: bit 7 should still be set until the game reads $4210.
+    assert cpu.status.nmi_line is True, (
+        "RDNMI bit 7 should persist through V-Blank end; only a $4210 read clears it"
+    )
+    # Now reading $4210 clears it.
+    _ = bus[0x004210]
+    assert cpu.status.nmi_line is False
 
 
 # ---------------------------------------------------------------------------

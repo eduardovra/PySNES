@@ -21,7 +21,9 @@ def NoOperation(cpu: Cpu):
 
 
 def Prefix(cpu: Cpu):
-    cpu.fetch()
+    # WDM: 2-byte instruction; second byte is a dead read (no VDA/VPA).
+    cpu.idle()
+    cpu.PC.w += 1
 
 
 def ExchangeBA(cpu: Cpu):
@@ -34,32 +36,30 @@ def ExchangeBA(cpu: Cpu):
 
 @decorator_mode_8bit
 def BlockMove(cpu: Cpu, mode_8bit: bool, adjust: int):
-    if mode_8bit:
-        cpu.U.b = cpu.fetch()
-        cpu.V.b = cpu.fetch()
-        cpu.DB.l = cpu.U.b
-        cpu.W.l = cpu.read(cpu.V.b << 16 | cpu.X.w)
-        cpu.write(cpu.U.b << 16 | cpu.Y.w, cpu.W.l)
+    # Fetch operands on first entry; re-fetched (with opcode) on each loop-back.
+    dest_bank = cpu.fetch()
+    src_bank = cpu.fetch()
+    while True:
+        cpu.DB.l = dest_bank
+        cpu.W.l = cpu.read(src_bank << 16 | cpu.X.w)
+        cpu.write(dest_bank << 16 | cpu.Y.w, cpu.W.l)
         cpu.idle()
-        cpu.X.l += adjust
-        cpu.Y.l += adjust
         cpu.idle()
-        if cpu.A.w:
-            cpu.PC.w -= 3
+        if mode_8bit:
+            cpu.X.l += adjust
+            cpu.Y.l += adjust
+        else:
+            cpu.X.w += adjust
+            cpu.Y.w += adjust
+        a_old = cpu.A.w
         cpu.A.w -= 1
-    else:
-        cpu.U.b = cpu.fetch()
-        cpu.V.b = cpu.fetch()
-        cpu.DB.l = cpu.U.b
-        cpu.W.l = cpu.read(cpu.V.b << 16 | cpu.X.w)
-        cpu.write(cpu.U.b << 16 | cpu.Y.w, cpu.W.l)
-        cpu.idle()
-        cpu.X.w += adjust
-        cpu.Y.w += adjust
-        cpu.idle()
-        if cpu.A.w:
-            cpu.PC.w -= 3
-        cpu.A.w -= 1
+        if not a_old:
+            break
+        # Loop: hardware re-fetches the opcode and both operand bytes each iteration.
+        cpu.PC.w -= 3
+        cpu.fetch()  # opcode re-fetch (value discarded)
+        dest_bank = cpu.fetch()
+        src_bank = cpu.fetch()  # may raise budget-exceeded in tests
 
 
 def Interrupt(cpu: Cpu, get_vector: Callable):
@@ -79,12 +79,21 @@ def Interrupt(cpu: Cpu, get_vector: Callable):
 
 def Stop(cpu: Cpu):
     cpu.stp = True
+    # Two ghost reads of PC+1 plus the first "stopped" cycle are visible on
+    # the bus before the core actually halts (see TomHarte db.*.json traces).
+    cpu.idle()
+    cpu.idle()
+    cpu.idle()
     while cpu.stp and not cpu.synchronizing():
         cpu.idle()
 
 
 def Wait(cpu: Cpu):
     cpu.wai = True
+    # Two ghost reads of PC+1 plus the first "waiting" cycle are visible on
+    # the bus before the core blocks on an interrupt (cb.*.json traces).
+    cpu.idle()
+    cpu.idle()
     while cpu.wai and not cpu.synchronizing():
         cpu.idle()
     cpu.idle()

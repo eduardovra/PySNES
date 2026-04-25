@@ -15,16 +15,16 @@ The codebase is in active development. CPU and SPC700 instruction tests pass aga
 
 ### Commands
 ```bash
-# Install dependencies
-uv sync --python pypy@3.10
+# Install dependencies (interpreter is pinned in .python-version → pypy@3.10)
+uv sync
 
 # Build (Cython compile all .py files into a .so)
 make build          # uses PyPy 3.10 by default
 
 # Run
-make run            # build + run (uses default ROM path in Makefile)
-uv run --python pypy3.10 -m pysnes.pysnes roms/game.sfc           # without Cython build
-uv run --python pypy3.10 -m pysnes.pysnes roms/game.sfc --trace roms/game-trace.log  # with CPU trace
+uv run pysnes roms/game.sfc                     # script entry point (recommended)
+uv run pysnes roms/game.sfc --trace roms/game-trace.log  # with CPU trace
+uv run -m pysnes.pysnes roms/game.sfc           # equivalent module form
 
 # Clean build artifacts
 make clean
@@ -39,13 +39,29 @@ The emulator has built-in debug tools controllable via Unix signals (no GUI requ
 
 ```bash
 # Run emulator — PID is printed to stdout on startup
-uv run --python pypy@3.10 -m pysnes.pysnes roms/game.sfc &
+uv run -m pysnes.pysnes roms/game.sfc &
 
 # Trigger screenshot → saves screenshot.bmp (Claude can read as image)
 kill -USR1 <pid>
 
 # Trigger memory dumps → saves vram_dump.bin, cgram_dump.bin, wram_dump.bin
 kill -USR2 <pid>
+```
+
+**Headless mode (for Claude and automation):** Always run emulators headless — never launch a windowed emulator from a Claude tool call.
+- PySNES: pass `--headless` on the command line. Suppresses the SDL2 window and avoids the glibc malloc/ctypes crashes seen in windowed pure-Python runs.
+- Mesen2: use `--testrunner <lua-script> <rom>` (NOT `--headless --lua`, that still opens a window). The Lua script calls `emu.stop()` / `emu.exit()` when done. Artifacts get written to paths the Lua passes via env vars (e.g. `MESEN_OUTPUT_BIN`).
+- Any other emulator: use its equivalent headless/offscreen flag. If one doesn't exist, stop and ask rather than launching with a window.
+
+Use signal-driven screenshots, direct framebuffer reads, or Lua-dumped .bin artifacts for snapshots. Interactive launches are the user's job, not Claude's.
+
+```bash
+uv run -m pysnes.pysnes --headless roms/game.sfc &
+
+# Mesen2 headless (writes a screenshot at MESEN_OUTPUT_BIN):
+MESEN_FRAMES=400 MESEN_OUTPUT_BIN=/tmp/mesen.bin \
+  submodules/Mesen2/bin/linux-x64/Release/linux-x64/publish/Mesen \
+  --testrunner scripts/mesen_screenshot.lua "roms/Super Mario World (U) [!].smc"
 ```
 
 - **F11** / **SIGUSR1** → save `screenshot.bmp` (SDL2 framebuffer snapshot)
@@ -106,7 +122,7 @@ pysnes/debugger/debugger.py    Debugger + live UI window
 ## Implementation Status
 
 ### Fully Implemented
-- WDC65816 CPU: all 256 opcodes, all addressing modes, flags, registers. Passes SingleStepTests (512 files, 1 case/opcode/mode by default; 6 pre-existing failures for opcodes 42/44/54 which are known broken)
+- WDC65816 CPU: all 256 opcodes, all addressing modes, flags, registers. Passes all 512 SingleStepTests (1 case/opcode/mode by default)
 - SPC700 APU: full instruction set, registers, memory, timers, I/O ports to CPU. Passes all 25,600 SingleStepTests cases at 100/opcode
 - PPU basics: tilemap rendering, BG1-4, sprite composition, CGRAM palette
 - Memory bus: address decoding, LoROM mapping, RAM regions, PPU/APU register access
@@ -120,8 +136,7 @@ pysnes/debugger/debugger.py    Debugger + live UI window
 - **PPU Mode 7**: M7A-M7Y matrix registers present but not functional
 - **NMI/V-Blank**: basic implementation, timing edge cases likely
 - **DMA/HDMA**: partial, timing accuracy unknown
-- **OAM sprite wrapping**: has `TODO handle wrapping` comment in code
-- **Backdrop color**: comment says it's incorrect — should only show when all layers above are transparent
+- **OAM Y wrapping**: X sign-extension done; Y still uses the `y==240 → hide` heuristic, which is close but not exactly hardware-accurate.
 - **HiROM**: LoROM is the primary target; HiROM may have mapping issues
 - **Window effects**: masking/windowing not implemented
 - **Color math**: SNES special effects processing not implemented
@@ -176,16 +191,16 @@ Without these, the Lua oracle scripts cannot use file I/O or open sockets to com
 
 ```bash
 # Tier 1 — find first diverging frame (CPU/SPC registers + WRAM CRC32):
-uv run --python pypy@3.10 pytest pysnes/test_integration.py::test_frame_divergence -v -s
+uv run pytest pysnes/test_integration.py::test_frame_divergence -v -s
 
 # Tier 2 — find exact diverging CPU instruction:
-uv run --python pypy@3.10 pytest pysnes/test_integration.py::test_instruction_divergence -v -s
+uv run pytest pysnes/test_integration.py::test_instruction_divergence -v -s
 
 # Custom ROM / frame count / instruction count:
-SNES_ROM="roms/mygame.sfc" uv run --python pypy@3.10 pytest pysnes/test_integration.py -v -s --frames 120 --instructions 200000
+SNES_ROM="roms/mygame.sfc" uv run pytest pysnes/test_integration.py -v -s --frames 120 --instructions 200000
 
 # Skip integration tests in normal suite:
-uv run --python pypy@3.10 pytest pysnes/ -m "not integration"
+uv run pytest pysnes/ -m "not integration"
 ```
 
 - Mesen Lua scripts are in `scripts/mesen_oracle.lua` (Tier 1) and `scripts/mesen_trace.lua` (Tier 2)
@@ -197,58 +212,75 @@ uv run --python pypy@3.10 pytest pysnes/ -m "not integration"
 
 ```bash
 # All tests
-uv run --python pypy@3.10 pytest pysnes/
+uv run pytest pysnes/
 
 # CPU tests (TomHarte's ProcessorTests / SingleStepTests 65816)
-uv run --python pypy@3.10 pytest pysnes/cpu/test_cpu.py
+uv run pytest pysnes/cpu/test_cpu.py
 
 # SPC700 instruction tests (SingleStepTests spc700)
-uv run --python pypy@3.10 pytest pysnes/apu/test_spc700.py
+uv run pytest pysnes/apu/test_spc700.py
 
 # APU / timer / interrupt / scheduler unit tests
-uv run --python pypy@3.10 pytest pysnes/apu/test_apu.py pysnes/apu/test_timers.py pysnes/bus/test_interrupts.py pysnes/scheduler/test_scheduler.py
+uv run pytest pysnes/apu/test_apu.py pysnes/apu/test_timers.py pysnes/bus/test_interrupts.py pysnes/scheduler/test_scheduler.py
 
 # PPU scroll unit tests (synthetic, no ROM needed):
-uv run --python pypy@3.10 pytest pysnes/ppu/test_ppu_scroll.py -v
+uv run pytest pysnes/ppu/test_ppu_scroll.py -v
 
 # PPU screenshot regression tests (requires reference PNGs in tests/ppu_references/)
-uv run --python pypy@3.10 pytest pysnes/ppu/test_ppu.py -m ppu
+uv run pytest pysnes/ppu/test_ppu.py -m ppu
 # Generate/update reference PNGs from Mesen (run once, then commit the PNGs):
-uv run --python pypy@3.10 pytest pysnes/ppu/test_ppu.py -m ppu --update-refs
+uv run pytest pysnes/ppu/test_ppu.py -m ppu --update-refs
 
 # Filter options (apply to test_cpu.py and test_spc700.py)
-uv run --python pypy@3.10 pytest pysnes/cpu/test_cpu.py --opcode ea           # single opcode
-uv run --python pypy@3.10 pytest pysnes/apu/test_spc700.py --opcode d0        # single opcode
-uv run --python pypy@3.10 pytest pysnes/cpu/test_cpu.py --max-per-opcode 0    # all cases (unlimited)
-uv run --python pypy@3.10 pytest pysnes/cpu/test_cpu.py --max-per-opcode 10   # 10 cases per opcode
-uv run --python pypy@3.10 pytest pysnes/cpu/test_cpu.py --mode e              # emulation mode only (65816)
-uv run --python pypy@3.10 pytest pysnes/cpu/test_cpu.py --mode n              # native mode only (65816)
-uv run --python pypy@3.10 pytest pysnes/cpu/test_cpu.py --opcode ea --mode n  # combine filters
+uv run pytest pysnes/cpu/test_cpu.py --opcode ea           # single opcode
+uv run pytest pysnes/apu/test_spc700.py --opcode d0        # single opcode
+uv run pytest pysnes/cpu/test_cpu.py --max-per-opcode 0    # all cases (unlimited)
+uv run pytest pysnes/cpu/test_cpu.py --max-per-opcode 10   # 10 cases per opcode
+uv run pytest pysnes/cpu/test_cpu.py --mode e              # emulation mode only (65816)
+uv run pytest pysnes/cpu/test_cpu.py --mode n              # native mode only (65816)
+uv run pytest pysnes/cpu/test_cpu.py --opcode ea --mode n  # combine filters
 ```
 
 - 65816 test data is at `submodules/65816/v1/` (files named `{opcode}.{e|n}.json`)
 - SPC700 test data is at `submodules/SingleStepTests_spc700/v1/`
 - Tests verify: initial state → execute instruction → final registers, RAM, and memory access sequence
 - CPU (`pysnes/cpu/cpu.py`) and APU (`pysnes/apu/apu.py`) are the tested implementations
-- `pytest-xdist` is available for parallel execution (memory is bounded — test params are `(file, index)` refs, not full dicts)
-- **Do NOT use `-n auto` for `test_cpu.py`** — it spawns too many workers and crashes the machine. Use `-n 6` until CPU test worker memory footprint is reduced.
-- Cycle count checking is enabled for opcodes in `CYCLE_CHECK_OPCODES` in `test_cpu.py` (currently: ea, 1a, 3a, 18, 38)
+- `pytest-xdist` is available for parallel execution. Test params are `(file, index)` refs, not full dicts; collection is cached to `.pytest_cache/ss_{cpu,spc700}_<key>.pickle` under an `fcntl.flock` so workers after the first just read the pickle.
+- **Recommended invocation: `-n auto --dist=loadgroup`** for `test_cpu.py` and `test_spc700.py`. Each param carries an `xdist_group(file_path)` marker, so `--dist=loadgroup` pins all cases from one JSON file to a single worker; a single-slot file cache in `_load_case` then parses that JSON only once per worker. Delete `.pytest_cache/ss_*.pickle` if you suspect stale cache (it's keyed on filter args + JSON mtimes and should self-invalidate).
+- Cycle count is checked against `len(test_case["cycles"])` for every CPU opcode. The 65816 harness does not verify per-cycle bus-status bits (VDA/VPA/VPB/MLB/M/X/E); only R/W.
 
 ## Performance Notes
-- Cython compiles all Python to C for speed
 - SDL2 rendering is 10-20x faster than the previous OpenGL approach
 - ImGui was dropped — it was killing performance (replaced by Rich TUI)
-- Current FPS target: ~60 Hz; last measured around 21-22 FPS with SDL2
+- Current FPS target: ~60 Hz; last measured around 21-22 FPS with SDL2 (pure PyPy, no Cython)
 - `Profile.prof` exists in root — can be analyzed with pstats/snakeviz
 - `make profile` runs cProfile
+
+### PyPy vs Cython — Critical Finding
+
+**Pure PyPy (no `make build`) is currently faster than PyPy + Cython.**
+
+Measured on Super Mario World:
+- Pure PyPy (no compiled extensions): **>20 FPS**
+- PyPy + Cython compiled extensions: **~4 FPS**
+
+**Why Cython hurts PyPy performance:** PyPy's JIT traces through pure-Python call graphs freely. Every call into a compiled C extension (`.so`) breaks the JIT trace — the JIT must exit, make the C call, then re-enter and re-warm on return. With the PPU called 262 times/frame and APU called multiple times per scanline, these trace breaks accumulate into a ~5× slowdown.
+
+**Current strategy:** Run without building (or after `make clean`) to use pure PyPy JIT. The Cython build infrastructure is retained because:
+- The per-module `setup.py` is correct and needed if ever targeting CPython
+- Individual self-contained modules (PPU, APU) may benefit from Cython on CPython
+- Hot-path modules (cpu.py, bus.py, dma.py, wdc65816/*.py) are explicitly excluded from compilation even when building, because they cross module boundaries on every instruction and would break JIT traces
+
+**If evaluating Cython further:** The right target is CPython + Cython (not PyPy + Cython). Alternatively, compile only truly self-contained modules with no cross-module hot calls. Avoid `annotation_typing=False` — it silently disables all Cython type optimizations and causes severe slowdowns.
+
 - **Cython HTML annotation reports**: after `make build`, each `.py` file gets a `.html` counterpart (e.g. `ppu.html`). Open it in a browser — yellow-highlighted lines are slow paths that still go through the Python interpreter. Darker yellow = more interpreter calls. These are the primary indicator of Cython optimization bottlenecks: typed variables, `@cython.cfunc`, and avoiding Python builtins (`zip`, `reversed`, `**`) on hot paths eliminate the yellow.
 
 ### Benchmarking Rule
 **Before and after every performance change, measure and record results.** Use the relevant benchmark for the component being optimized:
-- **CPU throughput**: `uv run --python pypy@3.10 pytest pysnes/cpu/test_cpu.py --opcode ea -s` — look for "instr/sec" in output
-- **APU throughput**: `uv run --python pypy@3.10 pytest pysnes/apu/test_spc700.py --opcode 00 -s` — look for "instr/sec"
+- **CPU throughput**: `uv run pytest pysnes/cpu/test_cpu.py --opcode ea -s` — look for "instr/sec" in output
+- **APU throughput**: `uv run pytest pysnes/apu/test_spc700.py --opcode 00 -s` — look for "instr/sec"
 - **FPS (full emulator)**: run with a ROM and read the FPS from the window title bar
-- **PPU rendering throughput**: `time uv run --python pypy@3.10 pytest pysnes/ppu/test_ppu.py -m ppu` — wall-clock time dominated by PPU rendering; fully automated and reproducible
+- **PPU rendering throughput**: `time uv run pytest pysnes/ppu/test_ppu.py -m ppu` — wall-clock time dominated by PPU rendering; fully automated and reproducible
 
 Document results in the PR/commit message as: `before: X instr/sec → after: Y instr/sec (+Z%)` or `before: Xs → after: Ys` for PPU.
 

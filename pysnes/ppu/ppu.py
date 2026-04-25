@@ -1106,10 +1106,10 @@ class Ppu:
 
                 # used when drawing objects...
                 if tile_character is not None:
-                    tile_size = 8 * bpp  # TODO Why 8 ?
-                    tile_addr = tile_character + (tile_pos_h | tile_pos_v << 4)
-                    # TODO this is wrong, need to copy the formula used by bsnes
-                    vram_index = tile_base_addr + tile_addr * tile_size  # type: ignore
+                    # bytes per 8×8 tile: 8 rows × bpp bytes/row (32 for 4BPP)
+                    tile_size = 8 * bpp
+                    tile_addr = tile_character + tile_pos_h + tile_pos_v * 16
+                    vram_index = (tile_base_addr + tile_addr * tile_size) & 0xFFFF
                 else:
                     c = tile_addr
                     if bpp == 2:
@@ -1266,12 +1266,17 @@ class Ppu:
             # 0 ≤ x < 256 guard clips the off-screen pixels.
             x_screen = obj.x - 512 if obj.x >= 256 else obj.x
             tile_width, tile_height = self.get_obj_dimensions(obj.size)
+            # Apply name_select: OAM byte 3 bit 0 selects the second sprite name
+            # table, offset from the first by (oam_nameselect+1)*0x1000 VRAM words.
+            tile_base_word = self.oam_tiledata_address
+            if obj.name_select:
+                tile_base_word = (tile_base_word + (self.oam_nameselect + 1) * 0x1000) & 0x7FFF
             self.draw_tiles(
                 bpp=4,  # Always 4bpp for objects
                 x_offset=x_screen,
                 y_offset=obj.y,
                 tile=obj,
-                tile_base_addr=self.oam_tiledata_address * 2,  # Indexed in words
+                tile_base_addr=tile_base_word * 2,
                 tile_width=tile_width,
                 tile_height=tile_height,
                 tile_character=obj.character,

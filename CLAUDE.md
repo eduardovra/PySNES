@@ -122,7 +122,7 @@ pysnes/debugger/debugger.py    Debugger + live UI window
 ## Implementation Status
 
 ### Fully Implemented
-- WDC65816 CPU: all 256 opcodes, all addressing modes, flags, registers. Passes SingleStepTests (512 files, 1 case/opcode/mode by default; 6 pre-existing failures for opcodes 42/44/54 which are known broken)
+- WDC65816 CPU: all 256 opcodes, all addressing modes, flags, registers. Passes all 512 SingleStepTests (1 case/opcode/mode by default)
 - SPC700 APU: full instruction set, registers, memory, timers, I/O ports to CPU. Passes all 25,600 SingleStepTests cases at 100/opcode
 - PPU basics: tilemap rendering, BG1-4, sprite composition, CGRAM palette
 - Memory bus: address decoding, LoROM mapping, RAM regions, PPU/APU register access

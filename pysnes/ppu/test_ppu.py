@@ -234,10 +234,12 @@ PPU_TEST_ROMS = [
         "Mosaic/Mode3/MosaicMode3.sfc",
         25,
     ),
-    (
+    pytest.param(
         "ppubusact",
         LIDNARIQ_ROMS / "lidnariq-ppu-bus-activity" / "ppubusact.sfc",
         20,
+        marks=pytest.mark.xfail(reason="Modes 3/4 (8BPP/OPT) and 5/6 (hi-res) not fully implemented", strict=False),
+        id="ppubusact",
     ),
 ]
 

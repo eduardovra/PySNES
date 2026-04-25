@@ -259,9 +259,9 @@ class Bus:
             # TODO: Implement true open-bus/MDR behavior instead of returning 0
             # in these known system-area holes.
             if (
-                0x2000 <= addr <= 0x20FF
+                0x2000 <= addr <= 0x21FF  # 0x2100-0x21FF: mapped regs handled above
                 or 0x2200 <= addr <= 0x3FFF
-                or 0x4018 <= addr <= 0x41FF
+                or 0x4000 <= addr <= 0x41FF  # 0x4016/0x4017 already handled above
                 or 0x4500 <= addr <= 0x7FFF
             ):
                 return 0
@@ -653,9 +653,9 @@ class Bus:
             # TODO: Implement true open-bus side effects/MDR behavior instead
             # of silently dropping writes in these known system-area holes.
             if (
-                0x2000 <= addr <= 0x20FF
+                0x2000 <= addr <= 0x21FF  # 0x2100-0x21FF: mapped regs handled above
                 or 0x2200 <= addr <= 0x3FFF
-                or 0x4018 <= addr <= 0x41FF
+                or 0x4000 <= addr <= 0x41FF  # 0x4016/0x4017 already handled above
                 or 0x4500 <= addr <= 0x7FFF
             ):
                 return

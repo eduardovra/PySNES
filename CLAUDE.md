@@ -250,12 +250,29 @@ uv run pytest pysnes/cpu/test_cpu.py --opcode ea --mode n  # combine filters
 - Cycle count is checked against `len(test_case["cycles"])` for every CPU opcode. The 65816 harness does not verify per-cycle bus-status bits (VDA/VPA/VPB/MLB/M/X/E); only R/W.
 
 ## Performance Notes
-- Cython compiles all Python to C for speed
 - SDL2 rendering is 10-20x faster than the previous OpenGL approach
 - ImGui was dropped — it was killing performance (replaced by Rich TUI)
-- Current FPS target: ~60 Hz; last measured around 21-22 FPS with SDL2
+- Current FPS target: ~60 Hz; last measured around 21-22 FPS with SDL2 (pure PyPy, no Cython)
 - `Profile.prof` exists in root — can be analyzed with pstats/snakeviz
 - `make profile` runs cProfile
+
+### PyPy vs Cython — Critical Finding
+
+**Pure PyPy (no `make build`) is currently faster than PyPy + Cython.**
+
+Measured on Super Mario World:
+- Pure PyPy (no compiled extensions): **>20 FPS**
+- PyPy + Cython compiled extensions: **~4 FPS**
+
+**Why Cython hurts PyPy performance:** PyPy's JIT traces through pure-Python call graphs freely. Every call into a compiled C extension (`.so`) breaks the JIT trace — the JIT must exit, make the C call, then re-enter and re-warm on return. With the PPU called 262 times/frame and APU called multiple times per scanline, these trace breaks accumulate into a ~5× slowdown.
+
+**Current strategy:** Run without building (or after `make clean`) to use pure PyPy JIT. The Cython build infrastructure is retained because:
+- The per-module `setup.py` is correct and needed if ever targeting CPython
+- Individual self-contained modules (PPU, APU) may benefit from Cython on CPython
+- Hot-path modules (cpu.py, bus.py, dma.py, wdc65816/*.py) are explicitly excluded from compilation even when building, because they cross module boundaries on every instruction and would break JIT traces
+
+**If evaluating Cython further:** The right target is CPython + Cython (not PyPy + Cython). Alternatively, compile only truly self-contained modules with no cross-module hot calls. Avoid `annotation_typing=False` — it silently disables all Cython type optimizations and causes severe slowdowns.
+
 - **Cython HTML annotation reports**: after `make build`, each `.py` file gets a `.html` counterpart (e.g. `ppu.html`). Open it in a browser — yellow-highlighted lines are slow paths that still go through the Python interpreter. Darker yellow = more interpreter calls. These are the primary indicator of Cython optimization bottlenecks: typed variables, `@cython.cfunc`, and avoiding Python builtins (`zip`, `reversed`, `**`) on hot paths eliminate the yellow.
 
 ### Benchmarking Rule

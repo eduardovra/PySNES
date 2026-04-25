@@ -2,15 +2,32 @@ from setuptools import setup, Extension
 from Cython.Build import cythonize
 import glob
 import pathlib
+import multiprocessing
 
-# Find all .py files in pysnes directory recursively (excluding __init__.py for now)
+# Modules excluded from Cython compilation: PyPy JIT cannot trace through compiled
+# C extension call boundaries. The CPU/bus hot path (cpu.py, bus.py, dma.py,
+# wdc65816/*.py) calls across module boundaries on every instruction cycle, so
+# compiling them creates JIT trace breaks and causes a severe performance regression.
+# These are left as pure Python for PyPy to JIT natively.
+EXCLUDE_FROM_CYTHON = {
+    "pysnes/cpu/cpu.py",
+    "pysnes/cpu/dma.py",
+    "pysnes/bus/bus.py",
+}
+
 py_files = glob.glob("pysnes/**/*.py", recursive=True)
-py_files = [f for f in py_files if not f.endswith("__init__.py")]  # Exclude __init__.py
+py_files = [
+    f for f in py_files
+    if not f.endswith("__init__.py")
+    and not pathlib.Path(f).name.startswith("test_")
+    and pathlib.Path(f).name != "conftest.py"
+    and f not in EXCLUDE_FROM_CYTHON
+    and not f.startswith("pysnes/cpu/wdc65816/")
+]
 
 extensions = []
 for py_file in py_files:
-    pathlib_path = pathlib.Path(py_file)
-    module_name = pathlib_path.with_suffix("").as_posix().replace("/", ".")
+    module_name = pathlib.Path(py_file).with_suffix("").as_posix().replace("/", ".")
     extensions.append(Extension(
         name=module_name,
         sources=[py_file],
@@ -18,23 +35,13 @@ for py_file in py_files:
         include_dirs=["/usr/include/SDL2/"],
     ))
 
-extensions = [
-    Extension(
-        name="pysnes",
-        sources=py_files,
-        libraries=["SDL2"],
-        include_dirs=["/usr/include/SDL2/"],
-    )
-]
-
-import multiprocessing
-
 setup(
     ext_modules=cythonize(
         extensions,
         nthreads=multiprocessing.cpu_count(),
         cache=True,
-        annotate=True,  # enables generation of the html annotation file
+        annotate=True,
+        compiler_directives={},
     ),
     packages=["pysnes"],
 )

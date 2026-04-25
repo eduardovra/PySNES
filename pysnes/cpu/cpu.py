@@ -326,14 +326,15 @@ class Cpu:
     @cython.ccall
     def write(self, addr: cython.uint, data: cython.uchar):
         self.cycles += self.get_clock_cycles(addr)
-        self.icycles += 1
         self.bus.write(addr, data)
+        self.icycles += 1
 
     @cython.ccall
     def read(self, addr: cython.uint) -> cython.uchar:
         self.cycles += self.get_clock_cycles(addr)
+        data = self.bus.read(addr)
         self.icycles += 1
-        return self.bus.read(addr)
+        return data
 
     @cython.ccall
     def readDirect(self, address: cython.uint) -> cython.uchar:

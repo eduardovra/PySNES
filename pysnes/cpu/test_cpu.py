@@ -152,13 +152,20 @@ def test_cpu(test_case):
         elif outputs[3] == 'w':
             calls_expected.append(f"setitem({hex(address)}, {hex(value)})")
 
+    class _BudgetExceeded(Exception):
+        pass
+
     real_read = FakeBus.read
     def read(self, address):
+        if len(calls_performed) >= len(calls_expected):
+            raise _BudgetExceeded()
         value = real_read(self, address)
         calls_performed.append(f"getitem({hex(address)}) -> {hex(value)}")
         return value
     real_write = FakeBus.write
     def write(self, address, value):
+        if len(calls_performed) >= len(calls_expected):
+            raise _BudgetExceeded()
         calls_performed.append(f"setitem({hex(address)}, {hex(value)})")
         return real_write(self, address, value)
 
@@ -167,13 +174,15 @@ def test_cpu(test_case):
             patch.object(FakeBus, "write", autospec=True) as mock_setitem:
         mock_getitem.side_effect = read
         mock_setitem.side_effect = write
-        # while cpu.PC.w != final["pc"]:  # TODO consider PBR
-        while len(calls_performed) < len(calls_expected):
-            cpu.fetch_and_execute()
+        try:
+            while len(calls_performed) < len(calls_expected):
+                cpu.fetch_and_execute()
 
-            # safety check to avoid infinite loops
-            if len(calls_performed) > 0xFFFF:
-                raise Exception("Infinite loop detected")
+                # safety check to avoid infinite loops
+                if len(calls_performed) > 0xFFFF:
+                    raise Exception("Infinite loop detected")
+        except _BudgetExceeded:
+            pass
 
     # check on registers and ram
     assert cpu.PC.w == final["pc"], f"{hex(cpu.PC.w)} != {hex(final['pc'])}"

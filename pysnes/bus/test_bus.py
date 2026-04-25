@@ -387,6 +387,12 @@ def test_nmitimen_read_fallthrough():
     assert bus[0x004200] == 0x42
 
 
+def test_write_updates_open_bus_latch():
+    bus, *_ = make_bus()
+    bus[0x00420D] = 0xA5
+    assert bus.mdr == 0xA5
+
+
 # ---------------------------------------------------------------------------
 # MEMSEL ($420D) — FastROM speed select (bit 0)
 # ---------------------------------------------------------------------------
@@ -484,16 +490,17 @@ def test_sram_size_masking_8kb():
 
 
 def test_sram_no_sram_read_returns_open_bus():
-    """When sram_size is 0, SRAM reads return 0xFF (open bus)."""
+    """When sram_size is 0, SRAM reads return the current open-bus latch."""
     bus, *_ = make_bus(sram_size=0)
-    assert bus[0x700000] == 0xFF
+    bus[0x7E0000] = 0x5A
+    assert bus[0x700000] == 0x5A
 
 
 def test_sram_no_sram_write_ignored():
     """When sram_size is 0, SRAM writes are silently ignored (no crash)."""
     bus, *_ = make_bus(sram_size=0)
     bus[0x700000] = 0xAB  # must not raise
-    assert bus[0x700000] == 0xFF
+    assert bus[0x700000] == 0xAB
 
 
 def test_sram_save_noop_when_clean(tmp_path):
@@ -629,22 +636,53 @@ def test_rdvramh_routes_to_ppu():
 # ---------------------------------------------------------------------------
 
 def test_open_bus_unmapped_2000_range():
-    """Reads in $2000-$20FF use the temporary open-bus fallback."""
+    """Reads in $2000-$20FF return the current bus latch."""
     bus, *_ = make_bus()
-    assert bus[0x0020F1] == 0
+    bus[0x7E0000] = 0x4C
+    assert bus[0x0020F1] == 0x4C
 
 
 def test_open_bus_unmapped_2200_range():
-    """Reads in $2200-$3FFF use the temporary open-bus fallback."""
+    """Reads in $2200-$3FFF return the current bus latch."""
     bus, *_ = make_bus()
-    assert bus[0x0027A8] == 0
+    bus[0x00420D] = 0x81
+    assert bus[0x0027A8] == 0x81
 
 
 def test_open_bus_unmapped_mirrored_bank():
-    """The same open-bus fallback applies through the $80-$BF mirror."""
+    """The same open-bus latch applies through the $80-$BF mirror."""
     bus, *_ = make_bus()
-    assert bus[0x8020F1] == 0
-    assert bus[0x8027A8] == 0
+    bus[0x7E0000] = 0xD2
+    assert bus[0x8020F1] == 0xD2
+    assert bus[0x8027A8] == 0xD2
+
+
+def test_slhv_read_returns_open_bus():
+    bus, *_ = make_bus()
+    bus[0x7E0000] = 0x66
+    assert bus[0x002137] == 0x66
+
+
+def test_rdnmi_preserves_open_bus_bits():
+    bus, _, cpu, *_ = make_bus()
+    bus[0x7E0000] = 0x40
+    cpu.status.nmi_line = True
+    assert bus[0x004210] == 0xC2
+
+
+def test_hvbjoy_preserves_open_bus_bits():
+    bus, *_ = make_bus()
+    bus[0x7E0000] = 0x1F
+    bus.hblank = True
+    bus.vblank = True
+    assert bus[0x004212] == 0xFF
+
+
+def test_stat78_preserves_open_bus_bits():
+    bus, *_, ppu = make_bus()
+    bus[0x7E0000] = 0x7F
+    ppu.field = 1
+    assert bus[0x00213F] == 0xFF
 
 
 # ---------------------------------------------------------------------------
@@ -812,9 +850,10 @@ def test_hirom_sram_size_masking_8kb():
 
 
 def test_hirom_sram_no_sram_returns_open_bus():
-    """Reading HiROM SRAM with sram_size=0 returns 0xFF (open bus)."""
+    """Reading HiROM SRAM with sram_size=0 returns the current open-bus latch."""
     bus, *_ = make_bus(sram_size=0, mapping_mode=MappingMode.HIROM)
-    assert bus[0x206000] == 0xFF
+    bus[0x7E0000] = 0xA7
+    assert bus[0x206000] == 0xA7
 
 
 def test_hirom_sram_window_bounds():

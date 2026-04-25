@@ -757,3 +757,11 @@ def test_dma_readback_bank_does_not_carry():
     assert bus[0x004302] == 0xFE
     assert bus[0x004303] == 0xFF
     assert bus[0x004304] == 0x7E
+
+
+def test_dma_unused_register_reads_return_open_bus():
+    bus, _, _ = make_bus()
+    bus[0x7E0000] = 0x9C
+    assert bus[0x00430C] == 0x9C
+    assert bus[0x00430D] == 0x9C
+    assert bus[0x00430E] == 0x9C

@@ -1159,9 +1159,12 @@ class Ppu:
             self.main_layer[idx] = 5 if palette >= 12 else 6
 
     def get_u32_color(self, bpp: int, palette: int, color: int, color_offset: int = 0) -> int:
-        palette_index = palette * (bpp ** 2)
-        color_index = palette_index + color
-        color_index += color_offset  # CGRAM offset for BG2, BG3, BG4 in mode 0
+        if bpp == 8:
+            # 8BPP uses the entire 256-entry CGRAM as a single palette; palette field ignored.
+            color_index = color
+        else:
+            palette_index = palette * (2 ** bpp)
+            color_index = palette_index + color + color_offset
         color_index *= 2  # 2 bytes per color
         data = self.cgram[color_index] | self.cgram[color_index + 1] << 8
 

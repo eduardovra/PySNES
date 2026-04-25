@@ -623,6 +623,55 @@ class Ppu:
             self.draw_objects(priority=2)                       # OBJ pri 2
             self.draw_background_scanline(self.bg1, 8, True)    # BG1 pri 1
             self.draw_objects(priority=3)                       # OBJ pri 3
+        elif self._bgmode == 4:
+            # Mode 4: BG1 (4bpp) + BG2 (2bpp) with OPT (offset-per-tile, not
+            # implemented — same simplification as Mode 2).
+            self.draw_scanline_backdrop()
+            self.draw_background_scanline(self.bg2, 2, False)   # BG2 pri 0
+            self.draw_objects(priority=0)                       # OBJ pri 0
+            self.draw_background_scanline(self.bg1, 4, False)   # BG1 pri 0
+            self.draw_objects(priority=1)                       # OBJ pri 1
+            self.draw_background_scanline(self.bg2, 2, True)    # BG2 pri 1
+            self.draw_objects(priority=2)                       # OBJ pri 2
+            self.draw_background_scanline(self.bg1, 4, True)    # BG1 pri 1
+            self.draw_objects(priority=3)                       # OBJ pri 3
+        elif self._bgmode == 5:
+            # Mode 5: BG1 (4bpp) + BG2 (2bpp).
+            # APPROXIMATION: Mode 5 is natively hi-res — the SNES PPU outputs
+            # 512 pixels/scanline by interleaving main screen (even cols) and
+            # sub screen (odd cols). We render at 256px (main screen only)
+            # because the framebuffer is 256px wide; sub-screen interleaving
+            # is not implemented. hoffset is in hi-res (512px) coordinates,
+            # so we halve it to approximate correct scroll speed at 256px.
+            orig_hoff1 = self.bg1.hoffset
+            orig_hoff2 = self.bg2.hoffset
+            self.bg1.hoffset = self.bg1.hoffset >> 1
+            self.bg2.hoffset = self.bg2.hoffset >> 1
+            self.draw_scanline_backdrop()
+            self.draw_background_scanline(self.bg2, 2, False)   # BG2 pri 0
+            self.draw_objects(priority=0)                       # OBJ pri 0
+            self.draw_background_scanline(self.bg1, 4, False)   # BG1 pri 0
+            self.draw_objects(priority=1)                       # OBJ pri 1
+            self.draw_background_scanline(self.bg2, 2, True)    # BG2 pri 1
+            self.draw_objects(priority=2)                       # OBJ pri 2
+            self.draw_background_scanline(self.bg1, 4, True)    # BG1 pri 1
+            self.draw_objects(priority=3)                       # OBJ pri 3
+            self.bg1.hoffset = orig_hoff1
+            self.bg2.hoffset = orig_hoff2
+        elif self._bgmode == 6:
+            # Mode 6: BG1 (4bpp) only, hi-res + OPT (OPT not implemented).
+            # APPROXIMATION: same hi-res handling as Mode 5 — rendered at
+            # 256px (main screen only); hoffset halved from hi-res coordinates.
+            orig_hoff1 = self.bg1.hoffset
+            self.bg1.hoffset = self.bg1.hoffset >> 1
+            self.draw_scanline_backdrop()
+            self.draw_objects(priority=0)                       # OBJ pri 0
+            self.draw_background_scanline(self.bg1, 4, False)   # BG1 pri 0
+            self.draw_objects(priority=1)                       # OBJ pri 1
+            self.draw_objects(priority=2)                       # OBJ pri 2
+            self.draw_background_scanline(self.bg1, 4, True)    # BG1 pri 1
+            self.draw_objects(priority=3)                       # OBJ pri 3
+            self.bg1.hoffset = orig_hoff1
         else:
             raise NotImplementedError(f"BG Mode {self._bgmode} not implemented")
 

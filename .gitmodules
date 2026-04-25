@@ -13,3 +13,6 @@
 [submodule "submodules/Mesen2"]
 	path = submodules/Mesen2
 	url = https://github.com/SourMesen/Mesen2.git
+[submodule "submodules/SMWDisX"]
+	path = submodules/SMWDisX
+	url = git@github.com:IsoFrieze/SMWDisX.git

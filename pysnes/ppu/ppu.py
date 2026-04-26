@@ -876,8 +876,6 @@ class Ppu:
 
     @cython.ccall
     def draw_background_scanline(self, bg: Background, bpp: cython.uchar, priority_selector: cython.bint):
-        scanline = self.v_counter  # TODO move to method argument
-
         # If neither main nor sub is enabled, nothing to do at all.
         if not bg.main_screen_enable and not bg.sub_screen_enable:
             return
@@ -939,7 +937,7 @@ class Ppu:
             # Calculate the tilemap entry address in VRAM
             # scrx, scry = dot, scanline
             scrx: cython.uint = dot
-            scry: cython.uint = scanline
+            scry: cython.uint = self.v_counter
 
             # To find the tilemap word address for a particular tile (X and Y), you'd use a
             # formula something like this:
@@ -953,7 +951,7 @@ class Ppu:
             scroll_y: cython.uint = bg.voffset
 
             orgx: cython.uint = dot   # screen X of this pixel (= dot before scroll)
-            orgy: cython.uint = scanline - 1   # screen Y (output row)
+            orgy: cython.uint = self.v_counter - 1   # screen Y (output row)
 
             # Apply window masking: skip this pixel if it falls in the masked zone.
             if window_active and (w1_enable or w2_enable):

@@ -126,6 +126,7 @@ class PySNES:
         self.cpu.reset_registers()
         self.cpu.PC.w = self._reset_vector
         self.apu.reset_registers()
+        self.ppu.reset_registers()
         # Reschedule CPU step; _step may be the debugger hook if breakpoints are active.
         self.scheduler.add(0, self.cpu._step)
         self.paused = True

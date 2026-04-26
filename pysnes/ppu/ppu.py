@@ -422,6 +422,67 @@ class Ppu:
     # Scheduler integration
     # ------------------------------------------------------------------
 
+    def reset_registers(self) -> None:
+        """Reset all PPU I/O registers to power-on state. Preserves VRAM/CGRAM/OAM."""
+        self.vmain = 0x00
+        self.vmaddl = 0
+        self.vmaddh = 0
+        self._vmdatal = 0
+        self._vmdatah = 0
+        self._vram_prefetch = 0
+
+        self.inidisp_set(0)
+
+        self._cgadd = c_uint8(0x00)
+        self._cgdata = None
+
+        self._oamadd = 0
+        self._oamodd = 0
+        self._oamdata = 0
+        self.obsel_set(0)
+        self.oam_main_screen_enable = True
+        self.oam_sub_screen_enable = True
+
+        self._bgmode = 0x00
+        self._bgpriority = 0
+        self.bg1 = Background(number=1, color_offset_mode_0=0x00)
+        self.bg2 = Background(number=2, color_offset_mode_0=0x20)
+        self.bg3 = Background(number=3, color_offset_mode_0=0x40)
+        self.bg4 = Background(number=4, color_offset_mode_0=0x60)
+
+        self.latch_bgofs_ppu1 = 0
+        self.latch_bgofs_ppu2 = 0
+
+        self._m7_latch = 0
+        self.m7a = 0
+        self.m7b = 0
+        self.m7c = 0
+        self.m7d = 0
+        self.m7x = 0
+        self.m7y = 0
+
+        self.w12sel = 0
+        self.w34sel = 0
+        self.wobjsel = 0
+        self.wh0 = 0
+        self.wh1 = 0
+        self.wh2 = 0
+        self.wh3 = 0
+        self.wbglog = 0
+        self.wobjlog = 0
+
+        self.tmw = 0
+        self.tsw = 0
+
+        self.cgwsel = 0
+        self.cgadsub = 0
+        self.coldata_r = 0
+        self.coldata_g = 0
+        self.coldata_b = 0
+
+        self.mosaic_enabled = [False, False, False, False]
+        self.mosaic_size = 0
+
     def attach(self, scheduler: "Scheduler", bus: "Bus") -> None:
         """Attach the scheduler and bus after construction."""
         self.scheduler = scheduler
@@ -879,6 +940,7 @@ class Ppu:
         # If neither main nor sub is enabled, nothing to do at all.
         if not bg.main_screen_enable and not bg.sub_screen_enable:
             return
+
         write_main: cython.bint = bg.main_screen_enable
         write_sub: cython.bint = bg.sub_screen_enable
         layer_tag: cython.uchar = bg.number
@@ -1080,16 +1142,10 @@ class Ppu:
         Determines the number of horizontal and vertical
         tiles to be drawn accordingly to width and height,
         then calls self.draw_tile to render them
-
-        Despite the name, this will generally render 1 tile only...
         """
-        # TODO what this method should be doing is to draw all 32 tiles
-        # in the tilemap (tilemaps always have 32x32 tiles)
-        # tile width/height can be 8x8 or 16x16 pixels for backgrounds
-        # objects can have larger sizes though
-
         h_tiles = tile_width // 8
         v_tiles = tile_height // 8
+
         for tile_pos_v in range(v_tiles):
             for tile_pos_h in range(h_tiles):
                 # compute x, y positions
@@ -1259,6 +1315,7 @@ class Ppu:
                 continue
             if obj.y == 240:  # Games use y=240 to hide a sprite entirely off-screen.
                 continue
+
             # OBJ X is 9-bit signed (Anomie/fullsnes): values 256..511 represent
             # -256..-1, letting sprites straddle the left edge. draw_point's
             # 0 ≤ x < 256 guard clips the off-screen pixels.
@@ -1269,6 +1326,7 @@ class Ppu:
             tile_base_word = self.oam_tiledata_address
             if obj.name_select:
                 tile_base_word = (tile_base_word + (self.oam_nameselect + 1) * 0x1000) & 0x7FFF
+
             self.draw_tiles(
                 bpp=4,  # Always 4bpp for objects
                 x_offset=x_screen,

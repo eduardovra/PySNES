@@ -313,6 +313,8 @@ def main():
     parser.add_argument("--trace", metavar="REF", help="Enable CPU trace comparison against reference log")
     parser.add_argument("--trace-from", metavar="ADDR", help="Start CPU trace when PC first reaches ADDR (hex, e.g. 0x00A087)")
     parser.add_argument("--headless", action="store_true", help="Run without opening an SDL2 window")
+    parser.add_argument("--breakpoint", metavar="ADDR", action="append",
+                        help="Set breakpoint at address (hex, e.g. 0x00A087); may be repeated")
     args = parser.parse_args()
 
     settings = settings_module.load()
@@ -324,6 +326,10 @@ def main():
         pysnes.start_trace(args.trace)
     if args.trace_from:
         pysnes.start_trace_from(int(args.trace_from, 16))
+    if args.breakpoint:
+        for addr_str in args.breakpoint:
+            pysnes.debugger.toggle_breakpoint(int(addr_str, 16))
+        print(f"Breakpoints set: {[hex(int(a, 16)) for a in args.breakpoint]}", flush=True)
 
     pysnes.main()
 

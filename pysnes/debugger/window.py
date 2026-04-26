@@ -123,6 +123,14 @@ class DebuggerWindow:
 
         bp_btns = ttk.Frame(bp_frame)
         bp_btns.pack(side="left", padx=4)
+
+        add_row = ttk.Frame(bp_btns)
+        add_row.pack(fill="x", pady=2)
+        self._bp_addr_entry = ttk.Entry(add_row, width=8)
+        self._bp_addr_entry.pack(side="left")
+        self._bp_addr_entry.bind("<Return>", lambda _e: self._cmd_add_bp())
+        ttk.Button(add_row, text="Add", command=self._cmd_add_bp).pack(side="left", padx=(2, 0))
+
         ttk.Button(bp_btns, text="Break at PC",
                    command=self._cmd_toggle_bp_at_pc).pack(fill="x", pady=2)
         ttk.Button(bp_btns, text="Remove selected",
@@ -357,6 +365,15 @@ class DebuggerWindow:
             self._addr_entry.delete(0, "end")
             self._addr_entry.insert(0, "0000")
         self._refresh_memory()
+
+    def _cmd_add_bp(self) -> None:
+        raw = self._bp_addr_entry.get().strip()
+        try:
+            addr = int(raw, 16)
+        except ValueError:
+            return
+        self._bp_addr_entry.delete(0, "end")
+        self._debugger._cmd_queue.put(("toggle_bp", addr))
 
     def _cmd_toggle_bp_at_pc(self) -> None:
         addr = self._cpu.PC.d

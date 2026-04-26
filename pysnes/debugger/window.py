@@ -163,11 +163,9 @@ class DebuggerWindow:
 
     def _poll(self) -> None:
         """Called every 100 ms in the Tkinter thread to process refresh signals."""
-        if not self._debugger._notify_queue.empty():
-            # Drain all pending notifications; a single refresh is enough
-            while not self._debugger._notify_queue.empty():
-                self._debugger._notify_queue.get_nowait()
-            self.refresh()
+        while not self._debugger._notify_queue.empty():
+            self._debugger._notify_queue.get_nowait()
+        self.refresh()
         self.root.after(100, self._poll)
 
     # ------------------------------------------------------------------

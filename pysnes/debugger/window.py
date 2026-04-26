@@ -141,6 +141,7 @@ class DebuggerWindow:
         ttk.Button(ctrl, text="Step (N)",     command=self._cmd_step).pack(fill="x", pady=2, padx=6)
         ttk.Button(ctrl, text="Continue (C)", command=self._cmd_continue).pack(fill="x", pady=2, padx=6)
         ttk.Button(ctrl, text="Pause",        command=self._cmd_pause).pack(fill="x", pady=2, padx=6)
+        ttk.Button(ctrl, text="Reset",        command=self._cmd_reset).pack(fill="x", pady=2, padx=6)
 
         # ── Status bar ────────────────────────────────────────────────
         self._status_label = ttk.Label(root, text="Running", anchor="w")
@@ -398,6 +399,9 @@ class DebuggerWindow:
 
     def _cmd_pause(self) -> None:
         self._debugger._cmd_queue.put(("pause",))
+
+    def _cmd_reset(self) -> None:
+        self._debugger._cmd_queue.put(("reset",))
 
     def _on_close(self) -> None:
         self.root.quit()  # stops mainloop; destroy() is called in the daemon thread

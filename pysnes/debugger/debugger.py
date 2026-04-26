@@ -136,6 +136,8 @@ class Debugger:
             elif action == "pause":
                 self._pysnes.paused = True
                 self._notify_paused()
+            elif action == "reset":
+                self._pysnes.reset()
 
     def disassemble_forward(self, pc: int, count: int) -> list[str]:
         """Return up to `count` disassembled instruction strings starting at `pc`."""

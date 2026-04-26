@@ -1,5 +1,6 @@
 import argparse
 from ctypes import byref
+import heapq
 import pathlib
 import signal
 import time
@@ -56,7 +57,8 @@ class PySNES:
         self.event = sdl.SDL_Event()
 
         # Reset PC to the address in the cartridge reset vector
-        self.cpu.PC.w = rom.hardware_vectors.emulation.reset
+        self._reset_vector: int = rom.hardware_vectors.emulation.reset
+        self.cpu.PC.w = self._reset_vector
 
         # Emulator state
         self.running = True
@@ -111,6 +113,23 @@ class PySNES:
         with open("wram_dump.bin", "wb") as f:
             f.write(wram)
         print(f"Memory dumps saved: vram_dump.bin ({len(vram)}B), cgram_dump.bin ({len(cgram)}B), wram_dump.bin ({len(wram)}B)", flush=True)
+
+    def reset(self) -> None:
+        """Soft reset: restore CPU/APU to power-on state and jump to the reset vector."""
+        # Remove the stale CPU step event so we can reschedule it immediately.
+        q = self.scheduler._queue
+        for i, entry in enumerate(q):
+            if entry[-1] is self.debugger._original_step or entry[-1] is self.cpu._step:
+                q.pop(i)
+                heapq.heapify(q)
+                break
+        self.cpu.reset_registers()
+        self.cpu.PC.w = self._reset_vector
+        self.apu.reset_registers()
+        # Reschedule CPU step; _step may be the debugger hook if breakpoints are active.
+        self.scheduler.add(0, self.cpu._step)
+        self.paused = True
+        self.debugger._notify_paused()
 
     def start_trace(self, ref_path: str):
         """Open trace log file and bsnes reference for comparison."""

@@ -76,6 +76,7 @@ class PySNES:
         self._trace_count = 0
         self._trace_limit = 100_000
         self._trace_diverged = False
+        self._trace_active = False
 
     def _load_sram(self, bus):
         n = bus.load_sram(str(self.sram_path))
@@ -129,6 +130,34 @@ class PySNES:
         def traced_step():
             original_step()
             pysnes._check_trace()
+
+        self.cpu._step = traced_step
+
+    def start_trace_from(self, addr: int, limit: int = 100_000) -> None:
+        """Start CPU tracing once PC first reaches `addr`.
+
+        Writes to cpu_trace.log starting at the trigger point. Useful for
+        diagnosing hangs that occur after a known entry point (e.g. a game-mode
+        routine) without capturing millions of irrelevant boot instructions.
+        """
+        self._trace_limit = limit
+        self._trace_count = 0
+        self._trace_active = False
+        self.cpu.trace_enabled = True
+        print(f"[trace] waiting for PC=0x{addr:06X} (limit {limit} instructions) …", flush=True)
+
+        pysnes = self
+        original_step = self.cpu._step
+
+        def traced_step():
+            original_step()
+            pc = pysnes.cpu.PC.d
+            if not pysnes._trace_active and pc == addr:
+                pysnes._trace_active = True
+                pysnes._trace_file = open("cpu_trace.log", "w")
+                print(f"[trace] triggered at PC=0x{addr:06X} → cpu_trace.log", flush=True)
+            if pysnes._trace_active:
+                pysnes._check_trace()
 
         self.cpu._step = traced_step
 
@@ -282,6 +311,7 @@ def main():
     parser = argparse.ArgumentParser(description="PySNES - SNES emulator")
     parser.add_argument("rom", help="Path to ROM file (.smc/.sfc)")
     parser.add_argument("--trace", metavar="REF", help="Enable CPU trace comparison against reference log")
+    parser.add_argument("--trace-from", metavar="ADDR", help="Start CPU trace when PC first reaches ADDR (hex, e.g. 0x00A087)")
     parser.add_argument("--headless", action="store_true", help="Run without opening an SDL2 window")
     args = parser.parse_args()
 
@@ -292,6 +322,8 @@ def main():
 
     if args.trace:
         pysnes.start_trace(args.trace)
+    if args.trace_from:
+        pysnes.start_trace_from(int(args.trace_from, 16))
 
     pysnes.main()
 

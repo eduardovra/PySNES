@@ -466,9 +466,21 @@ class Apu:
         cython.cast(Timer, self.timers[2]).step(clocks)
 
     def __getitem__(self, addr: int) -> int:
+        # $F4-$F7: external read returns the SPC output latch (ports_w),
+        # since that is the value the SPC last wrote there.
+        if 0xF4 <= addr <= 0xF7:
+            return self.ports_w[addr - 0xF4]
         return self._read(addr)
 
     def __setitem__(self, addr: int, value: int) -> None:
+        # $F4-$F7: external write sets both latches so that the SPC reads the
+        # initialized value back (ports_r) and the verify check also passes
+        # (ports_w).  In actual emulation _write/_read keep them split; this
+        # path is only used from tests.
+        if 0xF4 <= addr <= 0xF7:
+            self.ports_r[addr - 0xF4] = value
+            self.ports_w[addr - 0xF4] = value
+            return
         self._write(addr, value)
 
     @property

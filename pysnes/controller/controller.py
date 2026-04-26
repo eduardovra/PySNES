@@ -1,4 +1,4 @@
-from sdl2 import *
+import sdl2
 
 
 class Controller:
@@ -27,18 +27,18 @@ class Controller:
             0,
             0,
             0,
-            SDLK_c in self.pressed_keys,  # R
-            SDLK_d in self.pressed_keys,  # L
-            SDLK_s in self.pressed_keys,  # X
-            SDLK_x in self.pressed_keys,  # A
-            SDLK_RIGHT in self.pressed_keys,  # Right
-            SDLK_LEFT in self.pressed_keys,  # Left
-            SDLK_DOWN in self.pressed_keys,  # Down
-            SDLK_UP in self.pressed_keys,  # Up
-            SDLK_RETURN in self.pressed_keys,  # Start
-            SDLK_QUOTE in self.pressed_keys,  # Select
-            SDLK_a in self.pressed_keys,  # Y
-            SDLK_z in self.pressed_keys,  # B
+            sdl2.SDLK_c in self.pressed_keys,  # R
+            sdl2.SDLK_d in self.pressed_keys,  # L
+            sdl2.SDLK_s in self.pressed_keys,  # X
+            sdl2.SDLK_x in self.pressed_keys,  # A
+            sdl2.SDLK_RIGHT in self.pressed_keys,  # Right
+            sdl2.SDLK_LEFT in self.pressed_keys,  # Left
+            sdl2.SDLK_DOWN in self.pressed_keys,  # Down
+            sdl2.SDLK_UP in self.pressed_keys,  # Up
+            sdl2.SDLK_RETURN in self.pressed_keys,  # Start
+            sdl2.SDLK_QUOTE in self.pressed_keys,  # Select
+            sdl2.SDLK_a in self.pressed_keys,  # Y
+            sdl2.SDLK_z in self.pressed_keys,  # B
         ]
 
     def data(self) -> int:

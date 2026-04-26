@@ -178,7 +178,9 @@ class DebuggerWindow:
         cpu = self._cpu
         paused = self._debugger._pysnes.paused
 
-        self._status_label.config(text="PAUSED" if paused else "Running")
+        status = "PAUSED" if paused else "Running"
+        self._status_label.config(text=status)
+        self.root.title(f"PySNES Debugger — {status}")
 
         self._refresh_cpu_tab(cpu)
         if paused:

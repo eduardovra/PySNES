@@ -132,16 +132,19 @@ class PySNES:
         self.paused = True
         self.debugger._notify_paused()
 
-    def start_trace(self, ref_path: str):
-        """Open trace log file and bsnes reference for comparison."""
-        try:
-            self._trace_file = open("cpu_trace.log", "w")
-            self._trace_ref = open(ref_path, "r")
-            self.cpu.trace_enabled = True
-            print(f"CPU trace started (limit {self._trace_limit} instructions, ref: {ref_path})", flush=True)
-        except FileNotFoundError as e:
-            print(f"Warning: Could not open trace reference: {e}", flush=True)
-            self._trace_ref = None
+    def start_trace(self, ref_path: str | None = None):
+        """Open trace log file; optionally compare against a bsnes reference."""
+        self._trace_file = open("cpu_trace.log", "w")
+        self.cpu.trace_enabled = True
+        if ref_path is not None:
+            try:
+                self._trace_ref = open(ref_path, "r")
+                print(f"CPU trace started (limit {self._trace_limit} instructions, ref: {ref_path})", flush=True)
+            except FileNotFoundError as e:
+                print(f"Warning: Could not open trace reference: {e}", flush=True)
+                self._trace_ref = None
+        else:
+            print(f"CPU trace started (limit {self._trace_limit} instructions, no ref)", flush=True)
 
         # Wrap cpu._step so we can check the trace after each instruction
         original_step = self.cpu._step
@@ -330,7 +333,8 @@ def main():
 
     parser = argparse.ArgumentParser(description="PySNES - SNES emulator")
     parser.add_argument("rom", help="Path to ROM file (.smc/.sfc)")
-    parser.add_argument("--trace", metavar="REF", help="Enable CPU trace comparison against reference log")
+    parser.add_argument("--trace", metavar="REF", nargs="?", const=True,
+                        help="Write CPU trace to cpu_trace.log; optionally compare against REF log")
     parser.add_argument("--trace-from", metavar="ADDR", help="Start CPU trace when PC first reaches ADDR (hex, e.g. 0x00A087)")
     parser.add_argument("--headless", action="store_true", help="Run without opening an SDL2 window")
     parser.add_argument("--breakpoint", metavar="ADDR", action="append",
@@ -343,7 +347,7 @@ def main():
     pysnes = PySNES(args.rom, settings=settings)
 
     if args.trace:
-        pysnes.start_trace(args.trace)
+        pysnes.start_trace(None if args.trace is True else args.trace)
     if args.trace_from:
         pysnes.start_trace_from(int(args.trace_from, 16))
     if args.breakpoint:

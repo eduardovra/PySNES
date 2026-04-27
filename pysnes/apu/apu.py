@@ -138,6 +138,7 @@ class Apu:
     # Timing
     timers = cython.declare(object, visibility="public")
     _last_synced_mc = cython.declare(cython.long, visibility="public")
+    _apu_mc_frac = cython.declare(cython.long, visibility="public")
     _ports_w_dirty = cython.declare(cython.bint, visibility="public")
     cycles = cython.declare(cython.uint, visibility="public")
     # Registers (raw storage)
@@ -235,6 +236,9 @@ class Apu:
         # before any IPL ROM instruction runs.  Without this the APU trails by ~42 MC
         # and the SMW main-CPU↔APU handshake loop exits one iteration late.
         self._last_synced_mc: int = -(2 * 21477272 // 1024000)
+        # Fixed-point remainder for the APU cycle budget (in units of MC_DEN).
+        # Avoids lossy MC↔APU-cycle round-trips in sync_to.
+        self._apu_mc_frac: int = 0
         # Set when APU writes to ports_w; causes sync_to to yield so the CPU
         # can observe each intermediate port value before the APU runs further.
         self._ports_w_dirty: bool = False
@@ -473,23 +477,18 @@ class Apu:
         elapsed = master_clock - self._last_synced_mc
         if elapsed <= 0:
             return
-        # Target APU clock cycles to run using the exact ratio (21477272/1024000)
-        # rather than integer 21 — over the SPC700 IPL ROM boot (~2400 APU cycles)
-        # the truncation to 21 accumulates ~60 MC of drift, enough to skew the
-        # main-CPU↔APU handshake by a full CPU loop iteration (see SMW boot).
-        target_apu_clocks = elapsed * self._APU_MC_DEN // self._APU_MC_NUM
+        self._last_synced_mc = master_clock
+
+        # Fixed-point accumulator: add elapsed MC scaled by MC_DEN so we never
+        # lose fractional cycles across calls.  One APU cycle costs MC_NUM units.
+        self._apu_mc_frac += elapsed * self._APU_MC_DEN
         self._ports_w_dirty = False
-        apu_clocks_run = 0
-        while apu_clocks_run < target_apu_clocks:
+        while self._apu_mc_frac >= self._APU_MC_NUM:
             self.fetch_and_execute()
             self.step_timers(self.cycles)
-            apu_clocks_run += self.cycles
+            self._apu_mc_frac -= self.cycles * self._APU_MC_NUM
             if self._ports_w_dirty:
-                # The APU wrote a port — advance _last_synced_mc by only what
-                # we've run, even if it overshoots mc (the APU has "pre-run").
-                self._last_synced_mc += apu_clocks_run * self._APU_MC_NUM // self._APU_MC_DEN
                 return
-        self._last_synced_mc += apu_clocks_run * self._APU_MC_NUM // self._APU_MC_DEN
 
     @cython.ccall
     def step_timers(self, clocks: cython.uint):

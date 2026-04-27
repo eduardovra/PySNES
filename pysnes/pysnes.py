@@ -1,4 +1,5 @@
 import argparse
+from collections import deque
 from ctypes import byref
 import heapq
 import pathlib
@@ -75,6 +76,7 @@ class PySNES:
         # CPU trace: compare against bsnes reference
         self._trace_file = None
         self._trace_ref = None
+        self._trace_ring: deque | None = None  # ring-buffer mode; None = stream to file
         self._trace_count = 0
         self._trace_limit = 100_000
         self._trace_diverged = False
@@ -132,19 +134,31 @@ class PySNES:
         self.paused = True
         self.debugger._notify_paused()
 
-    def start_trace(self, ref_path: str | None = None):
-        """Open trace log file; optionally compare against a bsnes reference."""
+    def start_trace(self, ref_path: str | None = None, last: int = 0):
+        """Start CPU tracing to cpu_trace.log.
+
+        ref_path: optional bsnes reference log to compare against.
+        last: if > 0, keep only the last N lines in a ring buffer and write on exit.
+              if 0, stream every line to the file immediately (unlimited).
+        """
         self._trace_file = open("cpu_trace.log", "w")
         self.cpu.trace_enabled = True
+        if last > 0:
+            self._trace_ring = deque(maxlen=last)
+            self._trace_limit = 0  # no early stop in ring mode
+            mode_str = f"last {last} lines"
+        else:
+            self._trace_ring = None
+            self._trace_limit = 0  # unlimited streaming
+            mode_str = "unlimited"
         if ref_path is not None:
             try:
                 self._trace_ref = open(ref_path, "r")
-                print(f"CPU trace started (limit {self._trace_limit} instructions, ref: {ref_path})", flush=True)
+                print(f"CPU trace started ({mode_str}, ref: {ref_path})", flush=True)
             except FileNotFoundError as e:
                 print(f"Warning: Could not open trace reference: {e}", flush=True)
-                self._trace_ref = None
         else:
-            print(f"CPU trace started (limit {self._trace_limit} instructions, no ref)", flush=True)
+            print(f"CPU trace started ({mode_str})", flush=True)
 
         # Wrap cpu._step so we can check the trace after each instruction
         original_step = self.cpu._step
@@ -211,41 +225,39 @@ class PySNES:
         )
 
     def _check_trace(self):
-        """Write one trace line and compare against reference. Continues past divergence."""
-        if self._trace_count >= self._trace_limit:
+        """Write one trace line and optionally compare against reference."""
+        if self._trace_limit and self._trace_count >= self._trace_limit:
             return
 
         pc = self.cpu.PC.d
         self._trace_count += 1
+        line = self._format_trace_line()
 
-        if self._trace_file:
-            line = self._format_trace_line()
+        if self._trace_ring is not None:
+            self._trace_ring.append(line)
+        elif self._trace_file:
             self._trace_file.write(line + "\n")
 
-            # Compare against reference (up to first divergence only)
-            if not self._trace_diverged and self._trace_ref:
+        # Compare against reference (streaming mode only; up to first divergence)
+        if self._trace_ring is None and not self._trace_diverged and self._trace_ref:
+            ref_line = self._trace_ref.readline()
+            while ref_line and ref_line.startswith(".."):
                 ref_line = self._trace_ref.readline()
-                while ref_line and ref_line.startswith(".."):
-                    ref_line = self._trace_ref.readline()
-                if ref_line:
-                    ref_line = ref_line.rstrip()
-                    if line[:6].lower() != ref_line[:6].lower():
-                        print(f"\n*** TRACE DIVERGENCE at instruction {self._trace_count} ***", flush=True)
-                        print(f"  OUR: {line}", flush=True)
-                        print(f"  REF: {ref_line}", flush=True)
-                        self._trace_diverged = True
+            if ref_line:
+                ref_line = ref_line.rstrip()
+                if line[:6].lower() != ref_line[:6].lower():
+                    print(f"\n*** TRACE DIVERGENCE at instruction {self._trace_count} ***", flush=True)
+                    print(f"  OUR: {line}", flush=True)
+                    print(f"  REF: {ref_line}", flush=True)
+                    self._trace_diverged = True
+                    if self._trace_file:
                         self._trace_file.flush()
 
-        # Periodic PC report to spot infinite loops
         if self._trace_count % 10_000 == 0:
             print(f"[trace {self._trace_count}] PC=0x{pc:06X} MC={self.scheduler.master_clock}", flush=True)
 
-        if self._trace_count >= self._trace_limit:
+        if self._trace_limit and self._trace_count >= self._trace_limit:
             print(f"Trace limit reached ({self._trace_limit} instructions).", flush=True)
-            apu = self.bus.apu
-            print(f"APU state: PC=0x{apu.PC:04X} A={apu.A:02X} X={apu.X:02X} Y={apu.Y:02X} S={apu.S:02X}", flush=True)
-            print(f"  ports_r={list(apu.ports_r)} ports_w={list(apu.ports_w)}", flush=True)
-            print(f"  last_synced_mc={apu._last_synced_mc} scheduler_mc={self.scheduler.master_clock}", flush=True)
             if self._trace_file:
                 self._trace_file.flush()
 
@@ -293,6 +305,10 @@ class PySNES:
 
         finally:
             self._save_sram()
+            if self._trace_ring is not None and self._trace_file:
+                for line in self._trace_ring:
+                    self._trace_file.write(line + "\n")
+                print(f"Trace written ({len(self._trace_ring)} lines).", flush=True)
             if self._trace_file:
                 self._trace_file.close()
             if self._trace_ref:
@@ -334,9 +350,11 @@ def main():
     parser = argparse.ArgumentParser(description="PySNES - SNES emulator")
     parser.add_argument("rom", help="Path to ROM file (.smc/.sfc)")
     parser.add_argument("--trace", action="store_true",
-                        help="Write CPU trace to cpu_trace.log")
+                        help="Write CPU trace to cpu_trace.log (unlimited)")
     parser.add_argument("--trace-ref", metavar="REF",
                         help="Compare CPU trace against REF log (implies --trace)")
+    parser.add_argument("--trace-limit", metavar="N", type=int, default=0,
+                        help="Keep only the last N trace lines; written to cpu_trace.log on exit")
     parser.add_argument("--trace-from", metavar="ADDR", help="Start CPU trace when PC first reaches ADDR (hex, e.g. 0x00A087)")
     parser.add_argument("--headless", action="store_true", help="Run without opening an SDL2 window")
     parser.add_argument("--breakpoint", metavar="ADDR", action="append",
@@ -348,8 +366,8 @@ def main():
         settings["headless"] = True
     pysnes = PySNES(args.rom, settings=settings)
 
-    if args.trace or args.trace_ref:
-        pysnes.start_trace(args.trace_ref)
+    if args.trace or args.trace_ref or args.trace_limit:
+        pysnes.start_trace(args.trace_ref, last=args.trace_limit)
     if args.trace_from:
         pysnes.start_trace_from(int(args.trace_from, 16))
     if args.breakpoint:

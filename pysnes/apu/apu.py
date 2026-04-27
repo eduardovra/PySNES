@@ -4,6 +4,7 @@ from typing import Any
 import cython
 
 from .spc700.instructions_spc700 import INSTRUCTIONS
+from .spc700.disassembler import SPC700Disassembler
 
 
 @cython.cclass
@@ -170,11 +171,16 @@ class Apu:
     debug_symbols = cython.declare(object, visibility="public")
     # Memory access tracing (None = disabled; set to [] in tests to capture accesses)
     _mem_log = cython.declare(object, visibility="public")
+    # Instruction trace
+    trace_enabled = cython.declare(cython.bint, visibility="public")
+    trace_log = cython.declare(object, visibility="public")
+    _disassembler = cython.declare(object, visibility="public")
 
     def __init__(self) -> None:
         self.reset_registers()
         self.allocate_memory()
         self.load_instructions()
+        self._disassembler = SPC700Disassembler(self)
 
     def __str__(self) -> str:
         flags = [
@@ -258,6 +264,8 @@ class Apu:
         self.breakpoint = None
         self.print_debug = False
         self._mem_log = None
+        self.trace_enabled = False
+        self.trace_log = []
 
     def allocate_memory(self):
         # Init memory regions
@@ -412,10 +420,34 @@ class Apu:
         self.PC = (self.PC + 1) & 0xFFFF
         return data
 
+    def _format_trace(self, pc: int, opcode: int) -> str:
+        disasm = self._disassembler.disassemble(pc)
+        flags = (
+            ("N" if self.NF else "n")
+            + ("V" if self.VF else "v")
+            + ("P" if self.PF else "p")
+            + ("B" if self.BF else "b")
+            + ("H" if self.HF else "h")
+            + ("I" if self.IF else "i")
+            + ("Z" if self.ZF else "z")
+            + ("C" if self.CF else "c")
+        )
+        return "{:<24} A:{:02X} X:{:02X} Y:{:02X} S:{:02X} PSW:{:02X} {}".format(
+            disasm,
+            self.A, self.X, self.Y, self.S,
+            self.PSW,
+            flags,
+        )
+
     @cython.ccall
     def fetch_and_execute(self):
         self.cycles = 0
+        pc = self.PC
         opcode = self.fetch()
+        if self.trace_enabled:
+            line = self._format_trace(pc, opcode)
+            self.trace_log.append(line)
+            self.trace_log = self.trace_log[-10:]
         if self.print_debug:
             print("\033[93mAPU 0x{:04X} 0x{:02X} {} [{:04X}] [{:02X}] {}\033[0m".format(
                 self.PC - 1, opcode, self.debug_symbols[opcode],

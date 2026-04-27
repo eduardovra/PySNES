@@ -82,6 +82,12 @@ class PySNES:
         self._trace_diverged = False
         self._trace_active = False
 
+        # APU trace
+        self._apu_trace_file = None
+        self._apu_trace_ref = None
+        self._apu_trace_ring: deque | None = None
+        self._apu_trace_diverged = False
+
     def _load_sram(self, bus):
         n = bus.load_sram(str(self.sram_path))
         if n:
@@ -258,6 +264,58 @@ class PySNES:
             if self._trace_file:
                 self._trace_file.flush()
 
+    def start_apu_trace(self, ref_path: str | None = None, last: int = 0):
+        """Start APU tracing to apu_trace.log.
+
+        ref_path: optional reference log to compare against.
+        last: if > 0, keep only the last N lines (ring buffer, written on exit).
+              if 0, stream every line to the file immediately.
+        """
+        self._apu_trace_file = open("apu_trace.log", "w")
+        self.apu.trace_enabled = True
+        if last > 0:
+            self._apu_trace_ring = deque(maxlen=last)
+            mode_str = f"last {last} lines"
+        else:
+            self._apu_trace_ring = None
+            mode_str = "unlimited"
+        if ref_path is not None:
+            try:
+                self._apu_trace_ref = open(ref_path, "r")
+                print(f"APU trace started ({mode_str}, ref: {ref_path})", flush=True)
+            except FileNotFoundError as e:
+                print(f"Warning: Could not open APU trace reference: {e}", flush=True)
+        else:
+            print(f"APU trace started ({mode_str})", flush=True)
+
+        original_fae = self.apu.fetch_and_execute
+        pysnes = self
+
+        def traced_fae():
+            original_fae()
+            if pysnes.apu.trace_log:
+                pysnes._check_apu_trace(pysnes.apu.trace_log[-1])
+
+        self.apu.fetch_and_execute = traced_fae
+
+    def _check_apu_trace(self, line: str):
+        if self._apu_trace_ring is not None:
+            self._apu_trace_ring.append(line)
+        elif self._apu_trace_file:
+            self._apu_trace_file.write(line + "\n")
+
+        if self._apu_trace_ring is None and not self._apu_trace_diverged and self._apu_trace_ref:
+            ref_line = self._apu_trace_ref.readline()
+            if ref_line:
+                ref_line = ref_line.rstrip()
+                if line[:4].lower() != ref_line[:4].lower():
+                    print(f"\n*** APU TRACE DIVERGENCE ***", flush=True)
+                    print(f"  OUR: {line}", flush=True)
+                    print(f"  REF: {ref_line}", flush=True)
+                    self._apu_trace_diverged = True
+                    if self._apu_trace_file:
+                        self._apu_trace_file.flush()
+
     def main(self):
         """Main loop driven by the event scheduler."""
         MC_PER_FRAME: int = 262 * 1364
@@ -310,6 +368,14 @@ class PySNES:
                 self._trace_file.close()
             if self._trace_ref:
                 self._trace_ref.close()
+            if self._apu_trace_ring is not None and self._apu_trace_file:
+                for line in self._apu_trace_ring:
+                    self._apu_trace_file.write(line + "\n")
+                print(f"APU trace written ({len(self._apu_trace_ring)} lines).", flush=True)
+            if self._apu_trace_file:
+                self._apu_trace_file.close()
+            if self._apu_trace_ref:
+                self._apu_trace_ref.close()
             self.video.teardown_sdl()
 
     def process_inputs(self):
@@ -353,6 +419,12 @@ def main():
     parser.add_argument("--trace-limit", metavar="N", type=int, default=0,
                         help="Keep only the last N trace lines; written to cpu_trace.log on exit")
     parser.add_argument("--trace-from", metavar="ADDR", help="Start CPU trace when PC first reaches ADDR (hex, e.g. 0x00A087)")
+    parser.add_argument("--apu-trace", action="store_true",
+                        help="Write APU trace to apu_trace.log (unlimited)")
+    parser.add_argument("--apu-trace-ref", metavar="REF",
+                        help="Compare APU trace against REF log (implies --apu-trace)")
+    parser.add_argument("--apu-trace-limit", metavar="N", type=int, default=0,
+                        help="Keep only the last N APU trace lines; written on exit")
     parser.add_argument("--headless", action="store_true", help="Run without opening an SDL2 window")
     parser.add_argument("--breakpoint", metavar="ADDR", action="append",
                         help="Set breakpoint at address (hex, e.g. 0x00A087); may be repeated")
@@ -367,6 +439,8 @@ def main():
         pysnes.start_trace(args.trace_ref, last=args.trace_limit)
     if args.trace_from:
         pysnes.start_trace_from(int(args.trace_from, 16))
+    if args.apu_trace or args.apu_trace_ref or args.apu_trace_limit:
+        pysnes.start_apu_trace(args.apu_trace_ref, last=args.apu_trace_limit)
     if args.breakpoint:
         for addr_str in args.breakpoint:
             pysnes.debugger.toggle_breakpoint(int(addr_str, 16))

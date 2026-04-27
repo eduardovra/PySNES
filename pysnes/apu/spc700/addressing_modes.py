@@ -121,27 +121,27 @@ class SPC700AddressingModes:
             self.PC = (c_int8(displacement).value + self.PC) & 0xFFFF
 
     def BranchNotDirectDecrement(self):
-        # DBNZ dp,rel — 7 cycles (always)
+        # DBNZ dp,rel — 5 cycles not taken, 7 cycles taken
         self.address = self.fetch()
         self.data = self.load(self.address)
         self.data = (self.data - 1) & 0xFF
         self.store(self.address, self.data)
         displacement = self.fetch()
-        self.idle()
-        self.idle()
         if self.data != 0:
+            self.idle()
+            self.idle()
             self.PC = (c_int8(displacement).value + self.PC) & 0xFFFF
 
     def BranchNotDirectIndexed(self, reg_index):
-        # CBNE dp+X,rel — 8 cycles (always)
+        # CBNE dp+X,rel — 6 cycles not taken, 8 cycles taken
         index = getattr(self, reg_index)
         self.address = self.fetch()
         self.idle()
         self.data = self.load(self.address + index)
+        self.idle()
         displacement = self.fetch()
-        self.idle()
-        self.idle()
         if self.A != self.data:
+            self.idle()
             self.idle()
             self.PC = (c_int8(displacement).value + self.PC) & 0xFFFF
 
@@ -529,10 +529,10 @@ class SPC700AddressingModes:
         # JMP (!a+X) — 6 cycles
         self.address = self.fetch()
         self.address |= self.fetch() << 8
-        self.address = self.address + self.X
+        self.address = (self.address + self.X) & 0xFFFF
         self.idle()
-        pc = self.read(self.address + 0)
-        pc |= self.read(self.address + 1) << 8
+        pc = self.read(self.address)
+        pc |= self.read((self.address + 1) & 0xFFFF) << 8
         self.PC = pc & 0xFFFF
 
     def Multiply(self):

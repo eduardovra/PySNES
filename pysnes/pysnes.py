@@ -253,9 +253,6 @@ class PySNES:
                     if self._trace_file:
                         self._trace_file.flush()
 
-        if self._trace_count % 10_000 == 0:
-            print(f"[trace {self._trace_count}] PC=0x{pc:06X} MC={self.scheduler.master_clock}", flush=True)
-
         if self._trace_limit and self._trace_count >= self._trace_limit:
             print(f"Trace limit reached ({self._trace_limit} instructions).", flush=True)
             if self._trace_file:

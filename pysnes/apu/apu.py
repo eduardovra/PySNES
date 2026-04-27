@@ -378,7 +378,7 @@ class Apu:
             if isinstance(self.ipl_rom, bytearray):
                 self.ipl_rom[addr - 0xFFC0] = value
         else:
-            print("Error writting unmamped memory region: 0x{:04X} <== 0x{:04X}".format(addr, value))
+            raise NotImplementedError(f"Write to unmapped APU address 0x{addr:04X}")
 
     @cython.ccall
     def write(self, addr: cython.uint, data: cython.uint):

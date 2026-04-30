@@ -421,7 +421,7 @@ class Cpu:
         self.icycles = 0
 
         if self.trace_enabled:
-            disassembled = self.disassembler.disassemble(self.PC.w)
+            disassembled = self.disassembler.disassemble(self.PC.d)
             self.trace_log.append(disassembled)
             self.trace_log = self.trace_log[-10:]  # only the last instructions
 
@@ -579,5 +579,6 @@ class Cpu:
 
         addr = self.read(vector) | self.read(vector + 1) << 8
         self.PC.w = addr
+        self.PC.b = 0
 
         return self.cycles - self.prev_cycles

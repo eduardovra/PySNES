@@ -33,10 +33,11 @@ class Disassembler:
         self.pc = address
         self.effective = 0
 
-        self.opcode   = self.read(address); address = (address + 1) & 0xFFFF;  # address.bit(0,15)++;
-        self.operand0 = self.read(address); address = (address + 1) & 0xFFFF;  # address.bit(0,15)++;
-        self.operand1 = self.read(address); address = (address + 1) & 0xFFFF;  # address.bit(0,15)++;
-        self.operand2 = self.read(address); address = (address + 1) & 0xFFFF;  # address.bit(0,15)++;
+        bank = address & 0xFF0000
+        self.opcode   = self.read(address); address = bank | ((address + 1) & 0xFFFF)
+        self.operand0 = self.read(address); address = bank | ((address + 1) & 0xFFFF)
+        self.operand1 = self.read(address); address = bank | ((address + 1) & 0xFFFF)
+        self.operand2 = self.read(address); address = bank | ((address + 1) & 0xFFFF)
 
         self.operandByte = self.operand0 << 0
         self.operandWord = self.operand0 << 0 | self.operand1 << 8

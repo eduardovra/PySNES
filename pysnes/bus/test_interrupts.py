@@ -267,6 +267,42 @@ def test_interrupt_returns_correct_mc_for_scheduler():
     assert mc == 60, f"interrupt() must return elapsed MC, got {mc}"
 
 
+def test_interrupt_resets_pb_to_zero_native():
+    """Native NMI/IRQ entry must force PB to 0 so the handler runs in bank $00.
+
+    Regression: SMW hung after "1 Player Game" because NMI fired while
+    DecompressOverworldL2 was executing in bank $04; the handler then ran at
+    $04:xxxx (data) instead of $00:xxxx (real handler), corrupting state.
+    """
+    bus, cpu = make_bus()
+    cpu.EF = False
+    cpu.PC.b = 0x04
+    cpu.PC.w = 0xDD85
+    cpu.S.w = 0x01FF
+    # Place vector low/high at ROM offset $7FEA-$7FEB (LoROM map of $00:FFEA-FFEB).
+    bus.rom.rom[0x7FEA] = 0x6A
+    bus.rom.rom[0x7FEB] = 0x81
+    cpu.interrupt(0xFFEA)
+    assert cpu.PC.b == 0x00, f"PB must be 0 after interrupt, got ${cpu.PC.b:02X}"
+    assert cpu.PC.w == 0x816A
+    # The original PBR ($04) must have been pushed before being cleared.
+    assert bus[0x0001FF] == 0x04, f"PBR not pushed; stack top = ${bus[0x0001FF]:02X}"
+
+
+def test_interrupt_pb_is_zero_in_emulation_mode():
+    """Emulation mode also lands in bank 0; no PBR is pushed."""
+    bus, cpu = make_bus()
+    cpu.EF = True
+    cpu.PC.b = 0x04  # spurious; emulation should still drop us in bank 0
+    cpu.PC.w = 0x1234
+    cpu.S.w = 0x01FF
+    bus.rom.rom[0x7FFA] = 0x00
+    bus.rom.rom[0x7FFB] = 0x90
+    cpu.interrupt(0xFFFA)
+    assert cpu.PC.b == 0x00
+    assert cpu.PC.w == 0x9000
+
+
 # ---------------------------------------------------------------------------
 # H/V IRQ — $4207-$420A target registers
 # ---------------------------------------------------------------------------

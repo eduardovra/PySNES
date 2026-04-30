@@ -44,3 +44,21 @@ class Controller:
     def data(self) -> int:
         self.shift_register.insert(0, 1)  # Pad left with 1's
         return int(self.shift_register.pop())
+
+    def dump_state(self) -> dict:
+        return {
+            "shift_register": list(self.shift_register),
+            "latched": int(self.latched),
+            "joy_h": int(self.joy_h),
+            "joy_l": int(self.joy_l),
+            "disabled": bool(self.disabled),
+        }
+
+    def load_state(self, d: dict) -> None:
+        self.shift_register = list(d["shift_register"])
+        self.latched = d["latched"]
+        self.joy_h = d["joy_h"]
+        self.joy_l = d["joy_l"]
+        # pressed_keys is intentionally cleared on load — physical keys held
+        # at save time shouldn't be replayed against the loaded state.
+        self.pressed_keys = set()

@@ -67,6 +67,38 @@ class Bus:
         self._wrmpya: cython.uchar = 0   # $4202 multiplicand
         self._wrdiv: cython.uint = 0     # $4204-$4205 dividend (16-bit)
 
+    def dump_state(self) -> dict:
+        return {
+            "low_ram": bytes(self.low_ram),
+            "high_ram": bytes(self.high_ram),
+            "extended_ram": bytes(self.extended_ram),
+            "sram": bytes(self.sram[: self.sram_size]) if self.sram_size else b"",
+            "sram_dirty": bool(self.sram_dirty),
+            "dma_ppu2_hw_registers": bytes(self.dma_ppu2_hw_registers),
+            "hblank": bool(self.hblank),
+            "vblank": bool(self.vblank),
+            "_wmadd": int(self._wmadd),
+            "_wrmpya": int(self._wrmpya),
+            "_wrdiv": int(self._wrdiv),
+        }
+
+    def load_state(self, d: dict) -> None:
+        # Slice-assign so other code holding bytearray references stays valid.
+        self.low_ram[:] = d["low_ram"]
+        self.high_ram[:] = d["high_ram"]
+        self.extended_ram[:] = d["extended_ram"]
+        if self.sram_size and d["sram"]:
+            n = min(len(d["sram"]), self.sram_size)
+            for i in range(n):
+                self.sram[i] = d["sram"][i]
+        self.sram_dirty = d["sram_dirty"]
+        self.dma_ppu2_hw_registers[:] = d["dma_ppu2_hw_registers"]
+        self.hblank = d["hblank"]
+        self.vblank = d["vblank"]
+        self._wmadd = d["_wmadd"]
+        self._wrmpya = d["_wrmpya"]
+        self._wrdiv = d["_wrdiv"]
+
     def load_sram(self, path: str) -> int:
         """Load SRAM bytes from `path`. Returns the number of bytes loaded (0 if no SRAM or file missing)."""
         i: cython.uint

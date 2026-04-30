@@ -66,8 +66,63 @@ MESEN_FRAMES=400 MESEN_OUTPUT_BIN=/tmp/mesen.bin \
 
 - **F11** / **SIGUSR1** → save `screenshot.bmp` (SDL2 framebuffer snapshot)
 - **F10** / **SIGUSR2** → save `vram_dump.bin`, `cgram_dump.bin`, `wram_dump.bin`
+- **F5** → save state to `<rom>.state` (next frame boundary)
+- **F6** → load state from `<rom>.state` (next frame boundary; F9 was avoided because GNOME and several WMs grab it)
 - **SPACE** → pause/resume
 - FPS is shown in the window title bar
+
+### Save states
+
+Single slot per ROM at `<rom>.state`. The file has a JSON metadata header
+(parseable on any Python build) followed by a pickle payload. Loads are
+gated by a SHA-256 compatibility hash of the running Python build + state-
+bearing source code; mismatches refuse to load with a clear error rather
+than half-restore. ROM identity is checked too — a state from one ROM
+won't load into another.
+
+Inspect a state file's metadata without loading the payload:
+
+```python
+from pysnes.savestate import read_header
+read_header("roms/Super Mario World (U) [!].state")
+# → {"compat_hash": "...", "rom_title": "SUPER MARIOWORLD",
+#    "saved_at": "2026-04-30T...", "python_impl": "pypy 7.3.19", ...}
+```
+
+### Driving the emulator programmatically
+
+`pysnes.harness` wraps a headless PySNES instance for scripted control —
+useful for diagnostic tools that want to drive the emulator past boot
+without launching a window. Save states make this practical: play to the
+broken state, F5, then load it from the harness.
+
+```python
+from pysnes.harness import Harness
+
+ROM = "roms/Super Mario World (U) [!].smc"
+
+# Load a curated checkpoint and trace what the game does for one frame
+with Harness(ROM, load_state="roms/smw_welcome.state") as h:
+    writes = []
+    h.on_write_range(0x2121, 0x2122, lambda h, a, v:
+        writes.append((h.scanline, a & 0xFFFF, v)))
+    h.run_frames(1)
+    for sl, addr, val in sorted(writes):
+        print(f"sl={sl:3d} ${addr:04X} = {val:02X}")
+```
+
+Other Harness operations: `run_frames(n)`, `tap(buttons)`, `screenshot(path)`,
+`cgram(start, end)`, `vram(start, len)`, `oam()`, `wram(addr, len)`,
+`cpu_state()`, `ppu_state()`, `set_breakpoint(addr) + run_until_break()`,
+`save_state(path)`, `load_state(path)`.
+
+There's also an NDJSON RPC variant:
+
+```bash
+uv run python -m pysnes.harness.cli --rom "roms/Super Mario World (U) [!].smc"
+# stdin:  {"method": "run_frames", "args": {"n": 60}}
+# stdout: {"ok": true, "result": {"frame": 60, ...}}
+```
 
 ### CPU Trace Comparison
 On startup, `pysnes.py` opens `cpu_trace.log` and compares CPU execution against the bsnes reference trace `roms/Super Mario World (U) [!]-trace.log`. The first divergence is printed to stdout. Limited to first 100k CPU instructions.
@@ -77,6 +132,7 @@ On startup, `pysnes.py` opens `cpu_trace.log` and compares CPU execution against
 - `Super Mario World (U) [!]-vram.bin` / `-cgram.bin` / `-wram.bin` / `-oam.bin` — bsnes memory snapshots at an unknown execution point (not directly comparable without matching frame count)
 
 ### Build System Notes
+- **Cython compilation is on hold.** PyPy alone is ~20× faster than CPython+Cython for this codebase as it currently stands, so the project runs from pure-Python source under PyPy. The `make build_pysnes` target and Cython decorators in the source still work, but you do not need to run `make build_pysnes` to develop or test — pure-Python source under PyPy is the supported path. If `*.so` files exist (left over from a previous build), Python imports them in preference to the `.py` source; `find pysnes -name "*.so" -delete` to fall back to the `.py` files.
 - **Cython version is pinned to 3.1.1** — DO NOT upgrade to 3.1.2, it has a "multiple definitions of function" bug: https://stackoverflow.com/questions/79687815/cython-multiple-definitions-of-function
 - **Python version must be ~3.10** — ImGui (now removed but still in pyproject.toml) didn't compile in 3.11 with PyPy
 - All `.py` files in `pysnes/` are compiled into a single monolithic Cython `.so` extension

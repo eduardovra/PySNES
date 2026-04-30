@@ -70,6 +70,9 @@ class PySNES:
         # Signal-triggered actions (set flag in handler, execute in main loop)
         self._screenshot_requested = False
         self._dump_requested = False
+        self._save_state_requested = False
+        self._load_state_requested = False
+        self.state_path = pathlib.Path(rom_file_path).with_suffix(".state")
         signal.signal(signal.SIGUSR1, self._handle_sigusr1)
         signal.signal(signal.SIGUSR2, self._handle_sigusr2)
 
@@ -108,6 +111,24 @@ class PySNES:
         path = "screenshot.bmp"
         self.video.save_screenshot(path)
         print(f"Screenshot saved to {path}", flush=True)
+
+    def _do_save_state(self):
+        from . import savestate  # noqa: PLC0415
+        try:
+            savestate.save(self, str(self.state_path))
+            print(f"Saved state to {self.state_path}", flush=True)
+        except Exception as e:
+            print(f"Save state failed: {e}", flush=True)
+
+    def _do_load_state(self):
+        from . import savestate  # noqa: PLC0415
+        try:
+            savestate.load(self, str(self.state_path))
+            print(f"Loaded state from {self.state_path}", flush=True)
+        except FileNotFoundError:
+            print(f"No state file at {self.state_path}", flush=True)
+        except Exception as e:
+            print(f"Load state failed: {e}", flush=True)
 
     def _do_memory_dump(self):
         vram = bytes(self.ppu.vram)
@@ -357,6 +378,12 @@ class PySNES:
                 if self._dump_requested:
                     self._dump_requested = False
                     self._do_memory_dump()
+                if self._save_state_requested:
+                    self._save_state_requested = False
+                    self._do_save_state()
+                if self._load_state_requested:
+                    self._load_state_requested = False
+                    self._do_load_state()
 
                 self.debugger.drain_commands()
 
@@ -401,6 +428,10 @@ class PySNES:
                     self._screenshot_requested = True
                 elif self.event.key.keysym.sym == sdl.SDLK_F10:
                     self._dump_requested = True
+                elif self.event.key.keysym.sym == sdl.SDLK_F5:
+                    self._save_state_requested = True
+                elif self.event.key.keysym.sym == sdl.SDLK_F6:
+                    self._load_state_requested = True
                 elif self.event.key.keysym.sym == sdl.SDLK_F12:
                     self.debugger.open_window()
 

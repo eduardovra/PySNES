@@ -48,6 +48,22 @@ class Channel:
     _hdma_data: int = 0     # byte offset of the data bytes for the current entry
     _hdma_active: bool = False  # False once end-of-table (count=0) is reached
 
+    _STATE_FIELDS = (
+        "transfer_mode", "fixed_transfer", "reverse_transfer", "unused",
+        "indirect", "direction", "target_address", "source_address",
+        "source_bank", "transfer_size", "indirect_bank", "hdma_address",
+        "line_counter", "unknown", "hdma_enable",
+        "_hdma_ptr", "_hdma_bank", "_hdma_count", "_hdma_repeat",
+        "_hdma_data", "_hdma_active",
+    )
+
+    def dump_state(self) -> dict:
+        return {f: getattr(self, f) for f in self._STATE_FIELDS}
+
+    def load_state(self, d: dict) -> None:
+        for f in self._STATE_FIELDS:
+            setattr(self, f, d[f])
+
     def do_transfer(self) -> None:
         # On real hardware each GDMA byte costs 8 master-clock cycles and the
         # CPU is halted for the duration.  We charge those cycles to cpu.cycles
@@ -90,6 +106,13 @@ class DMA:
     def __init__(self, bus: "Bus") -> None:
         # Create 8 DMA channels
         self.channels = [Channel(bus) for _ in range(8)]
+
+    def dump_state(self) -> dict:
+        return {"channels": [ch.dump_state() for ch in self.channels]}
+
+    def load_state(self, d: dict) -> None:
+        for ch, cs in zip(self.channels, d["channels"]):
+            ch.load_state(cs)
 
     def __setitem__(self, abs_addr: int, data: int) -> None:
         channel = self.channels[abs_addr >> 4 & 7]

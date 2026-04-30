@@ -21,6 +21,8 @@ from pathlib import Path
 
 import pytest
 
+from pysnes.harness._png import write_png as _write_png
+
 pytestmark = pytest.mark.ppu
 
 REPO_ROOT     = Path(__file__).parent.parent.parent
@@ -39,27 +41,6 @@ MESEN_ROW_OFFSET = 7
 # ---------------------------------------------------------------------------
 # PNG helpers (no Pillow dependency)
 # ---------------------------------------------------------------------------
-
-def _write_png(path: Path, pixels: list, width: int, height: int) -> None:
-    """Write a flat list of (R, G, B) tuples as an RGB PNG."""
-    raw = bytearray()
-    for row in range(height):
-        raw.append(0)  # filter type None
-        for col in range(width):
-            r, g, b = pixels[row * width + col]
-            raw += bytes([r, g, b])
-
-    def chunk(tag: bytes, body: bytes) -> bytes:
-        c = struct.pack(">I", len(body)) + tag + body
-        return c + struct.pack(">I", zlib.crc32(tag + body) & 0xFFFFFFFF)
-
-    ihdr = struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0)
-    idat = zlib.compress(bytes(raw))
-    png = b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", ihdr) + chunk(b"IDAT", idat) + chunk(b"IEND", b"")
-
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_bytes(png)
-
 
 # ---------------------------------------------------------------------------
 # PySNES framebuffer capture

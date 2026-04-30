@@ -50,3 +50,46 @@ class Scheduler:
     def peek(self) -> int:
         """Return the time of the next scheduled event without firing it."""
         return self._queue[0][0] if self._queue else 0xFFFFFFFFFFFFFFFF
+
+    def dump_state(self) -> dict:
+        """Serialize the queue. Handlers are bound methods; persist them as
+        ("owner_kind", "method_name") pairs so they can be re-resolved against
+        a freshly booted PySNES instance on load.
+        """
+        entries = []
+        for t, seq, fn in self._queue:
+            owner = getattr(fn, "__self__", None)
+            method = getattr(fn, "__func__", None)
+            if owner is None or method is None:
+                raise ValueError(
+                    f"Cannot serialize scheduler entry with non-bound-method handler: {fn!r}"
+                )
+            owner_kind = owner.__class__.__name__.lower()  # "cpu", "ppu", "apu"
+            entries.append((int(t), int(seq), owner_kind, method.__name__))
+        return {
+            "master_clock": int(self.master_clock),
+            "seq": int(self._seq),
+            "queue": entries,
+        }
+
+    def load_state(self, d: dict, registry: dict) -> None:
+        """Rebuild the queue from a dump. `registry` maps owner_kind → object
+        instance (e.g. {"cpu": pysnes.cpu, "ppu": pysnes.ppu, "apu": pysnes.apu}).
+        """
+        self.master_clock = d["master_clock"]
+        self._seq = d["seq"]
+        self._queue = []
+        for t, seq, owner_kind, method_name in d["queue"]:
+            if owner_kind not in registry:
+                raise ValueError(
+                    f"Scheduler load: unknown owner kind {owner_kind!r} "
+                    f"(registry keys: {sorted(registry)})"
+                )
+            owner = registry[owner_kind]
+            fn = getattr(owner, method_name, None)
+            if not callable(fn):
+                raise ValueError(
+                    f"Scheduler load: {owner_kind}.{method_name} is not callable"
+                )
+            self._queue.append((t, seq, fn))
+        heapq.heapify(self._queue)

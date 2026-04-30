@@ -74,6 +74,18 @@ class Timer:
         self.enable = False
         self.target = 0x00
 
+    _STATE_FIELDS = (
+        "frequency", "stage0", "stage1", "stage2", "stage3", "stage3_shadow",
+        "line", "enable", "target",
+    )
+
+    def dump_state(self) -> dict:
+        return {f: getattr(self, f) for f in self._STATE_FIELDS}
+
+    def load_state(self, d: dict) -> None:
+        for f in self._STATE_FIELDS:
+            setattr(self, f, d[f])
+
     @cython.cfunc
     def step(self, clocks: cython.uint):
         # stage 0 increment
@@ -291,6 +303,39 @@ class Apu:
         # The IO Port0-4 registers have separete memory for R/W
         self.ports_r = bytearray(4)  # APU reads from
         self.ports_w = bytearray(4)  # APU writes to
+
+    _SCALAR_STATE = (
+        "PC", "A", "X", "Y", "S",
+        "NF", "VF", "PF", "BF", "HF", "IF", "ZF", "CF",
+        "_last_synced_mc", "_apu_mc_frac", "_ports_w_dirty", "cycles",
+        "_control_register_raw",
+        "dsp_register_address", "dsp_register_data",
+        "auxio4", "auxio5",
+        "ipl_rom_enable", "timers_disable", "ram_writable", "ram_disable",
+        "timers_enable", "external_wait_states", "internal_wait_states",
+    )
+
+    def dump_state(self) -> dict:
+        return {
+            "memory": bytes(self.memory),
+            "page_0": bytes(self.page_0),
+            "page_1": bytes(self.page_1),
+            "ports_r": bytes(self.ports_r),
+            "ports_w": bytes(self.ports_w),
+            "scalars": {f: getattr(self, f) for f in self._SCALAR_STATE},
+            "timers": [t.dump_state() for t in self.timers],
+        }
+
+    def load_state(self, d: dict) -> None:
+        self.memory[:] = d["memory"]
+        self.page_0[:] = d["page_0"]
+        self.page_1[:] = d["page_1"]
+        self.ports_r[:] = d["ports_r"]
+        self.ports_w[:] = d["ports_w"]
+        for f, v in d["scalars"].items():
+            setattr(self, f, v)
+        for t, ts in zip(self.timers, d["timers"]):
+            t.load_state(ts)
 
     def load_instructions(self):
         self.instructions: Any = [None] * 256

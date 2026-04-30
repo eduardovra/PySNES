@@ -128,6 +128,51 @@ class Ppu:
         # Used by the color-math composite pass to know which pixels participate.
         self.main_layer = bytearray(256 * 262)
 
+    _SCALAR_STATE = (
+        "vmain", "vmaddl", "vmaddh", "_vmdatal", "_vmdatah", "_vram_prefetch",
+        "display_brightness", "display_disable",
+        "_oamadd", "_oamodd", "_oamdata",
+        "oam_main_screen_enable", "oam_sub_screen_enable",
+        "oam_tiledata_address", "oam_nameselect", "oam_base_size",
+        "_bgmode", "_bgpriority",
+        "latch_bgofs_ppu1", "latch_bgofs_ppu2",
+        "_m7_latch", "m7a", "m7b", "m7c", "m7d", "m7x", "m7y",
+        "w12sel", "w34sel", "wobjsel", "wh0", "wh1", "wh2", "wh3",
+        "wbglog", "wobjlog", "tmw", "tsw",
+        "cgwsel", "cgadsub", "coldata_r", "coldata_g", "coldata_b",
+        "mosaic_size",
+        "field", "h_counter", "v_counter", "frames",
+    )
+
+    def dump_state(self) -> dict:
+        return {
+            "vram": bytes(self.vram),
+            "cgram": bytes(self.cgram),
+            "oam": self.oam.dump_state(),
+            "scalars": {f: getattr(self, f) for f in self._SCALAR_STATE},
+            "_cgadd": self._cgadd.value,
+            "_cgdata": self._cgdata.value if self._cgdata is not None else None,
+            "bg1": self.bg1.dump_state(),
+            "bg2": self.bg2.dump_state(),
+            "bg3": self.bg3.dump_state(),
+            "bg4": self.bg4.dump_state(),
+            "mosaic_enabled": list(self.mosaic_enabled),
+        }
+
+    def load_state(self, d: dict) -> None:
+        self.vram[:] = d["vram"]
+        self.cgram[:] = d["cgram"]
+        self.oam.load_state(d["oam"])
+        for f, v in d["scalars"].items():
+            setattr(self, f, v)
+        self._cgadd = c_uint8(d["_cgadd"])
+        self._cgdata = c_uint8(d["_cgdata"]) if d["_cgdata"] is not None else None
+        self.bg1.load_state(d["bg1"])
+        self.bg2.load_state(d["bg2"])
+        self.bg3.load_state(d["bg3"])
+        self.bg4.load_state(d["bg4"])
+        self.mosaic_enabled = list(d["mosaic_enabled"])
+
     def inidisp_set(self, data: int) -> None:
         # Missing: when clearing forced-blank (bit 7 → 0) during V-Blank, the
         # internal OAM address must be reloaded from OAMADDL/OAMADDH. The reload
@@ -1380,6 +1425,16 @@ class OAM:
     def __setitem__(self, addr: int, data: int) -> None:
         if self.oam[addr] != data:
             self.oam[addr] = data
+            self.update_object(addr)
+
+    def dump_state(self) -> dict:
+        return {"oam": bytes(self.oam)}
+
+    def load_state(self, d: dict) -> None:
+        self.oam[:] = d["oam"]
+        # Rebuild parsed objects[] from raw bytes — cheaper than persisting
+        # the parsed view, and update_object covers both low and high tables.
+        for addr in range(len(self.oam)):
             self.update_object(addr)
 
     def update_object(self, addr: int) -> None:

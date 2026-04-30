@@ -105,6 +105,32 @@ class CpuStatus:
         self.auto_joypad_read_enable = False
         self.fast_rom = False
 
+    def dump_state(self) -> dict:
+        return {
+            "hirq_enable": bool(self.hirq_enable),
+            "virq_enable": bool(self.virq_enable),
+            "irq_enable": bool(self.irq_enable),
+            "nmi_line": bool(self.nmi_line),
+            "nmi_enable": bool(self.nmi_enable),
+            "irq_line": bool(self.irq_line),
+            "htime": int(self.htime),
+            "vtime": int(self.vtime),
+            "auto_joypad_read_enable": bool(self.auto_joypad_read_enable),
+            "fast_rom": bool(self.fast_rom),
+        }
+
+    def load_state(self, d: dict) -> None:
+        self.hirq_enable = d["hirq_enable"]
+        self.virq_enable = d["virq_enable"]
+        self.irq_enable = d["irq_enable"]
+        self.nmi_line = d["nmi_line"]
+        self.nmi_enable = d["nmi_enable"]
+        self.irq_line = d["irq_line"]
+        self.htime = d["htime"]
+        self.vtime = d["vtime"]
+        self.auto_joypad_read_enable = d["auto_joypad_read_enable"]
+        self.fast_rom = d["fast_rom"]
+
 
 @cython.cclass
 class InstructionSlot:
@@ -214,6 +240,64 @@ class Cpu:
         # scanline index lets _step() add the 40 MC pause on the first
         # instruction of each new scanline.
         self._last_refresh_scanline: int = -1
+
+    def dump_state(self) -> dict:
+        return {
+            "A": self.A.value,
+            "X": self.X.value,
+            "Y": self.Y.value,
+            "D": self.D.value,
+            "S": self.S.value,
+            "DB": self.DB.value,
+            "PC": self.PC.value,
+            "P": int(self.P),
+            "EF": bool(self.EF),
+            "irq": bool(self.irq),
+            "wai": bool(self.wai),
+            "stp": bool(self.stp),
+            "CFlag": bool(self.CFlag),
+            "ZFlag": bool(self.ZFlag),
+            "IFlag": bool(self.IFlag),
+            "DFlag": bool(self.DFlag),
+            "XFlag": bool(self.XFlag),
+            "MFlag": bool(self.MFlag),
+            "VFlag": bool(self.VFlag),
+            "NFlag": bool(self.NFlag),
+            "cycles": int(self.cycles),
+            "prev_cycles": int(self.prev_cycles),
+            "icycles": int(self.icycles),
+            "_nmi_pending": bool(self._nmi_pending),
+            "_last_refresh_scanline": int(self._last_refresh_scanline),
+            "status": self.status.dump_state(),
+        }
+
+    def load_state(self, d: dict) -> None:
+        self.A.value = d["A"]
+        self.X.value = d["X"]
+        self.Y.value = d["Y"]
+        self.D.value = d["D"]
+        self.S.value = d["S"]
+        self.DB.value = d["DB"]
+        self.PC.value = d["PC"]
+        self.P = d["P"]
+        self.EF = d["EF"]
+        self.irq = d["irq"]
+        self.wai = d["wai"]
+        self.stp = d["stp"]
+        self.CFlag = d["CFlag"]
+        self.ZFlag = d["ZFlag"]
+        self.IFlag = d["IFlag"]
+        self.DFlag = d["DFlag"]
+        self.XFlag = d["XFlag"]
+        self.MFlag = d["MFlag"]
+        self.VFlag = d["VFlag"]
+        self.NFlag = d["NFlag"]
+        self.cycles = d["cycles"]
+        self.prev_cycles = d["prev_cycles"]
+        self.icycles = d["icycles"]
+        self._nmi_pending = d["_nmi_pending"]
+        self._last_refresh_scanline = d["_last_refresh_scanline"]
+        self.status.load_state(d["status"])
 
     def load_instructions(self):
         from .wdc65816.instructions import INSTRUCTIONS

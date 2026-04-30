@@ -33,6 +33,18 @@ class Background:
         self.voffset = voffset
         self.color_offset_mode_0 = color_offset_mode_0
 
+    _STATE_FIELDS = (
+        "screen_size", "screen_addr", "tiledata_addr", "tile_size",
+        "main_screen_enable", "sub_screen_enable", "hoffset", "voffset",
+    )
+
+    def dump_state(self) -> dict:
+        return {f: getattr(self, f) for f in self._STATE_FIELDS}
+
+    def load_state(self, d: dict) -> None:
+        for f in self._STATE_FIELDS:
+            setattr(self, f, d[f])
+
     # number: cython.uint = 0
 
     # screen_size: cython.uint = 0

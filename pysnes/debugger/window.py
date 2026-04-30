@@ -52,6 +52,7 @@ class DebuggerWindow:
 
         self._mem_region_val: str = "WRAM"
         self._mem_addr: int = 0
+        self._bp_rendered: tuple[int, ...] = ()
 
         self._build_ui()
         self.refresh()
@@ -74,7 +75,8 @@ class DebuggerWindow:
 
         for tab_name, attr in (("CPU", "_cpu_reg_text"),
                                 ("APU", "_apu_reg_text"),
-                                ("PPU", "_ppu_reg_text")):
+                                ("PPU", "_ppu_reg_text"),
+                                ("Stack", "_stack_text")):
             frame = ttk.Frame(reg_notebook)
             reg_notebook.add(frame, text=tab_name)
             t = self._make_text(frame, width=44, height=12)
@@ -184,6 +186,7 @@ class DebuggerWindow:
             self._refresh_cpu_tab(cpu)
             self._refresh_apu_tab(self._debugger._pysnes.apu)
             self._refresh_ppu_tab(self._ppu)
+            self._refresh_stack_tab(cpu)
             self._refresh_disassembly(cpu)
             self._refresh_memory()
         self._refresh_breakpoints()
@@ -264,6 +267,30 @@ class DebuggerWindow:
         )
         self._set_text(self._ppu_reg_text, text)
 
+    # ── Stack tab ──────────────────────────────────────────────────────
+
+    def _refresh_stack_tab(self, cpu) -> None:
+        # Standard 65816 stack: push writes at S then decrements, so the
+        # most-recently-pushed (next-to-pop) byte lives at S+1. Show 16
+        # entries from S+1 going up toward higher addresses.
+        s = cpu.S.w
+        self._stack_text.configure(state="normal")
+        self._stack_text.delete("1.0", "end")
+        self._stack_text.insert("end", f" S = {s:04X}\n\n")
+        for i in range(1, 17):
+            addr = (s + i) & 0xFFFF
+            byte = self._read_bank0(addr)
+            prefix = "► " if i == 1 else "  "
+            tag = "pc" if i == 1 else ""
+            self._stack_text.insert("end", f"{prefix}{addr:04X}: {byte:02X}\n", tag)
+        self._stack_text.configure(state="disabled")
+
+    def _read_bank0(self, addr: int) -> int:
+        addr &= 0xFFFF
+        if addr < 0x2000:
+            return self._bus.low_ram[addr]
+        return self._bus.high_ram[addr - 0x2000]
+
     # ── Disassembly ────────────────────────────────────────────────────
 
     def _refresh_disassembly(self, cpu) -> None:
@@ -338,7 +365,10 @@ class DebuggerWindow:
     # ── Breakpoints ────────────────────────────────────────────────────
 
     def _refresh_breakpoints(self) -> None:
-        bps = sorted(self._debugger._breakpoints)
+        bps = tuple(sorted(self._debugger._breakpoints))
+        if bps == self._bp_rendered:
+            return  # avoid clobbering the user's selection on the 100ms poll
+        self._bp_rendered = bps
         self._bp_list.delete(0, "end")
         for addr in bps:
             self._bp_list.insert("end", f"{addr:06X}")

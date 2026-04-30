@@ -124,13 +124,17 @@ class PySNES:
 
     def reset(self) -> None:
         """Soft reset: restore CPU/APU to power-on state and jump to the reset vector."""
-        # Remove the stale CPU step event so we can reschedule it immediately.
+        # Drop any queued CPU step events so we can reschedule from scratch.
+        # The debugger's _install_hooks rebinds _hooked_step on every call
+        # (including from inside _hooked_step at breakpoint fire), so the
+        # queued bound method may not be `is`-identical to self.cpu._step.
+        # Bound methods with the same __self__ and __func__ compare equal,
+        # so use == to match across rebinds.
         q = self.scheduler._queue
-        for i, entry in enumerate(q):
-            if entry[-1] is self.debugger._original_step or entry[-1] is self.cpu._step:
-                q.pop(i)
-                heapq.heapify(q)
-                break
+        orig = self.debugger._original_step
+        cur = self.cpu._step
+        q[:] = [e for e in q if not (e[-1] == orig or e[-1] == cur)]
+        heapq.heapify(q)
         self.cpu.reset_registers()
         self.cpu.PC.w = self._reset_vector
         self.apu.reset_registers()

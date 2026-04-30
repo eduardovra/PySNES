@@ -4,6 +4,7 @@ Zero overhead while the emulator is running with no breakpoints set.
 """
 from __future__ import annotations
 
+import heapq
 import queue
 import threading
 from typing import TYPE_CHECKING
@@ -97,17 +98,18 @@ class Debugger:
     def step_one_instruction(self) -> None:
         """Execute exactly one CPU instruction.
 
-        The scheduler queue may hold a stale reference to _original_step captured
-        before any hook was installed.  Firing it via run_one() would bypass the
-        hook entirely and execute an extra untracked instruction.  Instead we pop
-        that stale event (if present), call _original_step() directly, and let
-        the CPU reschedule itself — net zero change to the CPU event count.
+        The scheduler queue holds a CPU step event — either _original_step or
+        the rebound _hooked_step. We drop *any* queued step (matching by
+        bound-method equality, since _install_hooks rebinds _hooked_step on
+        every call) and call _original_step() directly; the CPU's trailing
+        scheduler.add inside _step will re-queue the next step, leaving the
+        net event count unchanged.
         """
         q = self._scheduler._queue
-        for i, entry in enumerate(q):
-            if entry[-1] is self._original_step:
-                q.pop(i)
-                break
+        orig = self._original_step
+        cur = self._cpu._step
+        q[:] = [e for e in q if not (e[-1] == orig or e[-1] == cur)]
+        heapq.heapify(q)
         self._original_step()
         self._instr_count += 1
 

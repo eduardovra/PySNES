@@ -158,7 +158,7 @@ class DMA:
         # drifts into the DMA register page).
         return
 
-    def __getitem__(self, abs_addr: int) -> int:
+    def read(self, abs_addr: int, mdr: int = 0) -> int:
         channel = self.channels[abs_addr >> 4 & 7]
         addr = abs_addr & 0xFF8F
 
@@ -195,7 +195,10 @@ class DMA:
             return channel.unknown & 0xFF
 
         # $43xC-$43xE are unused/open-bus on real hardware.
-        return 0
+        return mdr & 0xFF
+
+    def __getitem__(self, abs_addr: int) -> int:
+        return self.read(abs_addr, 0)
 
     def mdmaen_set(self, data: int) -> None:
         for enable_bit, channel in enumerate(self.channels):

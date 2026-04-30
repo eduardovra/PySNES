@@ -29,6 +29,7 @@ class Bus:
     hblank = cython.declare(cython.bint)
     vblank = cython.declare(cython.bint)
     is_hirom = cython.declare(cython.bint)
+    mdr = cython.declare(cython.uchar, visibility="public")
 
     def __init__(
         self,
@@ -55,6 +56,7 @@ class Bus:
         self.sram = bytearray(self.sram_size if self.sram_size else 1)
         self.sram_dirty = False
         self.controller_port1, self.controller_port2 = controllers
+        self.mdr = 0
 
         # H/V blank flags owned by the bus; set by the PPU scheduler events
         self.hblank = False
@@ -66,6 +68,22 @@ class Bus:
         # Math hardware registers ($4202-$4206 write, $4214-$4217 read)
         self._wrmpya: cython.uchar = 0   # $4202 multiplicand
         self._wrdiv: cython.uint = 0     # $4204-$4205 dividend (16-bit)
+
+    @cython.cfunc
+    @cython.inline
+    def _latch_read(self, data: cython.uchar) -> cython.uchar:
+        self.mdr = data
+        return data
+
+    @cython.cfunc
+    @cython.inline
+    def _open_bus(self) -> cython.uchar:
+        return self.mdr
+
+    @cython.cfunc
+    @cython.inline
+    def _mix_open_bus(self, data: cython.uchar, mask: cython.uchar) -> cython.uchar:
+        return self._latch_read((self.mdr & mask) | (data & (~mask & 0xFF)))
 
     def load_sram(self, path: str) -> int:
         """Load SRAM bytes from `path`. Returns the number of bytes loaded (0 if no SRAM or file missing)."""
@@ -139,37 +157,37 @@ class Bus:
             if ((0x00 <= bank <= 0x3F) and addr >= 0x8000) or \
                (0x40 <= bank <= 0x7D):
                 rom_addr: cython.uint = ((bank & 0x3F) << 16) | addr
-                return self.rom[rom_addr]
+                return self._latch_read(self.rom[rom_addr])
 
             # HiROM SRAM: banks $20-$3F at $6000-$7FFF, 8KB window per bank.
             if 0x20 <= bank <= 0x3F and 0x6000 <= addr <= 0x7FFF:
                 if self.sram_size:
                     sram_addr: cython.uint = (((bank - 0x20) << 13) | (addr - 0x6000)) & self.sram_mask
-                    return self.sram[sram_addr]
-                return 0xFF
+                    return self._latch_read(self.sram[sram_addr])
+                return self._open_bus()
         else:
             if ((0x00 <= bank <= 0x6F) and 0x8000 <= addr <= 0xFFFF) or \
                 ((0x40 <= bank <= 0x6F) and (0x0000 <= addr <= 0xFFFF)) or \
                 ((0x70 <= bank <= 0x7D) and (0x8000 <= addr <= 0xFFFF)):
                 rom_addr: cython.uint = (bank * 0x8000) + (addr - (0x8000 if addr >= 0x8000 else 0))
-                return self.rom[rom_addr]
+                return self._latch_read(self.rom[rom_addr])
 
             # SRAM: LoROM banks $70-$7D, addr $0000-$7FFF (mirrored from $F0-$FD)
             if 0x70 <= bank <= 0x7D and addr < 0x8000:
                 if self.sram_size:
                     sram_addr: cython.uint = (((bank - 0x70) << 15) | addr) & self.sram_mask
-                    return self.sram[sram_addr]
-                return 0xFF
+                    return self._latch_read(self.sram[sram_addr])
+                return self._open_bus()
 
         if 0x7E2000 <= abs_addr <= 0x7E7FFF:
-            return self.high_ram[abs_addr - 0x7E2000]
+            return self._latch_read(self.high_ram[abs_addr - 0x7E2000])
 
         if 0x7E8000 <= abs_addr <= 0x7FFFFF:
-            return self.extended_ram[abs_addr - 0x7E8000]
+            return self._latch_read(self.extended_ram[abs_addr - 0x7E8000])
 
         if (0x00 <= bank <= 0x3F) or bank == 0x7E:
             if 0x0000 <= addr <= 0x1FFF:
-                return self.low_ram[addr & 0xFFFF]  # LowRAM, shadowed from bank $7E
+                return self._latch_read(self.low_ram[addr & 0xFFFF])  # LowRAM, shadowed from bank $7E
 
         if 0x00 <= bank <= 0x3F:
             # Hardware registers $2100-$21FF and $4200-$44FF are mirrored
@@ -177,84 +195,84 @@ class Bus:
             # which is normalized above).
             if 0x2100 <= addr <= 0x21FF:
                 if addr == 0x2137:  # SLHV
-                    return self.ppu.slhv
+                    self.ppu.slhv
+                    return self._open_bus()
 
                 if addr == 0x2138:  # # OAMDATAREAD
-                    return self.ppu.oamdata
+                    return self._latch_read(self.ppu.oamdata)
 
                 if addr == 0x2139:  # RDVRAML
-                    return self.ppu.rdvraml()
+                    return self._latch_read(self.ppu.rdvraml())
 
                 if addr == 0x213A:  # RDVRAMH
-                    return self.ppu.rdvramh()
+                    return self._latch_read(self.ppu.rdvramh())
 
                 if addr == 0x213B:  # CGDATAREAD
-                    return self.ppu.cgdata
+                    return self._latch_read(self.ppu.cgdata)
 
                 if addr == 0x213C:  # OPHCT (9-bit counter; port is byte-wide)
-                    return self.ppu.h_counter & 0xFF
+                    return self._latch_read(self.ppu.h_counter & 0xFF)
 
                 if addr == 0x213D:  # OPVCT (9-bit counter; port is byte-wide)
-                    return self.ppu.v_counter & 0xFF
+                    return self._latch_read(self.ppu.v_counter & 0xFF)
 
                 if addr == 0x213E:  # STAT77
                     # TODO PPU Status Flag and Version
-                    return 1
+                    return self._latch_read(1)
 
                 if addr == 0x213F:  # STAT78
-                    return self.ppu.stat78
+                    return self._mix_open_bus(self.ppu.stat78, 0x7F)
 
                 if 0x2140 <= addr <= 0x217F:
                     # 0x2140 - 0x204C == 0xF4 [addr of PORT0]
                     if 0x2140 <= addr <= 0x2143:
                         self.apu.sync_to(self.scheduler.master_clock + (self.cpu.cycles - self.cpu.prev_cycles))
-                        return self.apu.ports_w[addr - 0x2140]
-                    return self.apu[addr - 0x204C]
+                        return self._latch_read(self.apu.ports_w[addr - 0x2140])
+                    return self._latch_read(self.apu[addr - 0x204C])
 
             elif addr == 0x4016:  # JOYSER0
-                return self.controller_port1.data()
+                return self._latch_read(self.controller_port1.data())
 
             elif addr == 0x4017:  # JOYSER1
                 data = 0x1C  # pins are connected to GND
-                return data | self.controller_port2.data()
+                return self._latch_read(data | self.controller_port2.data())
 
             elif 0x4200 <= addr <= 0x44FF:
                 if addr == 0x4210:  # RDNMI - NMI Flag and 5A22 Version
                     data = (
                         self.cpu.status.nmi_line << 7
-                        | 1 << 6  # This bit is open bus, I'm setting it to satisfy the PLP test program
                         | 0x02  # 5A22 chip version number [0-3]
                     )
                     self.cpu.status.nmi_line = False  # Reading clears the line
-
-                    return data
+                    return self._mix_open_bus(data, 0x7D)
                 if addr == 0x4211:  # TIMEUP - IRQ flag (read-and-clear)
                     data = self.cpu.status.irq_line << 7
                     self.cpu.status.irq_line = False  # Reading clears the latched flag
-                    return data
+                    return self._mix_open_bus(data, 0x7F)
                 if addr == 0x4212:  # HVBJOY - PPU Status
-                    return (
+                    data = (
                         (1 << 5)  # This bit is unmapped but the test program keeps reading it
                         | self.hblank << 6
                         | self.vblank << 7
                     )
+                    return self._mix_open_bus(data, 0x1F)
                 if addr == 0x4218:  # JOY1L
-                    return self.controller_port1.joy_l
+                    return self._latch_read(self.controller_port1.joy_l)
                 if addr == 0x4219:  # JOY1H
-                    return self.controller_port1.joy_h
+                    return self._latch_read(self.controller_port1.joy_h)
                 if addr == 0x421A:  # JOY2L
-                    return self.controller_port2.joy_l
+                    return self._latch_read(self.controller_port2.joy_l)
                 if addr == 0x421B:  # JOY2H
-                    return self.controller_port2.joy_h
+                    return self._latch_read(self.controller_port2.joy_h)
 
                 # DMA channel registers ($4300–$43FF): return live channel
                 # state. The bytearray cache is never kept in sync, and the
                 # engine mutates source_address/transfer_size during transfers
                 # — games (e.g. the 93143 hvdma test ROM) read these back.
                 if 0x4300 <= addr <= 0x43FF:
-                    return self.cpu.dma[addr]
+                    return self._latch_read(self.cpu.dma.read(addr, self.mdr))
 
-                return self.dma_ppu2_hw_registers[addr - 0x4200]
+                return self._latch_read(self.dma_ppu2_hw_registers[addr - 0x4200])
 
             # TODO: Implement true open-bus/MDR behavior instead of returning 0
             # in these known system-area holes.
@@ -264,7 +282,7 @@ class Bus:
                 or 0x4000 <= addr <= 0x41FF  # 0x4016/0x4017 already handled above
                 or 0x4500 <= addr <= 0x7FFF
             ):
-                return 0
+                return self._open_bus()
 
             raise NotImplementedError(
                 f"Reading unmapped memory region: 0x{abs_addr:06X}"
@@ -278,6 +296,7 @@ class Bus:
     @cython.cfunc
     @cython.inline
     def write(self, abs_addr: cython.uint, data: cython.uchar):
+        self.mdr = data
         bank: cython.uint = abs_addr >> 16 & 0xFF
         addr: cython.uint = abs_addr & 0xFFFF
 

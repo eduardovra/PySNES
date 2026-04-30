@@ -90,6 +90,11 @@ class Ppu:
         self.m7d: cython.int = 0
         self.m7x: cython.int = 0
         self.m7y: cython.int = 0
+        self.m7sel: cython.uchar = 0
+        self.m7_extbg: cython.bint = False   # SETINI ($2133) bit 6
+        # Hardware multiplier: product of signed16(m7a) × signed8(m7b_lo).
+        # Updated on every write to $211C (M7B). Read via $2134-$2136.
+        self._mpy_result: cython.int = 0
 
         # Window registers (0x2123-0x212B)
         self.w12sel: cython.uchar = 0
@@ -136,7 +141,7 @@ class Ppu:
         "oam_tiledata_address", "oam_nameselect", "oam_base_size",
         "_bgmode", "_bgpriority",
         "latch_bgofs_ppu1", "latch_bgofs_ppu2",
-        "_m7_latch", "m7a", "m7b", "m7c", "m7d", "m7x", "m7y",
+        "_m7_latch", "m7a", "m7b", "m7c", "m7d", "m7x", "m7y", "m7sel", "m7_extbg", "_mpy_result",
         "w12sel", "w34sel", "wobjsel", "wh0", "wh1", "wh2", "wh3",
         "wbglog", "wobjlog", "tmw", "tsw",
         "cgwsel", "cgadsub", "coldata_r", "coldata_g", "coldata_b",
@@ -450,6 +455,9 @@ class Ppu:
             self.m7a = value
         elif reg == 0x211C:
             self.m7b = value
+            m7a_s: cython.int = self.m7a if self.m7a < 0x8000 else self.m7a - 0x10000
+            data_s: cython.int = data if data < 128 else data - 256
+            self._mpy_result = m7a_s * data_s
         elif reg == 0x211D:
             self.m7c = value
         elif reg == 0x211E:
@@ -515,6 +523,8 @@ class Ppu:
         self.m7d = 0
         self.m7x = 0
         self.m7y = 0
+        self.m7sel = 0
+        self.m7_extbg = False
 
         self.w12sel = 0
         self.w34sel = 0
@@ -834,7 +844,14 @@ class Ppu:
             self.draw_objects(priority=3)                       # OBJ pri 3
             self.bg1.hoffset = orig_hoff1
         else:
-            raise NotImplementedError(f"BG Mode {self._bgmode} not implemented")
+            # Mode 7: affine-transformed BG1 (8bpp). EXTBG BG2 written by same pass.
+            # Priority (back→front): backdrop, OBJ0, OBJ1, BG1, BG2(EXTBG), OBJ2, OBJ3
+            self.draw_scanline_backdrop()
+            self.draw_objects(priority=0)
+            self.draw_objects(priority=1)
+            self.draw_mode7_scanline()
+            self.draw_objects(priority=2)
+            self.draw_objects(priority=3)
 
     def composite_scanline(self) -> None:
         """Apply CGADSUB color math, blending sub_bgs into main_bgs.
@@ -989,6 +1006,145 @@ class Ppu:
             self.main_bgs[row + x] = main_u32
             self.sub_bgs[row + x] = sub_u32
             self.main_layer[row + x] = 0
+
+    def draw_mode7_scanline(self) -> None:
+        """Render BG1 (and EXTBG BG2) for Mode 7 using affine transformation.
+
+        VRAM layout: each word at address N has low byte = tilemap tile number
+        (128×128 grid) and high byte = 8bpp pixel data for tile/pixel lookups.
+        """
+        # v_counter is the hardware scanline (1 = first visible line).
+        # The affine transform uses the hardware scanline directly; the output
+        # row is 0-indexed so we subtract 1 only for the buffer write.
+        scan_y: cython.int = self.v_counter       # hardware scanline (1-based) for transform
+        row_y: cython.int = self.v_counter - 1    # 0-based index into main_bgs / sub_bgs
+
+        # Sign-extend 16-bit matrix coefficients (m7_write stores them unsigned)
+        a: cython.int = self.m7a if self.m7a < 0x8000 else self.m7a - 0x10000
+        b: cython.int = self.m7b if self.m7b < 0x8000 else self.m7b - 0x10000
+        c: cython.int = self.m7c if self.m7c < 0x8000 else self.m7c - 0x10000
+        d: cython.int = self.m7d if self.m7d < 0x8000 else self.m7d - 0x10000
+
+        # Center of rotation (already 13-bit signed from m7_write)
+        cx: cython.int = self.m7x
+        cy: cython.int = self.m7y
+
+        # Scroll offsets: BG1HOFS/VOFS are reused as M7HOFS/VOFS; sign-extend 13-bit
+        hofs: cython.int = self.bg1.hoffset & 0x1FFF
+        if hofs >= 0x1000:
+            hofs -= 0x2000
+        vofs: cython.int = self.bg1.voffset & 0x1FFF
+        if vofs >= 0x1000:
+            vofs -= 0x2000
+
+        # M7SEL flags
+        h_flip: cython.bint = (self.m7sel >> 0) & 1
+        v_flip: cython.bint = (self.m7sel >> 1) & 1
+        # bits 7-6: 0/1=wrap, 2=transparent outside 1024×1024, 3=fill with tile 0
+        screen_over: cython.uchar = (self.m7sel >> 6) & 3
+
+        # Apply V-flip to scanline (Mode 7 "screen" height = 256)
+        fy: cython.int = (255 - scan_y) if v_flip else scan_y
+        dy: cython.int = fy + vofs - cy
+
+        # Precompute y-column of the matrix (constant for this scanline)
+        b_dy: cython.int = b * dy
+        d_dy: cython.int = d * dy
+
+        row: cython.int = row_y * SCREEN_WIDTH
+        write_main_bg1: cython.bint = self.bg1.main_screen_enable
+        write_sub_bg1: cython.bint = self.bg1.sub_screen_enable
+        write_main_bg2: cython.bint = self.bg2.main_screen_enable
+        write_sub_bg2: cython.bint = self.bg2.sub_screen_enable
+        extbg: cython.bint = self.m7_extbg
+
+        # Window masking for BG1 (same logic as draw_background_scanline, bg_idx=0)
+        window_active: cython.bint = bool(self.tmw & 0x01)
+        w1_enable: cython.bint = bool((self.w12sel >> 1) & 1)
+        w1_invert: cython.bint = bool(self.w12sel & 1)
+        w2_enable: cython.bint = bool((self.w12sel >> 3) & 1)
+        w2_invert: cython.bint = bool((self.w12sel >> 2) & 1)
+        combine_logic: cython.uint = self.wbglog & 0x3
+
+        for px in range(SCREEN_WIDTH):
+            # Window masking: skip pixel if it falls in the masked zone
+            if window_active and (w1_enable or w2_enable):
+                w1_val: cython.bint = False
+                if w1_enable:
+                    in_range1: cython.bint = (self.wh0 <= px <= self.wh1)
+                    w1_val = in_range1 ^ w1_invert
+                w2_val: cython.bint = False
+                if w2_enable:
+                    in_range2: cython.bint = (self.wh2 <= px <= self.wh3)
+                    w2_val = in_range2 ^ w2_invert
+                masked: cython.bint
+                if w1_enable and w2_enable:
+                    if combine_logic == 0:
+                        masked = w1_val or w2_val
+                    elif combine_logic == 1:
+                        masked = w1_val and w2_val
+                    elif combine_logic == 2:
+                        masked = w1_val != w2_val
+                    else:
+                        masked = w1_val == w2_val
+                elif w1_enable:
+                    masked = w1_val
+                else:
+                    masked = w2_val
+                if masked:
+                    continue
+
+            fx: cython.int = (255 - px) if h_flip else px
+            dx: cython.int = fx + hofs - cx
+
+            # Affine transform → VRAM coordinate (fixed-point 8.8 → integer)
+            vx: cython.int = ((a * dx + b_dy) >> 8) + cx
+            vy: cython.int = ((c * dx + d_dy) >> 8) + cy
+
+            outside: cython.bint = vx < 0 or vx >= 1024 or vy < 0 or vy >= 1024
+            if outside:
+                if screen_over == 2:
+                    continue  # transparent
+                elif screen_over != 3:
+                    vx &= 0x3FF  # wrap to 1024×1024
+                    vy &= 0x3FF
+                    outside = False
+
+            # Tilemap: low byte of VRAM word at (ty*128+tx) = tile number
+            if outside:  # screen_over == 3: force tile 0
+                tile_num: cython.int = 0
+            else:
+                tile_num = self.vram[2 * ((vy >> 3) * 128 + (vx >> 3))]
+
+            # Pixel: high byte of VRAM word at tile data offset (8bpp)
+            tile_px: cython.int = vx & 7
+            tile_py: cython.int = vy & 7
+            pixel: cython.uchar = self.vram[2 * (tile_num * 64 + tile_py * 8 + tile_px) + 1]
+
+            if pixel == 0:
+                continue  # transparent
+
+            idx: cython.int = row + px
+
+            if extbg and pixel & 0x80:
+                # EXTBG: high bit selects BG2 layer
+                if not (write_main_bg2 or write_sub_bg2):
+                    continue
+                color: cython.uint = self.get_u32_color(8, 0, pixel)
+                if write_main_bg2:
+                    self.main_bgs[idx] = color
+                    self.main_layer[idx] = 2  # BG2
+                if write_sub_bg2:
+                    self.sub_bgs[idx] = color
+            else:
+                if not (write_main_bg1 or write_sub_bg1):
+                    continue
+                color = self.get_u32_color(8, 0, pixel)
+                if write_main_bg1:
+                    self.main_bgs[idx] = color
+                    self.main_layer[idx] = 1  # BG1
+                if write_sub_bg1:
+                    self.sub_bgs[idx] = color
 
     @cython.ccall
     def draw_background_scanline(self, bg: Background, bpp: cython.uchar, priority_selector: cython.bint):

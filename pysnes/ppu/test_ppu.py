@@ -198,12 +198,10 @@ PPU_TEST_ROMS = [
         "BGMAP/8x8/8BPP/TileFlip/8x8BGMapTileFlip.sfc",
         20,
     ),
-    pytest.param(
+    (
         "mode7_rotzoom",
         "Mode7/RotZoom/RotZoom.sfc",
         20,
-        marks=pytest.mark.xfail(reason="Mode 7 not implemented", raises=NotImplementedError, strict=True),
-        id="mode7_rotzoom",
     ),
     (
         "window_hdma",

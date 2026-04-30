@@ -208,6 +208,13 @@ class Bus:
             # across System Area banks $00-$3F (and $80-$BF via LoROM mirror
             # which is normalized above).
             if 0x2100 <= addr <= 0x21FF:
+                if addr == 0x2134:  # MPYL
+                    return self.ppu._mpy_result & 0xFF
+                if addr == 0x2135:  # MPYM
+                    return (self.ppu._mpy_result >> 8) & 0xFF
+                if addr == 0x2136:  # MPYH
+                    return (self.ppu._mpy_result >> 16) & 0xFF
+
                 if addr == 0x2137:  # SLHV
                     return self.ppu.slhv
 
@@ -544,10 +551,7 @@ class Bus:
                     # Bits 4-5: unused
                     # Bit 6: EXTBG                  (Mode 7 only; enables BG2 as a second Mode 7 layer)
                     # Bit 7: External sync          (genlock to external video; no effect in emulation)
-                    # Most of these bits are cosmetic/unimplemented; accept the
-                    # write silently rather than blowing up — games that drift
-                    # their stack into the PPU register page (observed with
-                    # ALTTP boot) would otherwise crash here.
+                    self.ppu.m7_extbg = (data >> 6) & 1
                     return
 
                 if addr == 0x2134:  # MPYL

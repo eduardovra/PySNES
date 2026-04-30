@@ -17,6 +17,7 @@ class SDL2Renderer:
         self.renderer: Optional[sdl.SDL_Renderer] = None
         self.texture: Optional[sdl.SDL_Texture] = None
         self.window = None
+        self._last_pixel_data: Optional[np.ndarray] = None
 
     def initialize(self, window) -> None:
         """Initialize SDL2 renderer from existing window"""
@@ -130,22 +131,30 @@ class SDL2Renderer:
         # Present frame
         sdl.SDL_RenderPresent(self.renderer)
 
+        # Stash a reference (no copy) so save_screenshot can write a BMP from
+        # the in-flight buffer. Valid until the PPU rewrites it next frame —
+        # save_screenshot is called in the same loop iteration before then.
+        self._last_pixel_data = pixel_data
+
     def save_screenshot(self, path: str = "screenshot.bmp") -> None:
-        """Save the current framebuffer to a BMP file."""
-        if not self.renderer:
+        """Save the most recently drawn frame to a BMP at native 256x224.
+
+        Reads from the live buffer stashed by draw_frame — must be called in
+        the same main-loop iteration as the draw, before the PPU rewrites it.
+        """
+        if self._last_pixel_data is None:
             return
-        surface = sdl.SDL_CreateRGBSurface(
-            0, self.width, self.height, 32,
-            0x000000FF, 0x0000FF00, 0x00FF0000, 0xFF000000
+        # Texture format is SDL_PIXELFORMAT_RGBA8888: R at MSB, so on
+        # little-endian memory the bytes are A,B,G,R per pixel. The matching
+        # surface masks place R in the high byte of the 32-bit pixel.
+        buf = np.ascontiguousarray(self._last_pixel_data)
+        surface = sdl.SDL_CreateRGBSurfaceFrom(
+            buf.ctypes.data_as(ctypes.c_void_p),
+            self.width, self.height, 32, self.width * 4,
+            0xFF000000, 0x00FF0000, 0x0000FF00, 0x000000FF
         )
         if not surface:
             return
-        sdl.SDL_RenderReadPixels(
-            self.renderer, None,
-            sdl.SDL_PIXELFORMAT_RGBA8888,
-            surface.contents.pixels,
-            surface.contents.pitch
-        )
         sdl.SDL_SaveBMP(surface, path.encode())
         sdl.SDL_FreeSurface(surface)
 

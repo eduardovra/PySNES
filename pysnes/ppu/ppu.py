@@ -231,8 +231,15 @@ class Ppu:
     @vmdatal.setter
     def vmdatal(self, data: cython.uchar) -> None:
         self._vmdatal = data
+        # $2118 writes ONLY the low byte at vram[addr*2+0]. The high byte
+        # is preserved (this is the whole point of having separate L/H
+        # registers — games like SMW do mode-0 DMA into $2118 alone to
+        # update tilemap chars while keeping their attribute bytes).
+        word_addr = (self.vmaddl | self.vmaddh << 8) & 0x7FFF
+        base_addr = self._remap_vram_addr(word_addr) * 2
+        self.vram[base_addr] = data
         if not self.vmain_addr_increment_mode:
-            self.write_vram()
+            self.increment_vmadd()
 
     @property
     def vmdatah(self) -> cython.uchar:
@@ -241,8 +248,11 @@ class Ppu:
     @vmdatah.setter
     def vmdatah(self, data: cython.uchar) -> None:
         self._vmdatah = data
+        word_addr = (self.vmaddl | self.vmaddh << 8) & 0x7FFF
+        base_addr = self._remap_vram_addr(word_addr) * 2
+        self.vram[base_addr + 1] = data
         if self.vmain_addr_increment_mode:
-            self.write_vram()
+            self.increment_vmadd()
 
     def _remap_vram_addr(self, addr: int) -> int:
         """Apply $2115 VRAM address remapping to a 16-bit word address."""

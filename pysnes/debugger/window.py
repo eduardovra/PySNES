@@ -18,7 +18,7 @@ if TYPE_CHECKING:
     from ..ppu.ppu import Ppu
 
 # Memory regions selectable in the memory view
-_REGIONS = ["WRAM", "VRAM", "CGRAM"]
+_REGIONS = ["WRAM", "VRAM", "CGRAM", "ROM"]
 
 # Bytes displayed per row in the hex view
 _HEX_COLS = 16
@@ -180,8 +180,8 @@ class DebuggerWindow:
         self._status_label.config(text=status)
         self.root.title(f"PySNES Debugger — {status}")
 
-        self._refresh_cpu_tab(cpu)
         if paused:
+            self._refresh_cpu_tab(cpu)
             self._refresh_apu_tab(self._debugger._pysnes.apu)
             self._refresh_ppu_tab(self._ppu)
             self._refresh_disassembly(cpu)
@@ -305,7 +305,7 @@ class DebuggerWindow:
             chunk = data[row:row + _HEX_COLS]
             hex_part = " ".join(f"{b:02X}" for b in chunk)
             ascii_part = "".join(chr(b) if 0x20 <= b < 0x7F else "." for b in chunk)
-            lines.append(f"{region}:{base + row:04X}  {hex_part:<{_HEX_COLS * 3}}  {ascii_part}")
+            lines.append(f"{region}:{base + row:06X}  {hex_part:<{_HEX_COLS * 3}}  {ascii_part}")
 
         self._set_text(self._mem_text, "\n".join(lines))
 
@@ -329,6 +329,10 @@ class DebuggerWindow:
         elif region == "CGRAM":
             end = min(base + length, len(self._ppu.cgram))
             return bytes(self._ppu.cgram[base:end])
+        elif region == "ROM":
+            data = self._bus.rom.rom
+            end = min(base + length, len(data))
+            return bytes(data[base:end])
         return b"\x00" * length
 
     # ── Breakpoints ────────────────────────────────────────────────────

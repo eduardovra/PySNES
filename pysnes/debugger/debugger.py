@@ -173,6 +173,8 @@ class Debugger:
         if self._window is not None:
             return  # already open; window is managed by the daemon thread
 
+        import gc
+
         from .window import DebuggerWindow
 
         def _run():
@@ -183,6 +185,12 @@ class Debugger:
             win.root.destroy()               # destroy in daemon (Tkinter) thread
             self._cpu.trace_enabled = False
             self._window = None
+            # Force Tk object teardown on this (Tcl-owning) thread. On PyPy the
+            # tracing GC would otherwise reclaim `win` later from the main
+            # thread, triggering "Tcl_AsyncDelete: async handler deleted by
+            # the wrong thread".
+            win = None
+            gc.collect()
 
         t = threading.Thread(target=_run, daemon=True)
         t.start()

@@ -40,21 +40,37 @@ class Channel:
     unknown: int = 0
     hdma_enable: int = 0
 
-    # HDMA execution state (reset each frame by hdma_init)
-    _hdma_ptr: int = 0      # current byte offset (within bank) in the HDMA table
-    _hdma_bank: int = 0     # bank of the HDMA table (= source_bank for non-indirect)
-    _hdma_count: int = 0    # remaining scanlines for current table entry
-    _hdma_repeat: bool = False  # True = reuse same data bytes; False = fresh per scanline
-    _hdma_data: int = 0     # byte offset of the data bytes for the current entry
-    _hdma_active: bool = False  # False once end-of-table (count=0) is reached
+    # HDMA execution state — matches Mesen's HdmaLineCounterAndRepeat model.
+    #
+    # _hdma_ptr: unified table address (HdmaTableAddress in Mesen).
+    #   In direct mode this pointer advances through both the data bytes and
+    #   the count bytes; after the last transfer of an entry it points at the
+    #   NEXT entry's count byte.  In indirect mode it tracks the count/address
+    #   bytes; the actual data is accessed via transfer_size in indirect_bank.
+    #
+    # _hdma_line_counter_repeat: the raw count byte currently loaded.
+    #   bits 6:0 = line counter (0 → 128 scanlines).
+    #   bit  7   = "do-transfer" flag for each scanline while it remains set.
+    #   The byte is decremented as a whole unit each scanline; DoTransfer for
+    #   the NEXT scanline is taken from bit7 of the result.  The entry ends
+    #   when bits 6:0 reach zero.
+    #
+    # _hdma_do_transfer: whether to transfer data on the CURRENT scanline.
+    #   Set True at the start of every entry (including frame init).
+    #   Updated to (decremented_counter & 0x80) != 0 after each scanline.
+    _hdma_ptr: int = 0
+    _hdma_bank: int = 0
+    _hdma_line_counter_repeat: int = 0
+    _hdma_do_transfer: bool = False
+    _hdma_active: bool = False
 
     _STATE_FIELDS = (
         "transfer_mode", "fixed_transfer", "reverse_transfer", "unused",
         "indirect", "direction", "target_address", "source_address",
         "source_bank", "transfer_size", "indirect_bank", "hdma_address",
         "line_counter", "unknown", "hdma_enable",
-        "_hdma_ptr", "_hdma_bank", "_hdma_count", "_hdma_repeat",
-        "_hdma_data", "_hdma_active",
+        "_hdma_ptr", "_hdma_bank", "_hdma_line_counter_repeat",
+        "_hdma_do_transfer", "_hdma_active",
     )
 
     def dump_state(self) -> dict:
@@ -66,14 +82,11 @@ class Channel:
 
     def do_transfer(self) -> None:
         # On real hardware each GDMA byte costs 8 master-clock cycles and the
-        # CPU is halted for the duration.  We charge those cycles to cpu.cycles
-        # so the scheduler sees the correct elapsed time and NMI fires at the
-        # right frame boundary.  Per-channel overhead (8 MC bus-lock + 8 MC
-        # bus-unlock) is included via the +16 constant below.
+        # CPU is halted for the duration.  Per-channel overhead (8 MC bus-lock +
+        # 8 MC arbitration + 8 MC bus-unlock) is included via the +24 constant.
         count = self.transfer_size if self.transfer_size else 0x10000
         offsets = _HDMA_TARGET_OFFSETS[self.transfer_mode]
         unit_len = len(offsets)
-        # A-bus step: +1, -1, or 0 depending on fixed/reverse flags.
         if self.fixed_transfer:
             step = 0
         else:
@@ -84,27 +97,21 @@ class Channel:
             b_bus_addr = 0x2100 | ((self.target_address + offsets[index % unit_len]) & 0xFF)
 
             if self.direction == 0:
-                # A bus → B bus (CPU/ROM/RAM → PPU)
                 self.bus.write(b_bus_addr, self.bus.read(a_bus_addr))
             else:
-                # B bus → A bus (PPU → CPU/RAM)
                 self.bus.write(a_bus_addr, self.bus.read(b_bus_addr))
 
-            # A-bus address increments within the bank (16-bit wrap; does not
-            # carry into source_bank on real hardware).
             self.source_address = (self.source_address + step) & 0xFFFF
 
-        # Advance master_clock directly by the DMA cost (8 MC/byte + 16 MC
-        # per-channel overhead for bus-lock/unlock).  Bypassing cpu.cycles
-        # means the CPU's next _step() sees the correct clock position without
-        # triggering the scheduler's event loop mid-transfer — on real hardware
-        # the CPU is halted during GDMA so no instruction events should fire.
-        self.bus.scheduler.master_clock += count * 8 + 16
+        # Advance master_clock by the DMA cost: 8 MC/byte + 24 MC per-channel
+        # overhead.  Also sync _last_refresh_scanline so the CPU's post-DMA
+        # DRAM refresh check doesn't add a spurious 40 MC penalty.
+        self.bus.scheduler.master_clock += count * 8 + 24
+        self.bus.cpu._last_refresh_scanline = self.bus.scheduler.master_clock // 1364
 
 
 class DMA:
     def __init__(self, bus: "Bus") -> None:
-        # Create 8 DMA channels
         self.channels = [Channel(bus) for _ in range(8)]
 
     def dump_state(self) -> dict:
@@ -126,59 +133,42 @@ class DMA:
             channel.indirect = data >> 6 & 1
             channel.direction = data >> 7 & 1
             return
-
         if addr == 0x4301:  # BBADx
             channel.target_address = data
             return
-
         if addr == 0x4302:  # A1TxL
             channel.source_address = channel.source_address & 0xFF00 | data << 0
             return
-
         if addr == 0x4303:  # A1TxH
             channel.source_address = channel.source_address & 0x00FF | data << 8
             return
-
         if addr == 0x4304:  # A1Bx
             channel.source_bank = data
             return
-
         if addr == 0x4305:  # DASxL
             channel.transfer_size = channel.transfer_size & 0xFF00 | data << 0
             return
-
         if addr == 0x4306:  # DASxH
             channel.transfer_size = channel.transfer_size & 0x00FF | data << 8
             return
-
         if addr == 0x4307:  # DASBx
             channel.indirect_bank = data
             return
-
         if addr == 0x4308:  # A2AxL
             channel.hdma_address = channel.hdma_address & 0xFF00 | data << 0
             return
-
         if addr == 0x4309:  # A2AxH
             channel.hdma_address = channel.hdma_address & 0x00FF | data << 8
             return
-
         if addr == 0x430A:  # NTRLx
             channel.line_counter = data
             return
-
         if addr == 0x430B:  # ???x
             channel.unknown = data
             return
-
         if addr == 0x430F:  # ???x ($43xb mirror)
             channel.unknown = data
             return
-
-        # $43xC-$43xE are unused/open-bus on real hardware; writes are ignored.
-        # Anything else in this mirrored range is treated the same way rather
-        # than crashing the emulator on stray writes (e.g. when a game's stack
-        # drifts into the DMA register page).
         return
 
     def __getitem__(self, abs_addr: int) -> int:
@@ -194,30 +184,18 @@ class DMA:
                 | ((channel.indirect & 1) << 6)
                 | ((channel.direction & 1) << 7)
             )
-        if addr == 0x4301:  # BBADx
-            return channel.target_address & 0xFF
-        if addr == 0x4302:  # A1TxL
-            return channel.source_address & 0xFF
-        if addr == 0x4303:  # A1TxH
-            return (channel.source_address >> 8) & 0xFF
-        if addr == 0x4304:  # A1Bx
-            return channel.source_bank & 0xFF
-        if addr == 0x4305:  # DASxL
-            return channel.transfer_size & 0xFF
-        if addr == 0x4306:  # DASxH
-            return (channel.transfer_size >> 8) & 0xFF
-        if addr == 0x4307:  # DASBx
-            return channel.indirect_bank & 0xFF
-        if addr == 0x4308:  # A2AxL
-            return channel.hdma_address & 0xFF
-        if addr == 0x4309:  # A2AxH
-            return (channel.hdma_address >> 8) & 0xFF
-        if addr == 0x430A:  # NTRLx
-            return channel.line_counter & 0xFF
-        if addr == 0x430B or addr == 0x430F:  # UNUSEDx (readable mirror)
+        if addr == 0x4301:  return channel.target_address & 0xFF
+        if addr == 0x4302:  return channel.source_address & 0xFF
+        if addr == 0x4303:  return (channel.source_address >> 8) & 0xFF
+        if addr == 0x4304:  return channel.source_bank & 0xFF
+        if addr == 0x4305:  return channel.transfer_size & 0xFF
+        if addr == 0x4306:  return (channel.transfer_size >> 8) & 0xFF
+        if addr == 0x4307:  return channel.indirect_bank & 0xFF
+        if addr == 0x4308:  return channel.hdma_address & 0xFF
+        if addr == 0x4309:  return (channel.hdma_address >> 8) & 0xFF
+        if addr == 0x430A:  return channel.line_counter & 0xFF
+        if addr == 0x430B or addr == 0x430F:
             return channel.unknown & 0xFF
-
-        # $43xC-$43xE are unused/open-bus on real hardware.
         return 0
 
     def mdmaen_set(self, data: int) -> None:
@@ -230,56 +208,45 @@ class DMA:
             channel.hdma_enable = data & (1 << enable_bit)
 
     def hdma_init(self) -> None:
-        """Initialize all HDMA-enabled channels at the start of each frame.
-
-        Reads the first count byte from each channel's table and sets up the
-        execution state for the frame.
-        """
+        """Initialize all HDMA-enabled channels at the start of each frame."""
         for ch in self.channels:
             if not ch.hdma_enable:
                 ch._hdma_active = False
                 continue
+            ch._hdma_do_transfer = True
             ch._hdma_ptr = ch.source_address
             ch._hdma_bank = ch.source_bank
-            self._load_next_entry(ch)
+            self._load_entry(ch)
 
-    def _load_next_entry(self, ch: "Channel") -> None:
-        """Read the next count byte from the table and update channel state.
-
-        Bit 7 of the count byte is the "do-repeat" flag:
-          bit 7 = 0 (do-not-repeat): the SAME data unit is reused every scanline.
-          bit 7 = 1 (do-repeat):     FRESH data is read each scanline.
-
-        In direct mode (DMAPx bit 6 = 0), the data bytes follow the count byte
-        inline in the table. In indirect mode (bit 6 = 1), the 2 bytes after the
-        count byte are a pointer into `indirect_bank:ptr` where the actual data
-        lives. Either way, _hdma_ptr is advanced to the NEXT entry's count byte
-        here; for direct+repeat, hdma_scanline() advances _hdma_data per
-        scanline and re-syncs _hdma_ptr when the entry is exhausted.
-        """
+    def _load_entry(self, ch: "Channel") -> None:
+        """Read the count byte at _hdma_ptr and set up channel state for the entry."""
         count = ch.bus.read(ch._hdma_bank << 16 | ch._hdma_ptr)
         ch._hdma_ptr = (ch._hdma_ptr + 1) & 0xFFFF
         if count == 0:
             ch._hdma_active = False
             return
         ch._hdma_active = True
-        ch._hdma_count = count & 0x7F
-        ch._hdma_repeat = bool(count & 0x80)
+        ch._hdma_line_counter_repeat = count
+        ch._hdma_do_transfer = True
 
         if ch.indirect:
             lo = ch.bus.read(ch._hdma_bank << 16 | ch._hdma_ptr)
             hi = ch.bus.read(ch._hdma_bank << 16 | ((ch._hdma_ptr + 1) & 0xFFFF))
             ch.transfer_size = (hi << 8) | lo
             ch._hdma_ptr = (ch._hdma_ptr + 2) & 0xFFFF
-            ch._hdma_data = ch.transfer_size
-        else:
-            ch._hdma_data = ch._hdma_ptr
-            unit_bytes = _HDMA_UNIT_BYTES[ch.transfer_mode & 7]
-            if not ch._hdma_repeat:
-                ch._hdma_ptr = (ch._hdma_ptr + unit_bytes) & 0xFFFF
 
     def hdma_scanline(self) -> None:
-        """Execute HDMA for one H-blank (called once per active scanline)."""
+        """Execute HDMA for one H-blank (called once per active scanline).
+
+        Matches Mesen's SnesDmaController::RunHdma algorithm:
+          1. Transfer data if _hdma_do_transfer is set.
+             In direct mode the table pointer (_hdma_ptr) advances past the
+             data bytes on each transfer, so it always points at the next
+             count byte when the line counter expires.
+          2. Decrement _hdma_line_counter_repeat as a whole byte.
+          3. Set _hdma_do_transfer from bit 7 of the decremented counter.
+          4. When bits 6:0 reach zero, load the next table entry.
+        """
         for ch in self.channels:
             if not ch.hdma_enable or not ch._hdma_active:
                 continue
@@ -287,21 +254,27 @@ class DMA:
             mode = ch.transfer_mode & 7
             unit_bytes = _HDMA_UNIT_BYTES[mode]
             offsets = _HDMA_TARGET_OFFSETS[mode]
-
             data_bank = ch.indirect_bank if ch.indirect else ch._hdma_bank
 
-            for i in range(unit_bytes):
-                byte = ch.bus.read((data_bank << 16) | ((ch._hdma_data + i) & 0xFFFF))
-                ch.bus.write(0x2100 | ((ch.target_address + offsets[i]) & 0xFF), byte)
-
-            if ch._hdma_repeat:
-                ch._hdma_data = (ch._hdma_data + unit_bytes) & 0xFFFF
+            # Step 1: transfer data for this scanline.
+            if ch._hdma_do_transfer:
                 if ch.indirect:
-                    ch.transfer_size = ch._hdma_data
+                    for i in range(unit_bytes):
+                        byte = ch.bus.read((data_bank << 16) | ((ch.transfer_size + i) & 0xFFFF))
+                        ch.bus.write(0x2100 | ((ch.target_address + offsets[i]) & 0xFF), byte)
+                    ch.transfer_size = (ch.transfer_size + unit_bytes) & 0xFFFF
+                else:
+                    for i in range(unit_bytes):
+                        byte = ch.bus.read((data_bank << 16) | ((ch._hdma_ptr + i) & 0xFFFF))
+                        ch.bus.write(0x2100 | ((ch.target_address + offsets[i]) & 0xFF), byte)
+                    ch._hdma_ptr = (ch._hdma_ptr + unit_bytes) & 0xFFFF
 
-            ch._hdma_count -= 1
-            if ch._hdma_count == 0:
-                if ch._hdma_repeat and not ch.indirect:
-                    # Sync _hdma_ptr to where _hdma_data now sits (next entry)
-                    ch._hdma_ptr = ch._hdma_data
-                self._load_next_entry(ch)
+            # Step 2: decrement the full counter byte.
+            ch._hdma_line_counter_repeat = (ch._hdma_line_counter_repeat - 1) & 0xFF
+
+            # Step 3: DoTransfer for next scanline = bit 7 of decremented counter.
+            ch._hdma_do_transfer = bool(ch._hdma_line_counter_repeat & 0x80)
+
+            # Step 4: if bits 6:0 reached zero, load next entry.
+            if (ch._hdma_line_counter_repeat & 0x7F) == 0:
+                self._load_entry(ch)

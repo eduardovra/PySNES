@@ -203,6 +203,21 @@ PPU_TEST_ROMS = [
         "Mode7/RotZoom/RotZoom.sfc",
         20,
     ),
+    pytest.param(
+        "mode7_starwars",
+        "Mode7/StarWars/StarWars.sfc",
+        30,
+        marks=pytest.mark.xfail(
+            reason=(
+                "59 pixels (0.1%) differ at full brightness: CGRAM palette is loaded "
+                "by DMA during startup; residual DMA timing inaccuracy produces "
+                "slightly different CGRAM values than Mesen. "
+                "Mode 7 rendering formula is correct (RotZoom passes 0%)."
+            ),
+            strict=False,
+        ),
+        id="mode7_starwars",
+    ),
     (
         "window_hdma",
         "Window/WindowHDMA/WindowHDMA.sfc",

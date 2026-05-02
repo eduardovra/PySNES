@@ -64,14 +64,14 @@ REPEAT = 3
 CASES = [
     # (label, setup, stmt)
     # --- via __getitem__/__setitem__ (Python slot dispatch → thin wrapper → read/write) ---
-    ("low_ram_read       []",  "",  "bus[0x000100]"),
+    ("low_ram_read       []",  "",  "bus.read(0x000100)"),
     ("low_ram_write      []",  "",  "bus.__setitem__(0x000100, 0xAB)"),
-    ("rom_read           []",  "",  "bus[0x008010]"),
-    ("high_ram_read      []",  "",  "bus[0x7E3000]"),
-    ("extended_ram_read  []",  "",  "bus[0x7E8000]"),
-    ("rdnmi_read         []",  "",  "bus[0x004210]"),
-    ("hvbjoy_read        []",  "",  "bus[0x004212]"),
-    ("apu_port_read      []",  "",  "bus[0x002140]"),
+    ("rom_read           []",  "",  "bus.read(0x008010)"),
+    ("high_ram_read      []",  "",  "bus.read(0x7E3000)"),
+    ("extended_ram_read  []",  "",  "bus.read(0x7E8000)"),
+    ("rdnmi_read         []",  "",  "bus.read(0x004210)"),
+    ("hvbjoy_read        []",  "",  "bus.read(0x004212)"),
+    ("apu_port_read      []",  "",  "bus.read(0x002140)"),
     # --- via bus.read()/bus.write() (direct Python call into cfunc; inlined when called from Cython) ---
     ("low_ram_read    .read",  "",  "bus.read(0x000100)"),
     ("low_ram_write  .write",  "",  "bus.write(0x000100, 0xAB)"),
@@ -89,8 +89,8 @@ def run():
     bus = make_bus()
     # Pre-warm
     for _ in range(1000):
-        bus[0x000100]
-        bus[0x008010]
+        bus.read(0x000100)
+        bus.read(0x008010)
 
     print(f"\n{'Label':<{COL_W}}  {'ns/op':>8}  {'total ms':>10}")
     print("-" * (COL_W + 24))

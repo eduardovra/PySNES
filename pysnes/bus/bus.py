@@ -171,7 +171,7 @@ class Bus:
             if ((0x00 <= bank <= 0x3F) and addr >= 0x8000) or \
                (0x40 <= bank <= 0x7D):
                 rom_addr: cython.uint = ((bank & 0x3F) << 16) | addr
-                return self.rom[rom_addr]
+                return self.rom.read(rom_addr)
 
             # HiROM SRAM: banks $20-$3F at $6000-$7FFF, 8KB window per bank.
             if 0x20 <= bank <= 0x3F and 0x6000 <= addr <= 0x7FFF:
@@ -184,7 +184,7 @@ class Bus:
                 ((0x40 <= bank <= 0x6F) and (0x0000 <= addr <= 0xFFFF)) or \
                 ((0x70 <= bank <= 0x7D) and (0x8000 <= addr <= 0xFFFF)):
                 rom_addr: cython.uint = (bank * 0x8000) + (addr - (0x8000 if addr >= 0x8000 else 0))
-                return self.rom[rom_addr]
+                return self.rom.read(rom_addr)
 
             # SRAM: LoROM banks $70-$7D, addr $0000-$7FFF (mirrored from $F0-$FD)
             if 0x70 <= bank <= 0x7D and addr < 0x8000:
@@ -248,7 +248,7 @@ class Bus:
                     if 0x2140 <= addr <= 0x2143:
                         self.apu.sync_to(self.scheduler.master_clock + (self.cpu.cycles - self.cpu.prev_cycles))
                         return self.apu.ports_w[addr - 0x2140]
-                    return self.apu[addr - 0x204C]
+                    return self.apu.read_external(addr - 0x204C)
 
             elif addr == 0x4016:  # JOYSER0
                 return self.controller_port1.data()
@@ -291,7 +291,7 @@ class Bus:
                 # engine mutates source_address/transfer_size during transfers
                 # — games (e.g. the 93143 hvdma test ROM) read these back.
                 if 0x4300 <= addr <= 0x43FF:
-                    return self.cpu.dma[addr]
+                    return self.cpu.dma.read(addr)
 
                 return self.dma_ppu2_hw_registers[addr - 0x4200]
 
@@ -311,7 +311,22 @@ class Bus:
 
         raise NotImplementedError(f"Reading unmapped memory region: 0x{abs_addr:06X}")
 
-    def __getitem__(self, abs_addr: cython.uint) -> cython.uchar:
+    @cython.cfunc
+    @cython.inline
+    def peek(self, abs_addr: cython.uint) -> cython.uchar:
+        """Read without side effects — safe for debugger/disassembler use.
+
+        ROM, RAM, and SRAM are read normally. Hardware register ranges
+        ($2000-$5FFF in system-area banks) return 0 to avoid flag clears,
+        VRAM-prefetch advances, or other I/O side effects.
+        """
+        bank: cython.uint = abs_addr >> 16 & 0xFF
+        addr: cython.uint = abs_addr & 0xFFFF
+        if 0x80 <= bank <= 0xFF:
+            bank = bank - 0x80
+            abs_addr = abs_addr - 0x800000
+        if (0x00 <= bank <= 0x3F or bank == 0x7E) and 0x2000 <= addr <= 0x5FFF:
+            return 0
         return self.read(abs_addr)
 
     @cython.cfunc
@@ -680,7 +695,7 @@ class Bus:
                     return
 
                 if 0x4300 <= addr <= 0x43FF:
-                    self.cpu.dma[addr] = data
+                    self.cpu.dma.write(addr, data)
                     return
 
                 self.dma_ppu2_hw_registers[addr - 0x4200] = data
@@ -712,5 +727,3 @@ class Bus:
             f"Writting unmapped memory region: 0x{abs_addr:06X} = 0x{data:02X}"
         )
 
-    def __setitem__(self, abs_addr: cython.uint, data: cython.uchar):
-        self.write(abs_addr, data)

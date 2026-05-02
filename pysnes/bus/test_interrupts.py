@@ -40,7 +40,7 @@ class StubRom:
                                        nmi=0x8000, reset=0x8000, irq=0x8000),
         )
 
-    def __getitem__(self, addr):
+    def read(self, addr):
         if 0 <= addr < len(self.rom):
             return self.rom[addr]
         return 0
@@ -65,47 +65,47 @@ def make_bus():
 
 def test_nmitimen_enables_nmi():
     bus, cpu = make_bus()
-    bus[0x004200] = 0x80
+    bus.write(0x004200, 0x80)
     assert cpu.status.nmi_enable is True
 
 
 def test_nmitimen_disables_nmi():
     bus, cpu = make_bus()
-    bus[0x004200] = 0x80
-    bus[0x004200] = 0x00
+    bus.write(0x004200, 0x80)
+    bus.write(0x004200, 0x00)
     assert cpu.status.nmi_enable is False
 
 
 def test_nmitimen_hirq_enable():
     bus, cpu = make_bus()
-    bus[0x004200] = 0x10
+    bus.write(0x004200, 0x10)
     assert cpu.status.hirq_enable is True
     assert cpu.status.irq_enable is True
 
 
 def test_nmitimen_virq_enable():
     bus, cpu = make_bus()
-    bus[0x004200] = 0x20
+    bus.write(0x004200, 0x20)
     assert cpu.status.virq_enable is True
     assert cpu.status.irq_enable is True
 
 
 def test_nmitimen_hirq_and_virq_both_set_irq_enable():
     bus, cpu = make_bus()
-    bus[0x004200] = 0x30
+    bus.write(0x004200, 0x30)
     assert cpu.status.irq_enable is True
 
 
 def test_nmitimen_neither_hirq_nor_virq_clears_irq_enable():
     bus, cpu = make_bus()
-    bus[0x004200] = 0x30
-    bus[0x004200] = 0x00
+    bus.write(0x004200, 0x30)
+    bus.write(0x004200, 0x00)
     assert cpu.status.irq_enable is False
 
 
 def test_nmitimen_auto_joypad_read_enable():
     bus, cpu = make_bus()
-    bus[0x004200] = 0x01
+    bus.write(0x004200, 0x01)
     assert cpu.status.auto_joypad_read_enable is True
 
 
@@ -115,7 +115,7 @@ def test_nmitimen_auto_joypad_read_enable():
 
 def test_nmi_rising_edge_sets_pending_when_enabled():
     bus, cpu = make_bus()
-    bus[0x004200] = 0x80          # enable NMI
+    bus.write(0x004200, 0x80)  # enable NMI
     cpu.nmi_rising_edge()
     assert cpu._nmi_pending is True
 
@@ -132,20 +132,20 @@ def test_nmi_enable_with_line_already_high_triggers_immediately():
     bus, cpu = make_bus()
     cpu.status.nmi_line = True
     # Writing 0x80 to NMITIMEN while nmi_line is high should trigger immediately
-    bus[0x004200] = 0x80
+    bus.write(0x004200, 0x80)
     assert cpu._nmi_pending is True
 
 
 def test_nmi_enable_with_line_low_does_not_trigger():
     bus, cpu = make_bus()
     cpu.status.nmi_line = False
-    bus[0x004200] = 0x80
+    bus.write(0x004200, 0x80)
     assert cpu._nmi_pending is False
 
 
 def test_raise_nmi_sets_nmi_line():
     bus, cpu = make_bus()
-    bus[0x004200] = 0x80
+    bus.write(0x004200, 0x80)
     bus.raise_nmi()
     assert cpu.status.nmi_line is True
 
@@ -169,28 +169,28 @@ def test_lower_nmi_does_not_clear_nmi_line():
 def test_rdnmi_read_clears_nmi_line():
     bus, cpu = make_bus()
     cpu.status.nmi_line = True
-    _ = bus[0x004210]
+    _ = bus.read(0x004210)
     assert cpu.status.nmi_line is False
 
 
 def test_rdnmi_read_while_line_low_leaves_it_low():
     bus, cpu = make_bus()
     cpu.status.nmi_line = False
-    _ = bus[0x004210]
+    _ = bus.read(0x004210)
     assert cpu.status.nmi_line is False
 
 
 def test_rdnmi_bit7_reflects_nmi_line():
     bus, cpu = make_bus()
     cpu.status.nmi_line = True
-    val = bus[0x004210]
+    val = bus.read(0x004210)
     assert val & 0x80
 
 
 def test_rdnmi_bit7_clear_when_line_low():
     bus, cpu = make_bus()
     cpu.status.nmi_line = False
-    val = bus[0x004210]
+    val = bus.read(0x004210)
     assert not (val & 0x80)
 
 
@@ -206,7 +206,7 @@ def test_rdnmi_bit7_persists_through_vblank_end():
         "RDNMI bit 7 should persist through V-Blank end; only a $4210 read clears it"
     )
     # Now reading $4210 clears it.
-    _ = bus[0x004210]
+    _ = bus.read(0x004210)
     assert cpu.status.nmi_line is False
 
 
@@ -217,12 +217,12 @@ def test_rdnmi_bit7_persists_through_vblank_end():
 def test_irq_flags_independent_of_nmi():
     """Setting HIRQ enable must not disturb NMI enable and vice versa."""
     bus, cpu = make_bus()
-    bus[0x004200] = 0x80  # NMI only
+    bus.write(0x004200, 0x80)  # NMI only
     assert cpu.status.nmi_enable is True
     assert cpu.status.hirq_enable is False
     assert cpu.status.irq_enable is False
 
-    bus[0x004200] = 0x10  # HIRQ only
+    bus.write(0x004200, 0x10)  # HIRQ only
     assert cpu.status.nmi_enable is False
     assert cpu.status.hirq_enable is True
     assert cpu.status.irq_enable is True
@@ -286,7 +286,7 @@ def test_interrupt_resets_pb_to_zero_native():
     assert cpu.PC.b == 0x00, f"PB must be 0 after interrupt, got ${cpu.PC.b:02X}"
     assert cpu.PC.w == 0x816A
     # The original PBR ($04) must have been pushed before being cleared.
-    assert bus[0x0001FF] == 0x04, f"PBR not pushed; stack top = ${bus[0x0001FF]:02X}"
+    assert bus.read(0x0001FF) == 0x04, f"PBR not pushed; stack top = ${bus.read(0x0001FF):02X}"
 
 
 def test_interrupt_pb_is_zero_in_emulation_mode():
@@ -309,36 +309,36 @@ def test_interrupt_pb_is_zero_in_emulation_mode():
 
 def test_htime_low_write():
     bus, cpu = make_bus()
-    bus[0x004208] = 0x00  # clear high bit first
-    bus[0x004207] = 0x80
+    bus.write(0x004208, 0x00)  # clear high bit first
+    bus.write(0x004207, 0x80)
     assert cpu.status.htime == 0x080
 
 
 def test_htime_high_write_only_bit0():
     bus, cpu = make_bus()
-    bus[0x004207] = 0x00
-    bus[0x004208] = 0xFF  # only bit 0 retained → HTIME high = 1
+    bus.write(0x004207, 0x00)
+    bus.write(0x004208, 0xFF)  # only bit 0 retained → HTIME high = 1
     assert cpu.status.htime == 0x100
 
 
 def test_htime_full_9bit_target():
     bus, cpu = make_bus()
-    bus[0x004207] = 0x55
-    bus[0x004208] = 0x01
+    bus.write(0x004207, 0x55)
+    bus.write(0x004208, 0x01)
     assert cpu.status.htime == 0x155
 
 
 def test_vtime_low_write():
     bus, cpu = make_bus()
-    bus[0x00420A] = 0x00  # clear high bit first
-    bus[0x004209] = 0xC8  # 200
+    bus.write(0x00420A, 0x00)  # clear high bit first
+    bus.write(0x004209, 0xC8)  # 200
     assert cpu.status.vtime == 200
 
 
 def test_vtime_high_write_only_bit0():
     bus, cpu = make_bus()
-    bus[0x004209] = 0x00
-    bus[0x00420A] = 0x01
+    bus.write(0x004209, 0x00)
+    bus.write(0x00420A, 0x01)
     assert cpu.status.vtime == 0x100
 
 
@@ -349,21 +349,21 @@ def test_vtime_high_write_only_bit0():
 def test_timeup_read_clears_irq_line():
     bus, cpu = make_bus()
     cpu.status.irq_line = True
-    _ = bus[0x004211]
+    _ = bus.read(0x004211)
     assert cpu.status.irq_line is False
 
 
 def test_timeup_bit7_reflects_irq_line():
     bus, cpu = make_bus()
     cpu.status.irq_line = True
-    val = bus[0x004211]
+    val = bus.read(0x004211)
     assert val & 0x80
 
 
 def test_timeup_bit7_clear_when_line_low():
     bus, cpu = make_bus()
     cpu.status.irq_line = False
-    val = bus[0x004211]
+    val = bus.read(0x004211)
     assert not (val & 0x80)
 
 
@@ -443,9 +443,9 @@ def _make_bus_with_ppu():
 def test_vrq_fires_at_vtime_scanline():
     """V-only IRQ: raise line when v_counter reaches VTIME."""
     bus, cpu = make_bus()
-    bus[0x004209] = 10  # VTIME = 10
-    bus[0x00420A] = 0
-    bus[0x004200] = 0x20  # V-IRQ only
+    bus.write(0x004209, 10)  # VTIME = 10
+    bus.write(0x00420A, 0)
+    bus.write(0x004200, 0x20)  # V-IRQ only
     # Simulate scanline advance by calling PPU hblank at VTIME line
     bus.ppu.v_counter = 10
     bus.ppu._irq_check()
@@ -454,9 +454,9 @@ def test_vrq_fires_at_vtime_scanline():
 
 def test_vrq_does_not_fire_on_other_scanlines():
     bus, cpu = make_bus()
-    bus[0x004209] = 10
-    bus[0x00420A] = 0
-    bus[0x004200] = 0x20
+    bus.write(0x004209, 10)
+    bus.write(0x00420A, 0)
+    bus.write(0x004200, 0x20)
     bus.ppu.v_counter = 9
     bus.ppu._irq_check()
     assert cpu.status.irq_line is False
@@ -465,9 +465,9 @@ def test_vrq_does_not_fire_on_other_scanlines():
 def test_hrq_fires_every_scanline():
     """H-only IRQ: raise on every scanline (at HTIME)."""
     bus, cpu = make_bus()
-    bus[0x004207] = 100
-    bus[0x004208] = 0
-    bus[0x004200] = 0x10  # H-IRQ only
+    bus.write(0x004207, 100)
+    bus.write(0x004208, 0)
+    bus.write(0x004200, 0x10)  # H-IRQ only
     for v in (0, 50, 100, 200):
         bus.ppu.v_counter = v
         cpu.status.irq_line = False
@@ -478,11 +478,11 @@ def test_hrq_fires_every_scanline():
 def test_hvrq_fires_only_at_vtime():
     """H+V IRQ: raise only at scanline VTIME."""
     bus, cpu = make_bus()
-    bus[0x004207] = 100
-    bus[0x004208] = 0
-    bus[0x004209] = 42
-    bus[0x00420A] = 0
-    bus[0x004200] = 0x30  # both
+    bus.write(0x004207, 100)
+    bus.write(0x004208, 0)
+    bus.write(0x004209, 42)
+    bus.write(0x00420A, 0)
+    bus.write(0x004200, 0x30)  # both
     bus.ppu.v_counter = 41
     bus.ppu._irq_check()
     assert cpu.status.irq_line is False
@@ -493,9 +493,9 @@ def test_hvrq_fires_only_at_vtime():
 
 def test_irq_disabled_does_not_raise():
     bus, cpu = make_bus()
-    bus[0x004209] = 10
-    bus[0x00420A] = 0
-    bus[0x004200] = 0x00  # all IRQs disabled
+    bus.write(0x004209, 10)
+    bus.write(0x00420A, 0)
+    bus.write(0x004200, 0x00)  # all IRQs disabled
     bus.ppu.v_counter = 10
     bus.ppu._irq_check()
     assert cpu.status.irq_line is False
@@ -504,7 +504,7 @@ def test_irq_disabled_does_not_raise():
 def test_disabling_irq_via_nmitimen_clears_line():
     """Writing NMITIMEN with H/V IRQ both 0 should lower the IRQ line."""
     bus, cpu = make_bus()
-    bus[0x004200] = 0x20
+    bus.write(0x004200, 0x20)
     cpu.status.irq_line = True
-    bus[0x004200] = 0x00  # disable H/V IRQ
+    bus.write(0x004200, 0x00)  # disable H/V IRQ
     assert cpu.status.irq_line is False

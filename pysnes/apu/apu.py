@@ -256,7 +256,7 @@ class Apu:
         self._ports_w_dirty: bool = False
 
         # Per-instruction cycle counter.  Reset at the top of fetch_and_execute;
-        # incremented by every __getitem__, __setitem__, and idle() call so tests
+        # incremented by every read_external, write_external, and idle() call so tests
         # can assert the total cycle count matches the reference data.
         self.cycles: int = 0
 
@@ -541,14 +541,16 @@ class Apu:
         cython.cast(Timer, self.timers[1]).step(clocks)
         cython.cast(Timer, self.timers[2]).step(clocks)
 
-    def __getitem__(self, addr: int) -> int:
+    @cython.ccall
+    def read_external(self, addr: cython.uint) -> cython.uint:
         # $F4-$F7: external read returns the SPC output latch (ports_w),
         # since that is the value the SPC last wrote there.
         if 0xF4 <= addr <= 0xF7:
             return self.ports_w[addr - 0xF4]
         return self._read(addr)
 
-    def __setitem__(self, addr: int, value: int) -> None:
+    @cython.ccall
+    def write_external(self, addr: cython.uint, value: cython.uint):
         # $F4-$F7: external write sets both latches so that the SPC reads the
         # initialized value back (ports_r) and the verify check also passes
         # (ports_w).  In actual emulation _write/_read keep them split; this

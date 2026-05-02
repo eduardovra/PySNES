@@ -46,17 +46,17 @@ def apu():
 # ---------------------------------------------------------------------------
 
 def test_control_register_enables_timer0(apu: Apu):
-    apu[0x00F1] = 0x01
+    apu.write(0x00F1, 0x01)
     assert apu.timers[0].enable is True
 
 
 def test_control_register_enables_timer1(apu: Apu):
-    apu[0x00F1] = 0x02
+    apu.write(0x00F1, 0x02)
     assert apu.timers[1].enable is True
 
 
 def test_control_register_enables_timer2(apu: Apu):
-    apu[0x00F1] = 0x04
+    apu.write(0x00F1, 0x04)
     assert apu.timers[2].enable is True
 
 
@@ -65,18 +65,18 @@ def test_enable_resets_stage2_and_stage3(apu: Apu):
     t = apu.timers[0]
     t.stage2 = 0x55
     t.stage3 = 0x0F
-    apu[0x00F1] = 0x01  # enable timer 0 (was disabled → 0→1 edge)
+    apu.write(0x00F1, 0x01)  # enable timer 0 (was disabled → 0→1 edge)
     assert t.stage2 == 0
     assert t.stage3 == 0
 
 
 def test_no_reset_when_already_enabled(apu: Apu):
     """If timer was already enabled, writing enable=1 again must NOT reset."""
-    apu[0x00F1] = 0x01  # enable
+    apu.write(0x00F1, 0x01)  # enable
     t = apu.timers[0]
     t.stage2 = 0x42
     t.stage3 = 0x03
-    apu[0x00F1] = 0x01  # enable again — no edge, no reset
+    apu.write(0x00F1, 0x01)  # enable again — no edge, no reset
     assert t.stage2 == 0x42
     assert t.stage3 == 0x03
 
@@ -99,17 +99,17 @@ def test_disable_timer_stops_counting(apu: Apu):
 # ---------------------------------------------------------------------------
 
 def test_timer0_target_set_via_register(apu: Apu):
-    apu[0x00FA] = 0x10
+    apu.write(0x00FA, 0x10)
     assert apu.timers[0].target == 0x10
 
 
 def test_timer1_target_set_via_register(apu: Apu):
-    apu[0x00FB] = 0xFF
+    apu.write(0x00FB, 0xFF)
     assert apu.timers[1].target == 0xFF
 
 
 def test_timer2_target_set_via_register(apu: Apu):
-    apu[0x00FC] = 0x08
+    apu.write(0x00FC, 0x08)
     assert apu.timers[2].target == 0x08
 
 
@@ -119,25 +119,25 @@ def test_timer2_target_set_via_register(apu: Apu):
 
 def test_counter_read_returns_stage3(apu: Apu):
     apu.timers[0].stage3 = 0x07
-    val = apu[0x00FD]
+    val = apu.read(0x00FD)
     assert val == 0x07
 
 
 def test_counter_read_clears_stage3(apu: Apu):
     apu.timers[0].stage3 = 0x05
-    apu[0x00FD]
+    apu.read(0x00FD)
     assert apu.timers[0].stage3 == 0
 
 
 def test_counter1_read_clears_stage3(apu: Apu):
     apu.timers[1].stage3 = 0x03
-    apu[0x00FE]
+    apu.read(0x00FE)
     assert apu.timers[1].stage3 == 0
 
 
 def test_counter2_read_clears_stage3(apu: Apu):
     apu.timers[2].stage3 = 0x0F
-    apu[0x00FF]
+    apu.read(0x00FF)
     assert apu.timers[2].stage3 == 0
 
 
@@ -239,7 +239,7 @@ def test_control_bit4_resets_ports_r_01(apu: Apu):
     apu.ports_r[1] = 0xBB
     apu.ports_w[0] = 0x11
     apu.ports_w[1] = 0x22
-    apu[0x00F1] = 0x10  # bit 4
+    apu.write(0x00F1, 0x10)  # bit 4
     assert apu.ports_r[0] == 0x00
     assert apu.ports_r[1] == 0x00
     assert apu.ports_w[0] == 0x11
@@ -252,7 +252,7 @@ def test_control_bit5_resets_ports_r_23(apu: Apu):
     apu.ports_r[3] = 0xDD
     apu.ports_w[2] = 0x33
     apu.ports_w[3] = 0x44
-    apu[0x00F1] = 0x20  # bit 5
+    apu.write(0x00F1, 0x20)  # bit 5
     assert apu.ports_r[2] == 0x00
     assert apu.ports_r[3] == 0x00
     assert apu.ports_w[2] == 0x33

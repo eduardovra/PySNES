@@ -9,13 +9,7 @@ class Disassembler:
         self.build_table()
 
     def read(self, address):
-        # $00-3f,80-bf:2000-5fff: do not attempt to read I/O registers from the disassembler:
-        # this is because such reads are much more likely to have side effects to emulation.
-        if((address & 0x40ffff) >= 0x2000 and (address & 0x40ffff) <= 0x5fff):
-            return 0x00
-
-        return self.cpu.read(address)
-        # return readDisassembler(address);
+        return self.cpu.bus.peek(address)
 
     def readByte(self, address):
         return self.read(address)

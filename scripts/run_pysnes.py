@@ -75,7 +75,7 @@ if __name__ == "__main__":
             wram_dump = f.read()
             for i, b in enumerate(wram_dump):
                 try:
-                    pysnes.cpu.bus[i] = b
+                    pysnes.cpu.bus.write(i, b)
                 except Exception as e:
                     # writing to some addresses will trigger operations
                     # that might fail but I don't care

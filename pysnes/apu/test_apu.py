@@ -73,7 +73,7 @@ def test_c6(apu: Apu):
     assert apu.Y == 0x00
     assert apu.S == 0xEF
     assert apu.PSW == 0x02
-    assert apu[0xEF] == 0x55
+    assert apu.read(0xEF) == 0x55
 
 
 def test_1d(apu: Apu):

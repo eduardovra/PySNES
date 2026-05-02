@@ -39,7 +39,7 @@ class StubRom:
                                        nmi=0x8000, reset=0x8000, irq=0x8000),
         )
 
-    def __getitem__(self, addr):
+    def read(self, addr):
         if 0 <= addr < len(self.rom):
             return self.rom[addr]
         return 0
@@ -64,58 +64,58 @@ def make_bus():
 
 def test_dmap_transfer_mode():
     bus, _, cpu = make_bus()
-    bus[0x004300] = 0b00000011  # channel 0: transfer_mode=3
+    bus.write(0x004300, 0b00000011)  # channel 0: transfer_mode=3
     assert cpu.dma.channels[0].transfer_mode == 3
 
 
 def test_dmap_fixed_transfer_flag():
     bus, _, cpu = make_bus()
-    bus[0x004300] = 0b00001000  # bit 3: fixed_transfer
+    bus.write(0x004300, 0b00001000)  # bit 3: fixed_transfer
     assert cpu.dma.channels[0].fixed_transfer == 1
 
 
 def test_dmap_direction_flag():
     bus, _, cpu = make_bus()
-    bus[0x004300] = 0b10000000  # bit 7: direction=1 (B→A)
+    bus.write(0x004300, 0b10000000)  # bit 7: direction=1 (B→A)
     assert cpu.dma.channels[0].direction == 1
 
 
 def test_bbad_target_address():
     bus, _, cpu = make_bus()
-    bus[0x004301] = 0x18  # VRAM write register offset
+    bus.write(0x004301, 0x18)  # VRAM write register offset
     assert cpu.dma.channels[0].target_address == 0x18
 
 
 def test_a1t_source_address_low_high():
     bus, _, cpu = make_bus()
-    bus[0x004302] = 0x34  # A1TxL
-    bus[0x004303] = 0x12  # A1TxH
+    bus.write(0x004302, 0x34)  # A1TxL
+    bus.write(0x004303, 0x12)  # A1TxH
     assert cpu.dma.channels[0].source_address == 0x1234
 
 
 def test_a1b_source_bank():
     bus, _, cpu = make_bus()
-    bus[0x004304] = 0x7E
+    bus.write(0x004304, 0x7E)
     assert cpu.dma.channels[0].source_bank == 0x7E
 
 
 def test_das_transfer_size_low_high():
     bus, _, cpu = make_bus()
-    bus[0x004305] = 0x00  # DASxL
-    bus[0x004306] = 0x10  # DASxH  → 0x1000 = 4096 bytes
+    bus.write(0x004305, 0x00)  # DASxL
+    bus.write(0x004306, 0x10)  # DASxH  → 0x1000 = 4096 bytes
     assert cpu.dma.channels[0].transfer_size == 0x1000
 
 
 def test_channel_select_channel_1():
     bus, _, cpu = make_bus()
-    bus[0x004310] = 0x01  # channel 1 DMAP
+    bus.write(0x004310, 0x01)  # channel 1 DMAP
     assert cpu.dma.channels[1].transfer_mode == 1
     assert cpu.dma.channels[0].transfer_mode == 0  # other channels unaffected
 
 
 def test_channel_select_channel_7():
     bus, _, cpu = make_bus()
-    bus[0x004370] = 0x02  # channel 7 DMAP
+    bus.write(0x004370, 0x02)  # channel 7 DMAP
     assert cpu.dma.channels[7].transfer_mode == 2
 
 
@@ -128,15 +128,15 @@ def test_mdma_mode0_single_byte():
     bus, rom, cpu = make_bus()
     rom.rom[0x0000] = 0xAB  # source at bank 0, offset 0x0000 → bus $008000
 
-    bus[0x004300] = 0x00   # DMAP0: mode=0, dir=A→B, increment source
-    bus[0x004301] = 0x00   # BBAD0: target = $2100 (INIDISP)
-    bus[0x004302] = 0x00   # A1T0L: source low  → $8000
-    bus[0x004303] = 0x80   # A1T0H: source high
-    bus[0x004304] = 0x00   # A1B0:  source bank 0
-    bus[0x004305] = 0x01   # DAS0L: size = 1
-    bus[0x004306] = 0x00   # DAS0H
+    bus.write(0x004300, 0x00)  # DMAP0: mode=0, dir=A→B, increment source
+    bus.write(0x004301, 0x00)  # BBAD0: target = $2100 (INIDISP)
+    bus.write(0x004302, 0x00)  # A1T0L: source low  → $8000
+    bus.write(0x004303, 0x80)  # A1T0H: source high
+    bus.write(0x004304, 0x00)  # A1B0:  source bank 0
+    bus.write(0x004305, 0x01)  # DAS0L: size = 1
+    bus.write(0x004306, 0x00)  # DAS0H
 
-    bus[0x00420B] = 0x01   # MDMAEN: enable channel 0 → triggers transfer
+    bus.write(0x00420B, 0x01)  # MDMAEN: enable channel 0 → triggers transfer
 
 
 def test_mdma_mode0_transfers_correct_data():
@@ -144,14 +144,14 @@ def test_mdma_mode0_transfers_correct_data():
     bus, rom, cpu = make_bus()
     rom.rom[0x0000] = 0x0F  # brightness max, display enabled
 
-    bus[0x004300] = 0x00
-    bus[0x004301] = 0x00   # target $2100 (INIDISP)
-    bus[0x004302] = 0x00
-    bus[0x004303] = 0x80
-    bus[0x004304] = 0x00
-    bus[0x004305] = 0x01
-    bus[0x004306] = 0x00
-    bus[0x00420B] = 0x01
+    bus.write(0x004300, 0x00)
+    bus.write(0x004301, 0x00)  # target $2100 (INIDISP)
+    bus.write(0x004302, 0x00)
+    bus.write(0x004303, 0x80)
+    bus.write(0x004304, 0x00)
+    bus.write(0x004305, 0x01)
+    bus.write(0x004306, 0x00)
+    bus.write(0x00420B, 0x01)
 
     assert not bus.ppu.display_disable
 
@@ -163,14 +163,14 @@ def test_mdma_mode0_multi_byte_increments_source():
     rom.rom[0x0001] = 0x02
     rom.rom[0x0002] = 0x03
 
-    bus[0x004300] = 0x00   # mode 0, increment
-    bus[0x004301] = 0x01   # target $2101
-    bus[0x004302] = 0x00
-    bus[0x004303] = 0x80
-    bus[0x004304] = 0x00
-    bus[0x004305] = 0x03   # 3 bytes
-    bus[0x004306] = 0x00
-    bus[0x00420B] = 0x01
+    bus.write(0x004300, 0x00)  # mode 0, increment
+    bus.write(0x004301, 0x01)  # target $2101
+    bus.write(0x004302, 0x00)
+    bus.write(0x004303, 0x80)
+    bus.write(0x004304, 0x00)
+    bus.write(0x004305, 0x03)  # 3 bytes
+    bus.write(0x004306, 0x00)
+    bus.write(0x00420B, 0x01)
 
     # channel.source_address should have advanced by 3
     assert cpu.dma.channels[0].source_address == 0x8003
@@ -181,14 +181,14 @@ def test_mdma_mode0_fixed_source_does_not_increment():
     bus, rom, cpu = make_bus()
     rom.rom[0x0000] = 0xFF
 
-    bus[0x004300] = 0x08   # mode=0, fixed_transfer=1
-    bus[0x004301] = 0x01
-    bus[0x004302] = 0x00
-    bus[0x004303] = 0x80
-    bus[0x004304] = 0x00
-    bus[0x004305] = 0x04   # 4 bytes
-    bus[0x004306] = 0x00
-    bus[0x00420B] = 0x01
+    bus.write(0x004300, 0x08)  # mode=0, fixed_transfer=1
+    bus.write(0x004301, 0x01)
+    bus.write(0x004302, 0x00)
+    bus.write(0x004303, 0x80)
+    bus.write(0x004304, 0x00)
+    bus.write(0x004305, 0x04)  # 4 bytes
+    bus.write(0x004306, 0x00)
+    bus.write(0x00420B, 0x01)
 
     assert cpu.dma.channels[0].source_address == 0x8000  # unchanged
 
@@ -204,14 +204,14 @@ def test_mdma_mode1_alternates_target():
     rom.rom[0x0000] = 0xAA
     rom.rom[0x0001] = 0xBB
 
-    bus[0x004300] = 0x01   # DMAP0: mode=1
-    bus[0x004301] = 0x18   # BBAD0: $2118 (VRAM data low)
-    bus[0x004302] = 0x00
-    bus[0x004303] = 0x80
-    bus[0x004304] = 0x00
-    bus[0x004305] = 0x02   # 2 bytes
-    bus[0x004306] = 0x00
-    bus[0x00420B] = 0x01
+    bus.write(0x004300, 0x01)  # DMAP0: mode=1
+    bus.write(0x004301, 0x18)  # BBAD0: $2118 (VRAM data low)
+    bus.write(0x004302, 0x00)
+    bus.write(0x004303, 0x80)
+    bus.write(0x004304, 0x00)
+    bus.write(0x004305, 0x02)  # 2 bytes
+    bus.write(0x004306, 0x00)
+    bus.write(0x00420B, 0x01)
 
 
 # ---------------------------------------------------------------------------
@@ -225,25 +225,25 @@ def test_mdma_only_enabled_channels_run():
     rom.rom[0x8000] = 0x22  # ROM offset for channel 1 (bank 0, offset 0x8000 + 0x8000)
 
     # Channel 0
-    bus[0x004300] = 0x00
-    bus[0x004301] = 0x00
-    bus[0x004302] = 0x00
-    bus[0x004303] = 0x80
-    bus[0x004304] = 0x00
-    bus[0x004305] = 0x01
-    bus[0x004306] = 0x00
+    bus.write(0x004300, 0x00)
+    bus.write(0x004301, 0x00)
+    bus.write(0x004302, 0x00)
+    bus.write(0x004303, 0x80)
+    bus.write(0x004304, 0x00)
+    bus.write(0x004305, 0x01)
+    bus.write(0x004306, 0x00)
 
     # Channel 1 (same setup but different source)
-    bus[0x004310] = 0x00
-    bus[0x004311] = 0x01
-    bus[0x004312] = 0x00
-    bus[0x004313] = 0x80
-    bus[0x004314] = 0x00
-    bus[0x004315] = 0x01
-    bus[0x004316] = 0x00
+    bus.write(0x004310, 0x00)
+    bus.write(0x004311, 0x01)
+    bus.write(0x004312, 0x00)
+    bus.write(0x004313, 0x80)
+    bus.write(0x004314, 0x00)
+    bus.write(0x004315, 0x01)
+    bus.write(0x004316, 0x00)
 
     # Enable only channel 0 (bit 0)
-    bus[0x00420B] = 0x01
+    bus.write(0x00420B, 0x01)
     assert cpu.dma.channels[0].source_address == 0x8001  # incremented
     assert cpu.dma.channels[1].source_address == 0x8000  # untouched
 
@@ -254,7 +254,7 @@ def test_mdma_only_enabled_channels_run():
 
 def test_hdmaen_sets_channel_flags():
     bus, _, cpu = make_bus()
-    bus[0x00420C] = 0b00000101   # enable channels 0 and 2
+    bus.write(0x00420C, 0b00000101)  # enable channels 0 and 2
     assert cpu.dma.channels[0].hdma_enable == 1
     assert cpu.dma.channels[1].hdma_enable == 0
     assert cpu.dma.channels[2].hdma_enable == 4  # bit 2 = value 4
@@ -262,8 +262,8 @@ def test_hdmaen_sets_channel_flags():
 
 def test_hdmaen_clears_when_zero():
     bus, _, cpu = make_bus()
-    bus[0x00420C] = 0xFF
-    bus[0x00420C] = 0x00
+    bus.write(0x00420C, 0xFF)
+    bus.write(0x00420C, 0x00)
     for ch in cpu.dma.channels:
         assert ch.hdma_enable == 0
 
@@ -278,12 +278,12 @@ def _setup_hdma_channel0(bus, rom, table_offset, table_bytes):
         rom.rom[table_offset + i] = b
     # source address = 0x8000 + table_offset (LoROM: bank 0 / $8000 region)
     src = 0x8000 + table_offset
-    bus[0x004300] = 0x01   # DMAP0: mode=1 (2 bytes per unit), dir=A→B
-    bus[0x004301] = 0x26   # BBAD0: target $2126 (WH0)
-    bus[0x004302] = src & 0xFF   # A1T0L
-    bus[0x004303] = (src >> 8) & 0xFF  # A1T0H
-    bus[0x004304] = 0x00   # A1B0: bank 0
-    bus[0x00420C] = 0x01   # HDMAEN: enable channel 0
+    bus.write(0x004300, 0x01)  # DMAP0: mode=1 (2 bytes per unit), dir=A→B
+    bus.write(0x004301, 0x26)  # BBAD0: target $2126 (WH0)
+    bus.write(0x004302, src & 0xFF)  # A1T0L
+    bus.write(0x004303, (src >> 8) & 0xFF)  # A1T0H
+    bus.write(0x004304, 0x00)  # A1B0: bank 0
+    bus.write(0x00420C, 0x01)  # HDMAEN: enable channel 0
 
 
 def test_hdma_non_repeat_writes_bytes_to_target():
@@ -358,7 +358,7 @@ def test_hdma_disabled_channel_does_nothing():
     """Channel with hdma_enable=0 skips all HDMA execution."""
     bus, rom, cpu = make_bus()
     _setup_hdma_channel0(bus, rom, 0x0000, [0x01, 99, 99, 0x00])
-    bus[0x00420C] = 0x00   # disable all HDMA channels
+    bus.write(0x00420C, 0x00)  # disable all HDMA channels
     cpu.dma.hdma_init()
 
     bus.ppu.wh0 = 0
@@ -381,16 +381,16 @@ def _setup_hdma_indirect_channel0(bus, rom, table_offset, table_bytes,
     # Put indirect data in WRAM so we can write it via the bus.
     assert indirect_bank == 0x7E
     for i, b in enumerate(indirect_bytes):
-        bus[(indirect_bank << 16) | ((indirect_addr + i) & 0xFFFF)] = b
+        bus.write((indirect_bank << 16) | ((indirect_addr + i) & 0xFFFF), b)
 
     src = 0x8000 + table_offset
-    bus[0x004300] = 0x41   # DMAP0: indirect=1, mode=1
-    bus[0x004301] = 0x26   # BBAD0: $2126 (WH0)
-    bus[0x004302] = src & 0xFF          # A1T0L
-    bus[0x004303] = (src >> 8) & 0xFF   # A1T0H
-    bus[0x004304] = 0x00                # A1B0: bank 0
-    bus[0x004307] = indirect_bank       # DASB0: indirect bank
-    bus[0x00420C] = 0x01                # HDMAEN: channel 0
+    bus.write(0x004300, 0x41)  # DMAP0: indirect=1, mode=1
+    bus.write(0x004301, 0x26)  # BBAD0: $2126 (WH0)
+    bus.write(0x004302, src & 0xFF)  # A1T0L
+    bus.write(0x004303, (src >> 8) & 0xFF)  # A1T0H
+    bus.write(0x004304, 0x00)  # A1B0: bank 0
+    bus.write(0x004307, indirect_bank)  # DASB0: indirect bank
+    bus.write(0x00420C, 0x01)  # HDMAEN: channel 0
 
 
 def test_hdma_indirect_non_repeat_reads_from_pointer():
@@ -450,8 +450,8 @@ def test_hdma_indirect_multiple_entries():
         indirect_bytes=[1, 2],
     )
     # Fill the second indirect block too.
-    bus[0x7E0400] = 100
-    bus[0x7E0401] = 200
+    bus.write(0x7E0400, 100)
+    bus.write(0x7E0401, 200)
 
     cpu.dma.hdma_init()
 
@@ -507,17 +507,17 @@ def _run_mode_transfer(mode, source_bytes, target=0x26, size=None):
     for i, b in enumerate(source_bytes):
         rom.rom[i] = b
 
-    bus[0x004300] = mode & 7
-    bus[0x004301] = target
-    bus[0x004302] = 0x00
-    bus[0x004303] = 0x80                    # source = $008000 (ROM bank 0)
-    bus[0x004304] = 0x00
+    bus.write(0x004300, mode & 7)
+    bus.write(0x004301, target)
+    bus.write(0x004302, 0x00)
+    bus.write(0x004303, 0x80)  # source = $008000 (ROM bank 0)
+    bus.write(0x004304, 0x00)
     n = size if size is not None else len(source_bytes)
-    bus[0x004305] = n & 0xFF
-    bus[0x004306] = (n >> 8) & 0xFF
+    bus.write(0x004305, n & 0xFF)
+    bus.write(0x004306, (n >> 8) & 0xFF)
 
     writes = _record_writes(bus)
-    bus[0x00420B] = 0x01                    # trigger
+    bus.write(0x00420B, 0x01)  # trigger
 
     seq = [(a & 0xFF, v) for (a, v) in writes if 0x2100 <= (a & 0xFFFF) <= 0x21FF]
     return seq, cpu
@@ -583,16 +583,16 @@ def test_mdma_reverse_transfer_decrements_source():
     rom.rom[0x0004] = 0x44
     rom.rom[0x0005] = 0x55
 
-    bus[0x004300] = 0x10                    # mode=0, reverse_transfer=1
-    bus[0x004301] = 0x26                    # target $2126
-    bus[0x004302] = 0x05
-    bus[0x004303] = 0x80                    # source = $008005
-    bus[0x004304] = 0x00
-    bus[0x004305] = 0x03
-    bus[0x004306] = 0x00
+    bus.write(0x004300, 0x10)  # mode=0, reverse_transfer=1
+    bus.write(0x004301, 0x26)  # target $2126
+    bus.write(0x004302, 0x05)
+    bus.write(0x004303, 0x80)  # source = $008005
+    bus.write(0x004304, 0x00)
+    bus.write(0x004305, 0x03)
+    bus.write(0x004306, 0x00)
 
     writes = _record_writes(bus)
-    bus[0x00420B] = 0x01
+    bus.write(0x00420B, 0x01)
 
     seq = [(a & 0xFF, v) for (a, v) in writes if 0x2100 <= (a & 0xFFFF) <= 0x21FF]
     # Source walks 0x8005 → 0x8004 → 0x8003 → bytes copied in that order.
@@ -616,14 +616,14 @@ def test_mdma_direction1_reads_b_bus_writes_a_bus():
 
     bus.read = fake_read
 
-    bus[0x004300] = 0x80                    # direction=1, mode=0
-    bus[0x004301] = 0x34                    # target $2134 (MPYL)
-    bus[0x004302] = 0x00
-    bus[0x004303] = 0x00                    # A-bus dest: low WRAM
-    bus[0x004304] = 0x00
-    bus[0x004305] = 0x01
-    bus[0x004306] = 0x00
-    bus[0x00420B] = 0x01
+    bus.write(0x004300, 0x80)  # direction=1, mode=0
+    bus.write(0x004301, 0x34)  # target $2134 (MPYL)
+    bus.write(0x004302, 0x00)
+    bus.write(0x004303, 0x00)  # A-bus dest: low WRAM
+    bus.write(0x004304, 0x00)
+    bus.write(0x004305, 0x01)
+    bus.write(0x004306, 0x00)
+    bus.write(0x00420B, 0x01)
 
     assert bus.low_ram[0x0000] == 0x7E
 
@@ -633,16 +633,16 @@ def test_mdma_transfer_size_zero_means_65536_bytes():
     bus, rom, cpu = make_bus()
     rom.rom[0x0000] = 0xA5
 
-    bus[0x004300] = 0x08                    # mode=0, fixed_transfer=1
-    bus[0x004301] = 0x26
-    bus[0x004302] = 0x00
-    bus[0x004303] = 0x80
-    bus[0x004304] = 0x00
-    bus[0x004305] = 0x00                    # DASxL = 0
-    bus[0x004306] = 0x00                    # DASxH = 0 ⇒ size = 0x10000
+    bus.write(0x004300, 0x08)  # mode=0, fixed_transfer=1
+    bus.write(0x004301, 0x26)
+    bus.write(0x004302, 0x00)
+    bus.write(0x004303, 0x80)
+    bus.write(0x004304, 0x00)
+    bus.write(0x004305, 0x00)  # DASxL = 0
+    bus.write(0x004306, 0x00)  # DASxH = 0 ⇒ size = 0x10000
 
     writes = _record_writes(bus)
-    bus[0x00420B] = 0x01
+    bus.write(0x00420B, 0x01)
 
     ppu_writes = [w for w in writes if (w[0] & 0xFFFF) == 0x2126]
     assert len(ppu_writes) == 0x10000
@@ -661,59 +661,59 @@ def test_mdma_transfer_size_zero_means_65536_bytes():
 
 def test_dma_readback_dmap():
     bus, _, cpu = make_bus()
-    bus[0x004300] = 0xC5    # direction=1, indirect=1, mode=5
-    assert bus[0x004300] == 0xC5
+    bus.write(0x004300, 0xC5)  # direction=1, indirect=1, mode=5
+    assert bus.read(0x004300) == 0xC5
 
 
 def test_dma_readback_bbad():
     bus, _, cpu = make_bus()
-    bus[0x004301] = 0x18
-    assert bus[0x004301] == 0x18
+    bus.write(0x004301, 0x18)
+    assert bus.read(0x004301) == 0x18
 
 
 def test_dma_readback_source_address_and_bank():
     bus, _, cpu = make_bus()
-    bus[0x004302] = 0x34
-    bus[0x004303] = 0x12
-    bus[0x004304] = 0x7E
-    assert bus[0x004302] == 0x34
-    assert bus[0x004303] == 0x12
-    assert bus[0x004304] == 0x7E
+    bus.write(0x004302, 0x34)
+    bus.write(0x004303, 0x12)
+    bus.write(0x004304, 0x7E)
+    assert bus.read(0x004302) == 0x34
+    assert bus.read(0x004303) == 0x12
+    assert bus.read(0x004304) == 0x7E
 
 
 def test_dma_readback_transfer_size():
     bus, _, cpu = make_bus()
-    bus[0x004305] = 0x00
-    bus[0x004306] = 0x10
-    assert bus[0x004305] == 0x00
-    assert bus[0x004306] == 0x10
+    bus.write(0x004305, 0x00)
+    bus.write(0x004306, 0x10)
+    assert bus.read(0x004305) == 0x00
+    assert bus.read(0x004306) == 0x10
 
 
 def test_dma_readback_indirect_bank():
     bus, _, cpu = make_bus()
-    bus[0x004307] = 0x7F
-    assert bus[0x004307] == 0x7F
+    bus.write(0x004307, 0x7F)
+    assert bus.read(0x004307) == 0x7F
 
 
 def test_dma_readback_hdma_address_and_line_counter():
     bus, _, cpu = make_bus()
-    bus[0x004308] = 0xAB
-    bus[0x004309] = 0xCD
-    bus[0x00430A] = 0x42
-    assert bus[0x004308] == 0xAB
-    assert bus[0x004309] == 0xCD
-    assert bus[0x00430A] == 0x42
+    bus.write(0x004308, 0xAB)
+    bus.write(0x004309, 0xCD)
+    bus.write(0x00430A, 0x42)
+    assert bus.read(0x004308) == 0xAB
+    assert bus.read(0x004309) == 0xCD
+    assert bus.read(0x00430A) == 0x42
 
 
 def test_dma_readback_channel_7():
     """The 93143 hvdma test ROM uses channel 7 — verify decoding works there."""
     bus, _, cpu = make_bus()
-    bus[0x004372] = 0x3C
-    bus[0x004373] = 0x81
-    bus[0x004374] = 0x00
-    assert bus[0x004372] == 0x3C
-    assert bus[0x004373] == 0x81
-    assert bus[0x004374] == 0x00
+    bus.write(0x004372, 0x3C)
+    bus.write(0x004373, 0x81)
+    bus.write(0x004374, 0x00)
+    assert bus.read(0x004372) == 0x3C
+    assert bus.read(0x004373) == 0x81
+    assert bus.read(0x004374) == 0x00
 
 
 def test_dma_readback_source_advances_after_transfer():
@@ -727,33 +727,33 @@ def test_dma_readback_source_advances_after_transfer():
     rom.rom[0x0001] = 0x22
     rom.rom[0x0002] = 0x33
 
-    bus[0x004300] = 0x00         # mode 0, increment
-    bus[0x004301] = 0x00         # target $2100
-    bus[0x004302] = 0x00
-    bus[0x004303] = 0x80         # source $8000
-    bus[0x004304] = 0x00
-    bus[0x004305] = 0x03
-    bus[0x004306] = 0x00
-    bus[0x00420B] = 0x01         # trigger
+    bus.write(0x004300, 0x00)  # mode 0, increment
+    bus.write(0x004301, 0x00)  # target $2100
+    bus.write(0x004302, 0x00)
+    bus.write(0x004303, 0x80)  # source $8000
+    bus.write(0x004304, 0x00)
+    bus.write(0x004305, 0x03)
+    bus.write(0x004306, 0x00)
+    bus.write(0x00420B, 0x01)  # trigger
 
     # source_address advanced by 3 bytes
-    assert bus[0x004302] == 0x03
-    assert bus[0x004303] == 0x80
-    assert bus[0x004304] == 0x00
+    assert bus.read(0x004302) == 0x03
+    assert bus.read(0x004303) == 0x80
+    assert bus.read(0x004304) == 0x00
 
 
 def test_dma_readback_bank_does_not_carry():
     """A-bus address wraps within the bank; bank register is not affected."""
     bus, rom, cpu = make_bus()
 
-    bus[0x004300] = 0x08         # mode 0, fixed (avoid actual ROM read needs)
-    bus[0x004301] = 0x00
-    bus[0x004302] = 0xFE
-    bus[0x004303] = 0xFF         # source $FFFE
-    bus[0x004304] = 0x7E         # bank $7E (WRAM)
-    bus[0x004305] = 0x03
-    bus[0x004306] = 0x00
+    bus.write(0x004300, 0x08)  # mode 0, fixed (avoid actual ROM read needs)
+    bus.write(0x004301, 0x00)
+    bus.write(0x004302, 0xFE)
+    bus.write(0x004303, 0xFF)  # source $FFFE
+    bus.write(0x004304, 0x7E)  # bank $7E (WRAM)
+    bus.write(0x004305, 0x03)
+    bus.write(0x004306, 0x00)
     # No trigger; just verify readback of configured values
-    assert bus[0x004302] == 0xFE
-    assert bus[0x004303] == 0xFF
-    assert bus[0x004304] == 0x7E
+    assert bus.read(0x004302) == 0xFE
+    assert bus.read(0x004303) == 0xFF
+    assert bus.read(0x004304) == 0x7E

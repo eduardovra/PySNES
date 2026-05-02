@@ -30,7 +30,7 @@ def _make_ppu() -> Ppu:
     ppu.inidisp_set(0x0F)
     ppu._bgmode = 1
     for i in range(128):
-        ppu.oam[i * 4 + 1] = 0xF0  # y=240: move all sprites off-screen
+        ppu.oam.write(i * 4 + 1, 0xF0)  # y=240: move all sprites off-screen
     return ppu
 
 

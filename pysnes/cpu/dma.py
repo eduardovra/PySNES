@@ -1,3 +1,5 @@
+import cython
+
 from typing import TYPE_CHECKING
 from dataclasses import dataclass
 
@@ -110,7 +112,10 @@ class Channel:
         self.bus.cpu._last_refresh_scanline = self.bus.scheduler.master_clock // 1364
 
 
+@cython.cclass
 class DMA:
+    channels = cython.declare(object)
+
     def __init__(self, bus: "Bus") -> None:
         self.channels = [Channel(bus) for _ in range(8)]
 
@@ -121,7 +126,8 @@ class DMA:
         for ch, cs in zip(self.channels, d["channels"]):
             ch.load_state(cs)
 
-    def __setitem__(self, abs_addr: int, data: int) -> None:
+    @cython.ccall
+    def write(self, abs_addr: cython.uint, data: cython.uchar):
         channel = self.channels[abs_addr >> 4 & 7]
         addr = abs_addr & 0xFF8F
 
@@ -171,7 +177,8 @@ class DMA:
             return
         return
 
-    def __getitem__(self, abs_addr: int) -> int:
+    @cython.ccall
+    def read(self, abs_addr: cython.uint) -> cython.uchar:
         channel = self.channels[abs_addr >> 4 & 7]
         addr = abs_addr & 0xFF8F
 

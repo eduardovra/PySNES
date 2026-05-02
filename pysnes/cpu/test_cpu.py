@@ -96,12 +96,6 @@ class FakeBus:
     def __init__(self):
         self.memory = bytearray(2**24)
 
-    def __getitem__(self, addr):
-        return self.memory[addr]
-
-    def __setitem__(self, addr, value):
-        self.memory[addr] = value
-
     def read(self, addr):
         return self.memory[addr]
 
@@ -136,7 +130,7 @@ def test_cpu(test_case):
     print(f"Loaded CPU {cpu}")
     for addr, value in initial["ram"]:
         print(f"Loading cpu.bus[{hex(addr)}] = {hex(value)}")
-        cpu.bus[addr] = value
+        cpu.bus.write(addr, value)
 
     final = test_case["final"]
     calls_expected, calls_performed = [], []
@@ -196,7 +190,7 @@ def test_cpu(test_case):
     assert cpu.DB.l == final['dbr'], f"{hex(cpu.DB.l)} != {hex(final['dbr'])}"
     assert cpu.PC.b == final['pbr'], f"{hex(cpu.PC.b)} != {hex(final['pbr'])}"
     for addr, value in final["ram"]:
-        assert cpu.bus[addr] == value, f"cpu.bus[{hex(addr)}] = {hex(cpu.bus[addr])} != {hex(value)}"
+        assert cpu.bus.read(addr) == value, f"cpu.bus[{hex(addr)}] = {hex(cpu.bus.read(addr))} != {hex(value)}"
 
     # check on read/write cycles
     assert calls_performed == calls_expected

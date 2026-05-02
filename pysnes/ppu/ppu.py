@@ -375,7 +375,7 @@ class Ppu:
     @property
     def oamdata(self) -> int:
         index = self.oam_index()
-        data = self.oam[index]
+        data = self.oam.read(index)
         self.oam_next()
         return data
 
@@ -388,13 +388,13 @@ class Ppu:
         # High bank goes directly through
         if self._oamadd & 0x100:
             index = self.oam_index()
-            self.oam[index] = data & 0xFF
+            self.oam.write(index, data & 0xFF)
 
         # Low bank does word only on odd writes
         elif self._oamodd == 1:
             index = self.oam_index()
-            self.oam[index - 1] = self._oamdata
-            self.oam[index - 0] = data & 0xFF
+            self.oam.write(index - 1, self._oamdata)
+            self.oam.write(index - 0, data & 0xFF)
 
         self.oam_next()
 
@@ -1583,12 +1583,12 @@ class OAM:
         # Load objects from dump file
         if oam_dump:
             for addr, data in enumerate(oam_dump):
-                self[addr] = data
+                self.write(addr, data)
 
-    def __getitem__(self, addr: int) -> int:
+    def read(self, addr: int) -> int:
         return self.oam[addr]
 
-    def __setitem__(self, addr: int, data: int) -> None:
+    def write(self, addr: int, data: int) -> None:
         if self.oam[addr] != data:
             self.oam[addr] = data
             self.update_object(addr)

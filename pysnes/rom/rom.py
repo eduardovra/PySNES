@@ -119,15 +119,17 @@ def _looks_like_map_mode(byte: int, want_hirom: bool) -> bool:
     return bool(byte & 0x01) == want_hirom
 
 
+@cython.cclass
 class Rom:
-    rom: bytes
+    rom = cython.declare(cython.uchar[:], visibility="public")
 
     def __init__(self, rom_file_path: str) -> None:
         self.rom_file_path = rom_file_path
         self.rom_file_name = pathlib.Path(rom_file_path).name
         self.load_rom_file()
 
-    def __getitem__(self, addr: int) -> int:
+    @cython.ccall
+    def read(self, addr: cython.uint) -> cython.uchar:
         return self.rom[addr]
 
     def load_rom_file(self):

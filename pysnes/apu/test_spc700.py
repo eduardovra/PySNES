@@ -42,7 +42,7 @@ def _write_mem(apu: Apu, addr: int, value: int) -> None:
     elif addr <= 0x00FF:
         # I/O register range — use __setitem__ (which mirrors port writes to
         # ports_r so the APU can read back what was initialised here).
-        apu.write(addr, value)
+        apu.write_external(addr, value)
     elif addr <= 0x01FF:
         apu.page_1[addr - 0x0100] = value
     elif addr <= 0xFFBF:
@@ -159,7 +159,7 @@ def test_spc700(test_case):
         if 0xFD <= addr <= 0xFF:
             got = apu.timers[addr - 0xFD].stage3_shadow
         else:
-            got = apu.read(addr)
+            got = apu.read_external(addr)
         assert got == value, f"ram[{hex(addr)}] = {hex(got)} != {hex(value)}"
 
     # ── Verify memory access sequence and total cycle count ──────────────

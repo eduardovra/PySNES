@@ -1,3 +1,4 @@
+from array import array
 from ctypes import c_uint8
 from typing import Optional, Tuple, TYPE_CHECKING
 
@@ -127,11 +128,17 @@ class Ppu:
         self.v_counter = 0  # current scanline being drawn
         self.frames = 0  # total frames rendered
 
-        self.main_bgs = [0x00] * 256 * 262  # 262 was 239 before
-        self.sub_bgs = [0x00] * 256 * 262
+        self.main_bgs = array('I', [0] * 256 * 262)  # 262 was 239 before
+        self.sub_bgs = array('I', [0] * 256 * 262)
         # Per-pixel main-screen layer tag: 0=backdrop, 1-4=BG1-BG4, 5=OBJ.
         # Used by the color-math composite pass to know which pixels participate.
         self.main_layer = bytearray(256 * 262)
+
+        # CGRAM u32-color cache: 256 entries (one per CGRAM slot), pre-converted
+        # from 15-bit SNES RGB to 32-bit RGBA. Rebuilt lazily when _cgram_dirty.
+        # array.array('I') gives PyPy direct unboxed 32-bit integer access.
+        self._cgram_cache = array('I', [0] * 256)
+        self._cgram_dirty: bool = True
 
     _SCALAR_STATE = (
         "vmain", "vmaddl", "vmaddh", "_vmdatal", "_vmdatah", "_vram_prefetch",
@@ -167,6 +174,7 @@ class Ppu:
     def load_state(self, d: dict) -> None:
         self.vram[:] = d["vram"]
         self.cgram[:] = d["cgram"]
+        self._cgram_dirty = True
         self.oam.load_state(d["oam"])
         for f, v in d["scalars"].items():
             setattr(self, f, v)
@@ -335,6 +343,7 @@ class Ppu:
         self.cgram[base_addr + 1] = data & 0x7F
         self._cgadd.value += 1
         self._cgdata = None
+        self._cgram_dirty = True
 
     @property
     def stat78(self) -> int:
@@ -1205,137 +1214,236 @@ class Ppu:
 
         # Find the tilemap entry for the requested screen position
 
-        # Assuming 256 dots per scanline
-        for dot in range(256):
-            # Calculate the tilemap entry address in VRAM
-            # scrx, scry = dot, scanline
-            scrx: cython.uint = dot
-            scry: cython.uint = self.v_counter
+        # Hoist scanline-invariant values out of the 256-pixel loop.
+        screen_size: cython.uint = bg.screen_size
+        bg_size_w: cython.uint = 32 << (screen_size & 1)
+        bg_size_h: cython.uint = 32 << (screen_size >> 1)
+        scroll_x: cython.uint = bg.hoffset
+        scroll_y: cython.uint = bg.voffset
+        tiledata_addr: cython.uint = bg.tiledata_addr
+        screen_addr: cython.uint = bg.screen_addr & 0xFFFF
+        color_offset: cython.uint = bg.color_offset_mode_0 if self._bgmode == 0 else 0
+        bpp_mult: cython.uint = 1 << bpp
+        if self._cgram_dirty:
+            self._rebuild_cgram_cache()
+        cgram_cache = self._cgram_cache
+        orgy: cython.uint = self.v_counter - 1
+        scry_base: cython.uint = self.v_counter
+        row_base: cython.uint = orgy * SCREEN_WIDTH
+        wh0: cython.uint = self.wh0
+        wh1: cython.uint = self.wh1
+        wh2: cython.uint = self.wh2
+        wh3: cython.uint = self.wh3
+        vram = self.vram
+        main_bgs = self.main_bgs
+        main_layer = self.main_layer
+        sub_bgs = self.sub_bgs
 
-            # To find the tilemap word address for a particular tile (X and Y), you'd use a
-            # formula something like this:
-            # (Addr<<9) + ((Y&0x1f)<<5) + (X&0x1f) +
-            #     (SY ? ((Y&0x20)<<(SX ? 6 : 5)) : 0) + (SX ? ((X&0x20)<<5) : 0)
-
-            screen_size: cython.uint = bg.screen_size
-            bg_size_w: cython.uint = 32 << (screen_size & 1)
-            bg_size_h: cython.uint = 32 << (screen_size >> 1)
-            scroll_x: cython.uint = bg.hoffset
-            scroll_y: cython.uint = bg.voffset
-
-            orgx: cython.uint = dot   # screen X of this pixel (= dot before scroll)
-            orgy: cython.uint = self.v_counter - 1   # screen Y (output row)
-
-            # Apply window masking: skip this pixel if it falls in the masked zone.
-            if window_active and (w1_enable or w2_enable):
-                w1_val: cython.bint = False
+        # Precompute per-dot window mask once for the scanline (constant window boundaries).
+        window_masked = None
+        if window_active and (w1_enable or w2_enable):
+            window_masked = bytearray(256)
+            for _x in range(256):
+                _w1: cython.bint = False
                 if w1_enable:
-                    in_range1: cython.bint = (self.wh0 <= orgx <= self.wh1)
-                    w1_val = in_range1 ^ w1_invert
-                w2_val: cython.bint = False
+                    _w1 = bool((wh0 <= _x <= wh1) ^ w1_invert)
+                _w2: cython.bint = False
                 if w2_enable:
-                    in_range2: cython.bint = (self.wh2 <= orgx <= self.wh3)
-                    w2_val = in_range2 ^ w2_invert
-                masked: cython.bint
+                    _w2 = bool((wh2 <= _x <= wh3) ^ w2_invert)
                 if w1_enable and w2_enable:
                     if combine_logic == 0:
-                        masked = w1_val or w2_val
+                        window_masked[_x] = _w1 or _w2
                     elif combine_logic == 1:
-                        masked = w1_val and w2_val
+                        window_masked[_x] = _w1 and _w2
                     elif combine_logic == 2:
-                        masked = w1_val != w2_val
+                        window_masked[_x] = _w1 != _w2
                     else:
-                        masked = w1_val == w2_val
+                        window_masked[_x] = _w1 == _w2
                 elif w1_enable:
-                    masked = w1_val
+                    window_masked[_x] = _w1
                 else:
-                    masked = w2_val
-                if masked:
+                    window_masked[_x] = _w2
+
+        if mosaic_on and mosaic_size > 1:
+            # Slow path: mosaic snaps scry per pixel — cannot batch by tile column.
+            for dot in range(256):
+                if window_masked is not None and window_masked[dot]:
                     continue
-
-            # Mosaic: snap scrx/scry to the block anchor before tile fetch.
-            if mosaic_on and mosaic_size > 1:
-                scrx = scrx - (scrx % mosaic_size)
-                # scanline is v_counter (1-based); orgy = scanline - 1. Snap
-                # in orgy-space to get natural 0-based block anchors, then
-                # convert back to scanline-space for the tile-row math below.
+                scrx: cython.uint = dot - (dot % mosaic_size)
                 anchor_orgy: cython.uint = orgy - (orgy % mosaic_size)
-                scry = anchor_orgy + 1
+                scry: cython.uint = (anchor_orgy + 1 + scroll_y) % (8 * bg_size_h)
+                scrx = (scrx + scroll_x) % (8 * bg_size_w)
 
-            scry: cython.uint = (scry + scroll_y) % (8 * bg_size_h)
-            scrx: cython.uint = (scrx + scroll_x) % (8 * bg_size_w)
+                offset: cython.uint = ((scry % 256 if bg_size_w == 64 else scry) // 8) * 32
+                offset += ((scrx % 256) // 8)
+                offset += (scrx // 256) * 0x400
+                offset += (bg_size_w // 64) * ((scry // 256) * 0x800)
+                tilemap_word_addr: cython.uint = (screen_addr + offset) * 2 & 0xFFFF
 
-            offset: cython.uint = ((scry % 256 if bg_size_w == 64 else scry) // 8) * 32
-            offset += ((scrx % 256) // 8)
-            offset += (scrx // 256) * 0x400
-            offset += (bg_size_w // 64) * ((scry // 256) * 0x800)
+                low: cython.uint = vram[tilemap_word_addr]
+                high: cython.uint = vram[tilemap_word_addr + 1]
+                tile_num: cython.uint = (high & 3) << 8 | low
+                tilemap_palette: cython.uint = (high >> 2) & 7
+                tilemap_priority: cython.bint = (high >> 5) & 1
+                tilemap_h_flip: cython.bint = (high >> 6) & 1
+                tilemap_v_flip: cython.bint = (high >> 7) & 1
 
-            screen_addr = bg.screen_addr & 0xFFFF
-            tilemap_addr = (screen_addr + offset) * 2 & 0xFFFF
+                if tilemap_priority == priority_selector:
+                    i: cython.uint = scry & 7
+                    j: cython.uint = scrx & 7
+                    v_shift: cython.uint = i if not tilemap_v_flip else (7 - i)
+                    h_shift: cython.uint = (7 - j) if not tilemap_h_flip else j
+                    if bpp == 2:
+                        tile_address: cython.uint = (tiledata_addr + tile_num * 16 + v_shift * 2) & 0xFFFF
+                        b_lo: cython.uint = vram[tile_address]
+                        b_hi: cython.uint = vram[(tile_address + 1) & 0xFFFF]
+                        v: cython.uint = ((b_lo >> h_shift) & 1) | (((b_hi >> h_shift) & 1) << 1)
+                    elif bpp == 4:
+                        tile_address: cython.uint = (tiledata_addr + tile_num * 32 + v_shift * 2) & 0xFFFF
+                        b_1: cython.uint = vram[tile_address]
+                        b_2: cython.uint = vram[(tile_address + 1) & 0xFFFF]
+                        b_3: cython.uint = vram[(tile_address + 16) & 0xFFFF]
+                        b_4: cython.uint = vram[(tile_address + 17) & 0xFFFF]
+                        v: cython.uint = ((b_1 >> h_shift) & 1) | (((b_2 >> h_shift) & 1) << 1) | \
+                            (((b_3 >> h_shift) & 1) << 2) | (((b_4 >> h_shift) & 1) << 3)
+                    elif bpp == 8:
+                        tile_address: cython.uint = (tiledata_addr + tile_num * 64 + v_shift * 2) & 0xFFFF
+                        b_1: cython.uint = vram[tile_address]
+                        b_2: cython.uint = vram[(tile_address + 1) & 0xFFFF]
+                        b_3: cython.uint = vram[(tile_address + 16) & 0xFFFF]
+                        b_4: cython.uint = vram[(tile_address + 17) & 0xFFFF]
+                        b_5: cython.uint = vram[(tile_address + 32) & 0xFFFF]
+                        b_6: cython.uint = vram[(tile_address + 33) & 0xFFFF]
+                        b_7: cython.uint = vram[(tile_address + 48) & 0xFFFF]
+                        b_8: cython.uint = vram[(tile_address + 49) & 0xFFFF]
+                        v: cython.uint = ((b_1 >> h_shift) & 1) | (((b_2 >> h_shift) & 1) << 1) | \
+                            (((b_3 >> h_shift) & 1) << 2) | (((b_4 >> h_shift) & 1) << 3) | \
+                            (((b_5 >> h_shift) & 1) << 4) | (((b_6 >> h_shift) & 1) << 5) | \
+                            (((b_7 >> h_shift) & 1) << 6) | (((b_8 >> h_shift) & 1) << 7)
+                    else:
+                        raise NotImplementedError(f"Invalid bpp {bpp}")
+                    if v:
+                        u32_color = cgram_cache[tilemap_palette * bpp_mult + v + color_offset]
+                        pix_idx: cython.uint = row_base + dot
+                        if write_main:
+                            main_bgs[pix_idx] = u32_color
+                            main_layer[pix_idx] = layer_tag
+                        if write_sub:
+                            sub_bgs[pix_idx] = u32_color
+        else:
+            # Fast path: scry is constant for the whole scanline.
+            # Process pixels in tile-column batches (up to 8 pixels at a time) so
+            # each tilemap fetch and tile-data read is amortised across 8 pixels
+            # instead of being repeated once per pixel.
+            eff_scry: cython.uint = (scry_base + scroll_y) % (8 * bg_size_h)
+            i: cython.uint = eff_scry & 7
+            # Precompute the scry-dependent part of the tilemap word offset.
+            # (bg_size_w >> 6) == bg_size_w // 64: 0 for 32-tile-wide, 1 for 64-tile-wide.
+            scry_for_row: cython.uint = eff_scry % 256 if bg_size_w == 64 else eff_scry
+            scry_page: cython.uint = eff_scry >> 8
+            scry_offset: cython.uint = (scry_for_row >> 3) * 32 + (bg_size_w >> 6) * (scry_page * 0x800)
 
-            # tilemap = Tilemap.from_buffer(self.vram, tilemap_addr)
-            low: cython.uint = self.vram[tilemap_addr]
-            high: cython.uint = self.vram[tilemap_addr + 1]
-            tilemap_addr: cython.uint = (high & 3) << 8 | low
-            tilemap_palette: cython.uint = (high >> 2) & 7
-            tilemap_priority: cython.bint = (high >> 5) & 1
-            tilemap_h_flip: cython.bint = (high >> 6) & 1
-            tilemap_v_flip: cython.bint = (high >> 7) & 1
+            eff_scrx: cython.uint = scroll_x % (8 * bg_size_w)
+            scrx_wrap: cython.uint = 8 * bg_size_w
+            dot: cython.uint = 0
+            while dot < 256:
+                pixel_in_tile: cython.uint = eff_scrx & 7
+                n_pixels: cython.uint = 8 - pixel_in_tile
+                if dot + n_pixels > 256:
+                    n_pixels = 256 - dot
 
-            if tilemap_priority == priority_selector:
-                i: cython.uint = scry % 8
-                j: cython.uint = scrx % 8
-                v_shift: cython.uint = i + (-i + 7 - i) * tilemap_v_flip
-                h_shift: cython.uint = (7 - j) + (2 * j - 7) * tilemap_h_flip
-                # VRAM is 64KB and tiledata addresses wrap within it on real
-                # hardware. Mask each byte offset to 16 bits so high-numbered
-                # tiles (e.g. when tiledata_addr sits near the top of VRAM)
-                # don't IndexError our Python bytearray.
-                if bpp == 2:
-                    tile_address: cython.uint = (bg.tiledata_addr + tilemap_addr * 16 + v_shift * 2) & 0xFFFF
-                    b_lo: cython.uint = self.vram[tile_address]
-                    b_hi: cython.uint = self.vram[(tile_address + 1) & 0xFFFF]
-                    v: cython.uint = ((b_lo >> h_shift) & 1) + (2 * ((b_hi >> h_shift) & 1))
-                elif bpp == 4:
-                    tile_address: cython.uint = (bg.tiledata_addr + tilemap_addr * 32 + v_shift * 2) & 0xFFFF
-                    b_1: cython.uint = self.vram[tile_address]
-                    b_2: cython.uint = self.vram[(tile_address + 1) & 0xFFFF]
-                    b_3: cython.uint = self.vram[(tile_address + 16) & 0xFFFF]
-                    b_4: cython.uint = self.vram[(tile_address + 17) & 0xFFFF]
-                    v: cython.uint = ((b_1 >> h_shift) & 1) + (2 * ((b_2 >> h_shift) & 1)) + \
-                        (4 * ((b_3 >> h_shift) & 1)) + (8 * ((b_4 >> h_shift) & 1))
-                elif bpp == 8:
-                    tile_address: cython.uint = (bg.tiledata_addr + tilemap_addr * 64 + v_shift * 2) & 0xFFFF
-                    b_1: cython.uint = self.vram[tile_address]
-                    b_2: cython.uint = self.vram[(tile_address + 1) & 0xFFFF]
-                    b_3: cython.uint = self.vram[(tile_address + 16) & 0xFFFF]
-                    b_4: cython.uint = self.vram[(tile_address + 17) & 0xFFFF]
-                    b_5: cython.uint = self.vram[(tile_address + 32) & 0xFFFF]
-                    b_6: cython.uint = self.vram[(tile_address + 33) & 0xFFFF]
-                    b_7: cython.uint = self.vram[(tile_address + 48) & 0xFFFF]
-                    b_8: cython.uint = self.vram[(tile_address + 49) & 0xFFFF]
-                    v: cython.uint = ((b_1 >> h_shift) & 1) + \
-                        (2 * ((b_2 >> h_shift) & 1)) + \
-                        (4 * ((b_3 >> h_shift) & 1)) + \
-                        (8 * ((b_4 >> h_shift) & 1)) + \
-                        (16 * ((b_5 >> h_shift) & 1)) + \
-                        (32 * ((b_6 >> h_shift) & 1)) + \
-                        (64 * ((b_7 >> h_shift) & 1)) + \
-                        (128 * ((b_8 >> h_shift) & 1))
-                else:
-                    raise NotImplementedError(f"Invalid bpp {bpp}")
+                # Tilemap fetch — once per tile column.
+                scrx_page: cython.uint = eff_scrx >> 8
+                col_offset: cython.uint = ((eff_scrx & 0xFF) >> 3) + scrx_page * 0x400
+                tilemap_word_addr: cython.uint = (screen_addr + scry_offset + col_offset) * 2 & 0xFFFF
+                low: cython.uint = vram[tilemap_word_addr]
+                high: cython.uint = vram[tilemap_word_addr + 1]
+                tile_num: cython.uint = (high & 3) << 8 | low
+                tilemap_palette: cython.uint = (high >> 2) & 7
+                tilemap_priority: cython.bint = (high >> 5) & 1
+                tilemap_h_flip: cython.bint = (high >> 6) & 1
+                tilemap_v_flip: cython.bint = (high >> 7) & 1
 
-                if v:
-                    # Special case for BG2-BG4 in Mode 0
-                    color_offset = bg.color_offset_mode_0 if self._bgmode == 0 else 0
+                if tilemap_priority == priority_selector:
+                    v_shift: cython.uint = i if not tilemap_v_flip else (7 - i)
 
-                    u32_color = self.get_u32_color(bpp, tilemap_palette, v, color_offset)
-                    pix_idx: cython.uint = orgy * SCREEN_WIDTH + orgx
-                    if write_main:
-                        self.main_bgs[pix_idx] = u32_color
-                        self.main_layer[pix_idx] = layer_tag
-                    if write_sub:
-                        self.sub_bgs[pix_idx] = u32_color
+                    # Tile-data fetch — once per tile column, shared across all 8 pixels.
+                    if bpp == 2:
+                        tile_address: cython.uint = (tiledata_addr + tile_num * 16 + v_shift * 2) & 0xFFFF
+                        b_lo: cython.uint = vram[tile_address]
+                        b_hi: cython.uint = vram[(tile_address + 1) & 0xFFFF]
+                        for k in range(n_pixels):
+                            current_dot: cython.uint = dot + k
+                            if window_masked is not None and window_masked[current_dot]:
+                                continue
+                            jj: cython.uint = pixel_in_tile + k
+                            h_shift: cython.uint = (7 - jj) if not tilemap_h_flip else jj
+                            v: cython.uint = ((b_lo >> h_shift) & 1) | (((b_hi >> h_shift) & 1) << 1)
+                            if v:
+                                u32_color = cgram_cache[tilemap_palette * bpp_mult + v + color_offset]
+                                pix_idx: cython.uint = row_base + current_dot
+                                if write_main:
+                                    main_bgs[pix_idx] = u32_color
+                                    main_layer[pix_idx] = layer_tag
+                                if write_sub:
+                                    sub_bgs[pix_idx] = u32_color
+                    elif bpp == 4:
+                        tile_address: cython.uint = (tiledata_addr + tile_num * 32 + v_shift * 2) & 0xFFFF
+                        b_1: cython.uint = vram[tile_address]
+                        b_2: cython.uint = vram[(tile_address + 1) & 0xFFFF]
+                        b_3: cython.uint = vram[(tile_address + 16) & 0xFFFF]
+                        b_4: cython.uint = vram[(tile_address + 17) & 0xFFFF]
+                        for k in range(n_pixels):
+                            current_dot: cython.uint = dot + k
+                            if window_masked is not None and window_masked[current_dot]:
+                                continue
+                            jj: cython.uint = pixel_in_tile + k
+                            h_shift: cython.uint = (7 - jj) if not tilemap_h_flip else jj
+                            v: cython.uint = ((b_1 >> h_shift) & 1) | (((b_2 >> h_shift) & 1) << 1) | \
+                                (((b_3 >> h_shift) & 1) << 2) | (((b_4 >> h_shift) & 1) << 3)
+                            if v:
+                                u32_color = cgram_cache[tilemap_palette * bpp_mult + v + color_offset]
+                                pix_idx: cython.uint = row_base + current_dot
+                                if write_main:
+                                    main_bgs[pix_idx] = u32_color
+                                    main_layer[pix_idx] = layer_tag
+                                if write_sub:
+                                    sub_bgs[pix_idx] = u32_color
+                    elif bpp == 8:
+                        tile_address: cython.uint = (tiledata_addr + tile_num * 64 + v_shift * 2) & 0xFFFF
+                        b_1: cython.uint = vram[tile_address]
+                        b_2: cython.uint = vram[(tile_address + 1) & 0xFFFF]
+                        b_3: cython.uint = vram[(tile_address + 16) & 0xFFFF]
+                        b_4: cython.uint = vram[(tile_address + 17) & 0xFFFF]
+                        b_5: cython.uint = vram[(tile_address + 32) & 0xFFFF]
+                        b_6: cython.uint = vram[(tile_address + 33) & 0xFFFF]
+                        b_7: cython.uint = vram[(tile_address + 48) & 0xFFFF]
+                        b_8: cython.uint = vram[(tile_address + 49) & 0xFFFF]
+                        for k in range(n_pixels):
+                            current_dot: cython.uint = dot + k
+                            if window_masked is not None and window_masked[current_dot]:
+                                continue
+                            jj: cython.uint = pixel_in_tile + k
+                            h_shift: cython.uint = (7 - jj) if not tilemap_h_flip else jj
+                            v: cython.uint = ((b_1 >> h_shift) & 1) | (((b_2 >> h_shift) & 1) << 1) | \
+                                (((b_3 >> h_shift) & 1) << 2) | (((b_4 >> h_shift) & 1) << 3) | \
+                                (((b_5 >> h_shift) & 1) << 4) | (((b_6 >> h_shift) & 1) << 5) | \
+                                (((b_7 >> h_shift) & 1) << 6) | (((b_8 >> h_shift) & 1) << 7)
+                            if v:
+                                u32_color = cgram_cache[tilemap_palette * bpp_mult + v + color_offset]
+                                pix_idx: cython.uint = row_base + current_dot
+                                if write_main:
+                                    main_bgs[pix_idx] = u32_color
+                                    main_layer[pix_idx] = layer_tag
+                                if write_sub:
+                                    sub_bgs[pix_idx] = u32_color
+                    else:
+                        raise NotImplementedError(f"Invalid bpp {bpp}")
+
+                dot += n_pixels
+                eff_scrx += n_pixels
+                if eff_scrx >= scrx_wrap:
+                    eff_scrx -= scrx_wrap
 
     def draw_tiles(
         self,
@@ -1356,18 +1464,25 @@ class Ppu:
         """
         h_tiles = tile_width // 8
         v_tiles = tile_height // 8
+        vc = self.v_counter
 
         for tile_pos_v in range(v_tiles):
+            # Compute the screen-Y of the top of this tile row (before flip).
+            if tile.v_flip:
+                tile_row_y = y_offset + (v_tiles - 1 - tile_pos_v) * 8
+            else:
+                tile_row_y = y_offset + tile_pos_v * 8
+            # Skip the entire row if v_counter isn't within its 8-pixel span.
+            if not (tile_row_y <= vc < tile_row_y + 8):
+                continue
+
             for tile_pos_h in range(h_tiles):
                 # compute x, y positions
                 if tile.h_flip:
                     x = x_offset + (h_tiles - 1 - tile_pos_h) * 8
                 else:
                     x = x_offset + tile_pos_h * 8
-                if tile.v_flip:
-                    y = y_offset + (v_tiles - 1 - tile_pos_v) * 8
-                else:
-                    y = y_offset + tile_pos_v * 8
+                y = tile_row_y
 
                 # used when drawing objects...
                 if tile_character is not None:
@@ -1468,26 +1583,29 @@ class Ppu:
             # in color math (layer 5). Palettes 0-3 are immune (layer 6, never matched).
             self.main_layer[idx] = 5 if palette >= 12 else 6
 
+    def _rebuild_cgram_cache(self) -> None:
+        cgram = self.cgram
+        cache = self._cgram_cache
+        for i in range(256):
+            ci = i * 2
+            d = cgram[ci] | cgram[ci + 1] << 8
+            r5 = d & 0x1F
+            g5 = (d >> 5) & 0x1F
+            b5 = (d >> 10) & 0x1F
+            r8 = (r5 << 3) | (r5 >> 2)
+            g8 = (g5 << 3) | (g5 >> 2)
+            b8 = (b5 << 3) | (b5 >> 2)
+            cache[i] = (r8 << 24) | (g8 << 16) | (b8 << 8) | 0xFF
+        self._cgram_dirty = False
+
     def get_u32_color(self, bpp: int, palette: int, color: int, color_offset: int = 0) -> int:
+        if self._cgram_dirty:
+            self._rebuild_cgram_cache()
         if bpp == 8:
-            # 8BPP uses the entire 256-entry CGRAM as a single palette; palette field ignored.
             color_index = color
         else:
-            palette_index = palette * (2 ** bpp)
-            color_index = palette_index + color + color_offset
-        color_index *= 2  # 2 bytes per color
-        data = self.cgram[color_index] | self.cgram[color_index + 1] << 8
-
-        r_5bit = data >> 0 & 0x1F
-        g_5bit = data >> 5 & 0x1F
-        b_5bit = data >> 10 & 0x1F
-
-        r_8bit = (r_5bit << 3) | (r_5bit >> 2)
-        g_8bit = (g_5bit << 3) | (g_5bit >> 2)
-        b_8bit = (b_5bit << 3) | (b_5bit >> 2)
-        a_8bit = 255 if color else 0  # 255 no transparency, 0 full transparency
-
-        return (r_8bit << 24) | (g_8bit << 16) | (b_8bit << 8) | a_8bit
+            color_index = palette * (1 << bpp) + color + color_offset
+        return self._cgram_cache[color_index]
 
     def get_u32_backdrop_color(self) -> int:
         data = self.cgram[0] | self.cgram[1] << 8

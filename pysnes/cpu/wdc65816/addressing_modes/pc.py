@@ -1,5 +1,4 @@
 from typing import Callable
-from ctypes import c_int16, c_int8
 
 from ...cpu import Cpu
 
@@ -8,8 +7,9 @@ def Branch(cpu: Cpu, cond: Callable):
     take = cond(cpu)
     if take:
         cpu.U.l = cpu.fetch()
-        displacement = c_int8(cpu.U.l)
-        cpu.V.w = cpu.PC.d + displacement.value
+        # int8 displacement
+        displacement = cpu.U.l if cpu.U.l < 0x80 else cpu.U.l - 0x100
+        cpu.V.w = cpu.PC.d + displacement
         cpu.idle6(cpu.V.w)
         cpu.idle()
         cpu.PC.w = cpu.V.w
@@ -21,8 +21,9 @@ def Branch(cpu: Cpu, cond: Callable):
 def BranchLong(cpu: Cpu):
     cpu.U.l = cpu.fetch()
     cpu.U.h = cpu.fetch()
-    displacement = c_int16(cpu.U.w)
-    cpu.V.w = cpu.PC.d + displacement.value
+    # int16 displacement
+    displacement = cpu.U.w if cpu.U.w < 0x8000 else cpu.U.w - 0x10000
+    cpu.V.w = cpu.PC.d + displacement
     cpu.idle()
     cpu.PC.w = cpu.V.w
     cpu.idleBranch()

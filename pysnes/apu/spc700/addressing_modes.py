@@ -1,6 +1,3 @@
-from ctypes import c_int8
-
-
 class SPC700AddressingModes:
     """Addressing modes implementation (alphabetical order)"""
 
@@ -92,10 +89,10 @@ class SPC700AddressingModes:
         self.data = self.fetch()
         take = cond(self)
         if take:
-            displacement = c_int8(self.data)
+            displacement = self.data if self.data < 0x80 else self.data - 0x100
             self.idle()
             self.idle()
-            self.PC = (self.PC + displacement.value) & 0xFFFF
+            self.PC = (self.PC + displacement) & 0xFFFF
 
     def BranchBit(self, bit: int, match: bool):
         # BBC/BBS dp.bit,rel — 5 cycles not taken, 7 cycles taken
@@ -107,7 +104,8 @@ class SPC700AddressingModes:
         if bool(self.data & 1 << bit) == match:
             self.idle()
             self.idle()
-            self.PC = (c_int8(displacement).value + self.PC) & 0xFFFF
+            displacement = displacement if displacement < 0x80 else displacement - 0x100
+            self.PC = (displacement + self.PC) & 0xFFFF
 
     def BranchNotDirect(self):
         # CBNE dp,rel — 5 cycles not taken, 7 cycles taken
@@ -118,7 +116,8 @@ class SPC700AddressingModes:
         if self.A != self.data:
             self.idle()
             self.idle()
-            self.PC = (c_int8(displacement).value + self.PC) & 0xFFFF
+            displacement = displacement if displacement < 0x80 else displacement - 0x100
+            self.PC = (displacement + self.PC) & 0xFFFF
 
     def BranchNotDirectDecrement(self):
         # DBNZ dp,rel — 5 cycles not taken, 7 cycles taken
@@ -130,7 +129,8 @@ class SPC700AddressingModes:
         if self.data != 0:
             self.idle()
             self.idle()
-            self.PC = (c_int8(displacement).value + self.PC) & 0xFFFF
+            displacement = displacement if displacement < 0x80 else displacement - 0x100
+            self.PC = (displacement + self.PC) & 0xFFFF
 
     def BranchNotDirectIndexed(self, reg_index):
         # CBNE dp+X,rel — 6 cycles not taken, 8 cycles taken
@@ -143,7 +143,8 @@ class SPC700AddressingModes:
         if self.A != self.data:
             self.idle()
             self.idle()
-            self.PC = (c_int8(displacement).value + self.PC) & 0xFFFF
+            displacement = displacement if displacement < 0x80 else displacement - 0x100
+            self.PC = (displacement + self.PC) & 0xFFFF
 
     def BranchNotYDecrement(self):
         # DBNZ Y,rel — 4 cycles not taken, 6 cycles taken
@@ -155,7 +156,8 @@ class SPC700AddressingModes:
         if self.Y != 0:
             self.idle()
             self.idle()
-            self.PC = (c_int8(displacement).value + self.PC) & 0xFFFF
+            displacement = displacement if displacement < 0x80 else displacement - 0x100
+            self.PC = (displacement + self.PC) & 0xFFFF
 
     def Break(self):
         # BRK — 8 cycles

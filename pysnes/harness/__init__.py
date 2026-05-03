@@ -218,7 +218,7 @@ class Harness:
         # main_bgs is sized for a full 262-scanline frame (line 125 in ppu.py),
         # but only the first 224 are the visible display.
         visible = SCREEN_W * SCREEN_H
-        u32 = np.asarray(ppu.main_bgs, dtype=np.uint32)[:visible]
+        u32 = np.frombuffer(ppu.main_bgs, dtype=np.uint32, count=visible)
         r5 = (u32 >> 27) & 0x1F
         g5 = (u32 >> 19) & 0x1F
         b5 = (u32 >> 11) & 0x1F

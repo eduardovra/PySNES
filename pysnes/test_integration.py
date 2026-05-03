@@ -5,11 +5,11 @@ Tier 1 — frame-level: compare CPU/SPC registers + WRAM CRC32 at each frame bou
 Tier 2 — instruction-level: compare CPU trace line by line to find the exact diverging instruction.
 
 Run:
-    uv run --python pypy@3.10 pytest pysnes/test_integration.py::test_frame_divergence -v -s
-    uv run --python pypy@3.10 pytest pysnes/test_integration.py::test_instruction_divergence -v -s
+    uv run --python pypy pytest pysnes/test_integration.py::test_frame_divergence -v -s
+    uv run --python pypy pytest pysnes/test_integration.py::test_instruction_divergence -v -s
 
 Skip in normal suite:
-    uv run --python pypy@3.10 pytest pysnes/ -m "not integration"
+    uv run --python pypy pytest pysnes/ -m "not integration"
 
 Mesen binary expected at: tools/Mesen  (relative to repo root)
 Override with env var: MESEN_BIN=/path/to/Mesen

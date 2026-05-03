@@ -2,8 +2,8 @@
 Bus read/write micro-benchmark.
 
 Run from the project root:
-    uv run --python pypy3.10 scripts/bench_bus.py          # without Cython build
-    make build && uv run --python pypy3.10 scripts/bench_bus.py  # with Cython build
+    uv run --python pypy scripts/bench_bus.py          # without Cython build
+    make build && uv run --python pypy scripts/bench_bus.py  # with Cython build
 
 Reports ns/op for each hot-path branch in Bus.__getitem__ / __setitem__.
 """

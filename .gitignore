@@ -129,9 +129,6 @@ dmypy.json
 # ROMs
 roms/
 
-# Pypy tarball
-pypy3.10-v7.3.17-linux64*
-
 # auto-generated imgui file
 imgui.ini
 

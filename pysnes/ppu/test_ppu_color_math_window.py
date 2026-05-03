@@ -15,7 +15,7 @@ main, BG2 on sub, CGADSUB=0x20 (backdrop ADD). They assert that the color
 math gating controls whether the backdrop picks up the sub-screen pixel.
 
 Run:
-    uv run --python pypy3.10 pytest pysnes/ppu/test_ppu_color_math_window.py -v
+    uv run --python pypy pytest pysnes/ppu/test_ppu_color_math_window.py -v
 """
 
 import pytest

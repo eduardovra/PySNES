@@ -19,7 +19,7 @@ windowing (CGWSEL bits 4-7), separate sub-screen backdrop via COLDATA,
 direct-color mode.
 
 Run:
-    uv run --python pypy3.10 pytest pysnes/ppu/test_ppu_color_math.py -v
+    uv run --python pypy pytest pysnes/ppu/test_ppu_color_math.py -v
 """
 
 import pytest

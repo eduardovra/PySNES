@@ -13,7 +13,7 @@ Setup:
   - v_counter = 6  →  sprite row 1 drawn, output at main_bgs row 5
 
 Run:
-    uv run --python pypy3.10 pytest pysnes/ppu/test_ppu_sprites.py -v
+    uv run --python pypy pytest pysnes/ppu/test_ppu_sprites.py -v
 """
 
 import pytest

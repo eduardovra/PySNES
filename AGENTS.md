@@ -2,24 +2,24 @@
 
 ## Project Goal
 
-A SNES emulator written in Python, targeting real-time emulation speed while keeping elegant Python syntax. The performance strategy is Cython (pure Python mode) compiled with PyPy 3.10, or a combination of both.
+A SNES emulator written in Python, targeting real-time emulation speed while keeping elegant Python syntax. The performance strategy is Cython (pure Python mode) compiled with PyPy 3.11, or a combination of both.
 
 The codebase is in active development. CPU and SPC700 instruction tests pass against the SingleStepTests suite. Super Mario World boots past the SPC700 IPL handshake and second-stage audio upload and renders the animated title screen (branch `apu-sync-timing-fixes`).
 
 ## Build & Run
 
 ### Prerequisites
-- PyPy 3.10 (from tarball, NOT snap — snap version had window display issues)
+- PyPy 3.11
 - uv (package manager)
 - SDL2 system library (`libsdl2-dev`)
 
 ### Commands
 ```bash
-# Install dependencies (interpreter is pinned in .python-version → pypy@3.10)
+# Install dependencies (interpreter is pinned in .python-version)
 uv sync
 
 # Build (Cython compile all .py files into a .so)
-make build          # uses PyPy 3.10 by default
+make build
 
 # Run
 uv run pysnes roms/game.sfc                     # script entry point (recommended)
@@ -134,7 +134,6 @@ On startup, `pysnes.py` opens `cpu_trace.log` and compares CPU execution against
 ### Build System Notes
 - **Cython compilation is on hold.** PyPy alone is ~20× faster than CPython+Cython for this codebase as it currently stands, so the project runs from pure-Python source under PyPy. The `make build_pysnes` target and Cython decorators in the source still work, but you do not need to run `make build_pysnes` to develop or test — pure-Python source under PyPy is the supported path. If `*.so` files exist (left over from a previous build), Python imports them in preference to the `.py` source; `find pysnes -name "*.so" -delete` to fall back to the `.py` files.
 - **Cython version is pinned to 3.1.1** — DO NOT upgrade to 3.1.2, it has a "multiple definitions of function" bug: https://stackoverflow.com/questions/79687815/cython-multiple-definitions-of-function
-- **Python version must be ~3.10** — ImGui (now removed but still in pyproject.toml) didn't compile in 3.11 with PyPy
 - All `.py` files in `pysnes/` are compiled into a single monolithic Cython `.so` extension
 - `setup.py` compiles everything and links against SDL2
 - `cythonize()` uses `cache=True` and `nthreads=cpu_count()` — only changed `.py` files are re-transpiled; Cython step is parallelised

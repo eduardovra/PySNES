@@ -1,6 +1,6 @@
 .PHONY: build clean run install test benchmark docs
 
-PY ?= --python pypy@3.10
+PY ?= --python pypy@3.11
 
 all: build
 

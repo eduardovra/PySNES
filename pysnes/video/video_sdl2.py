@@ -2,6 +2,7 @@
 SDL2-based video renderer for PySNES
 Replaces OpenGL with direct SDL2 2D rendering for better performance
 """
+import array as _stdlib_array
 import sdl2 as sdl
 import numpy as np
 import ctypes
@@ -18,6 +19,7 @@ class SDL2Renderer:
         self.texture: Optional[sdl.SDL_Texture] = None
         self.window = None
         self._last_pixel_data: Optional[np.ndarray] = None
+        self._pixel_data: Optional[np.ndarray] = None
 
     def initialize(self, window) -> None:
         """Initialize SDL2 renderer from existing window"""
@@ -71,43 +73,28 @@ class SDL2Renderer:
         except Exception as e:
             raise RuntimeError(f"Failed to initialize SDL2 renderer: {e}")
 
-    def draw_frame(self, texture_data: np.ndarray) -> None:
-        """
-        Draw a frame using SDL2 (much faster than OpenGL for 2D)
-
-        Args:
-            texture_data: RGBA texture data as numpy array
-        """
+    def draw_frame(self, texture_data) -> None:
+        """Draw a frame using SDL2."""
         if not self.renderer or not self.texture:
             raise RuntimeError("SDL2 renderer not properly initialized!")
 
-        # Convert texture data to proper format
-        if hasattr(texture_data, 'dtype'):
-            if texture_data.dtype == np.uint32:
-                # Packed RGBA data - need to ensure correct byte order
-                # SDL2 expects RGBA8888 format
-                pixel_data = texture_data.view(np.uint8)
-            elif texture_data.dtype == np.uint8:
-                # Already in byte format
-                pixel_data = texture_data
-            else:
-                # Convert other formats to uint32 first
-                pixel_data = texture_data.astype(np.uint32).view(np.uint8)
+        # Fast path: array.array framebuffer — create a zero-copy uint8 view once
+        # and reuse it every frame (np.frombuffer wraps the same buffer in-place).
+        if isinstance(texture_data, _stdlib_array.array):
+            if self._pixel_data is None:
+                n = self.width * self.height
+                self._pixel_data = np.frombuffer(texture_data, dtype=np.uint32, count=n).view(np.uint8)
+            pixel_data = self._pixel_data
+        elif hasattr(texture_data, 'dtype'):
+            pixel_data = texture_data.view(np.uint8) if texture_data.dtype == np.uint32 else texture_data.astype(np.uint32).view(np.uint8)
+            expected = self.width * self.height * 4
+            if len(pixel_data) > expected:
+                pixel_data = pixel_data[:expected]
         else:
-            # Convert to numpy array
             pixel_data = np.asarray(texture_data, dtype=np.uint32).view(np.uint8)
-
-        # Ensure we have the right amount of data
-        expected_size = self.width * self.height * 4  # 4 bytes per pixel (RGBA)
-        if len(pixel_data) != expected_size:
-            # Try to reshape/truncate the data to fit
-            if len(pixel_data) > expected_size:
-                pixel_data = pixel_data[:expected_size]
-            elif len(pixel_data) < expected_size:
-                # Pad with zeros if too small
-                padded = np.zeros(expected_size, dtype=np.uint8)
-                padded[:len(pixel_data)] = pixel_data
-                pixel_data = padded
+            expected = self.width * self.height * 4
+            if len(pixel_data) > expected:
+                pixel_data = pixel_data[:expected]
 
         # Update texture with pixel data
         pitch = self.width * 4  # 4 bytes per pixel

@@ -188,12 +188,15 @@ class Apu:
     trace_enabled = cython.declare(cython.bint, visibility="public")
     trace_log = cython.declare(object, visibility="public")
     _disassembler = cython.declare(object, visibility="public")
+    dsp = cython.declare(object, visibility="public")
 
     def __init__(self) -> None:
         self.reset_registers()
         self.allocate_memory()
         self.load_instructions()
         self._disassembler = SPC700Disassembler(self)
+        from .dsp import Dsp
+        self.dsp = Dsp(self.read_ram)
 
     def __str__(self) -> str:
         flags = [
@@ -283,6 +286,10 @@ class Apu:
         self.trace_enabled = False
         self.trace_log = []
 
+        if hasattr(self, 'dsp') and self.dsp is not None:
+            from .dsp import Dsp
+            self.dsp = Dsp(self.read_ram)
+
     def allocate_memory(self):
         # Init memory regions
         self.memory = bytearray(0xFFBF - 0x0200 + 1)
@@ -355,6 +362,24 @@ class Apu:
         """One internal CPU cycle with no external memory access."""
         self.cycles += 1
 
+    def generate_audio_frame(self, n_samples: int):
+        """Generate n_samples of 16-bit stereo audio. Returns numpy array shape (n_samples, 2)."""
+        return self.dsp.generate_samples(n_samples)
+
+    def read_ram(self, addr: int) -> int:
+        """Read APU RAM for DSP use — no cycle increment, no I/O side-effects."""
+        addr &= 0xFFFF
+        if addr <= 0x00EF:
+            return self.page_0[addr]
+        elif addr <= 0x00FF:
+            return 0  # I/O register range — BRR data never lives here
+        elif addr <= 0x01FF:
+            return self.page_1[addr - 0x0100]
+        elif addr <= 0xFFBF:
+            return self.memory[addr - 0x0200]
+        else:
+            return self.ipl_rom[addr - 0xFFC0]
+
     def load_program(self, data):
         """Used for testing only"""
         self.ipl_rom = data
@@ -372,7 +397,8 @@ class Apu:
         elif addr == 0x00F2:
             result = self.dsp_register_address
         elif addr == 0x00F3:
-            result = self.dsp_register_data
+            result = self.dsp.read_register(self.dsp_register_address)
+            self.dsp_register_data = result
         elif addr <= 0x00F7:
             result = self.ports_r[addr - 0x00F4]
         elif addr == 0x00F8:
@@ -411,6 +437,7 @@ class Apu:
             self.dsp_register_address = value
         elif addr == 0x00F3:
             self.dsp_register_data = value
+            self.dsp.write_register(self.dsp_register_address, value)
         elif addr <= 0x00F7:
             # $F4-$F7 from SPC side: writing updates the SPC→CPU latch (ports_w).
             # The CPU→SPC latch (ports_r) is separate hardware; do NOT mirror — the

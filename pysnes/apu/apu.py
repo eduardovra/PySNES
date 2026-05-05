@@ -5,6 +5,7 @@ import cython
 
 from .spc700.instructions_spc700 import INSTRUCTIONS
 from .spc700.disassembler import SPC700Disassembler
+from .dsp import Dsp
 
 
 @cython.cclass
@@ -195,7 +196,6 @@ class Apu:
         self.allocate_memory()
         self.load_instructions()
         self._disassembler = SPC700Disassembler(self)
-        from .dsp import Dsp
         self.dsp = Dsp(self.read_ram)
 
     def __str__(self) -> str:
@@ -287,7 +287,6 @@ class Apu:
         self.trace_log = []
 
         if hasattr(self, 'dsp') and self.dsp is not None:
-            from .dsp import Dsp
             self.dsp = Dsp(self.read_ram)
 
     def allocate_memory(self):

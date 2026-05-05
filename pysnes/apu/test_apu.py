@@ -1,4 +1,5 @@
 import pytest
+import numpy as np
 
 from .apu import Apu
 
@@ -159,7 +160,6 @@ def test_dsp_register_write_read_via_apu(apu):
 
 def test_generate_audio_frame_returns_correct_shape(apu):
     """generate_audio_frame returns (n, 2) int16 array."""
-    import numpy as np
     out = apu.generate_audio_frame(532)
     assert out.shape == (532, 2)
     assert out.dtype == np.int16

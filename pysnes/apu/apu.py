@@ -55,11 +55,9 @@ class Timer:
     apu = cython.declare(object)
     frequency = cython.declare(cython.uint, visibility="public")
     stage0 = cython.declare(cython.uchar, visibility="public")
-    stage1 = cython.declare(cython.uchar, visibility="public")
     stage2 = cython.declare(cython.uchar, visibility="public")
     stage3 = cython.declare(cython.uchar, visibility="public")
     stage3_shadow = cython.declare(cython.uchar, visibility="public")
-    line = cython.declare(cython.bint, visibility="public")
     enable = cython.declare(cython.bint, visibility="public")
     target = cython.declare(cython.uchar, visibility="public")
 
@@ -67,17 +65,15 @@ class Timer:
         self.apu = apu
         self.frequency = frequency
         self.stage0 = 0x00
-        self.stage1 = 0x00
         self.stage2 = 0x00
         self.stage3 = 0x00
         self.stage3_shadow = 0x00
-        self.line = False
         self.enable = False
         self.target = 0x00
 
     _STATE_FIELDS = (
-        "frequency", "stage0", "stage1", "stage2", "stage3", "stage3_shadow",
-        "line", "enable", "target",
+        "frequency", "stage0", "stage2", "stage3", "stage3_shadow",
+        "enable", "target",
     )
 
     def dump_state(self) -> dict:
@@ -89,46 +85,22 @@ class Timer:
 
     @cython.cfunc
     def step(self, clocks: cython.uint):
-        # stage 0 increment
         self.stage0 = (self.stage0 + clocks) & 0xFF
         if self.stage0 < self.frequency:
             return
         self.stage0 = (self.stage0 - self.frequency) & 0xFF
 
-        # stage 1 increment
-        self.stage1 ^= 1
-        self.syncronize_stage1()
-
-    @cython.cfunc
-    def syncronize_stage1(self):
-        level: cython.bint = self.stage1
-        if not self.apu.timers_enable:
-            level = 0
-        if self.apu.timers_disable:
-            level = 0
-        # only pulse on 1->0 transition
-        if not self.lower(level):
-            return
-
-        # stage 2 increment
         if not self.enable:
             return
+        if not self.apu.timers_enable or self.apu.timers_disable:
+            return
+
         self.stage2 = (self.stage2 + 1) & 0xFF
         if self.stage2 != self.target:
             return
 
-        # stage 3 increment
         self.stage2 = 0
         self.stage3 = (self.stage3 + 1) & 0x0F
-
-    @cython.cfunc
-    def lower(self, level: cython.bint) -> cython.bint:
-        if self.line and not level:
-            self.line = False
-            return True
-        elif not self.line and level:
-            self.line = True
-        return False
 
 
 @cython.cclass
@@ -211,7 +183,7 @@ class Apu:
         ]
         timers = ["1" if timer.enable else "0" for timer in self.timers]
         counters = [
-            f"{timer.stage1}/{timer.stage2:02X}/{timer.stage3:02X}/{timer.target:02X}"
+            f"{timer.stage2:02X}/{timer.stage3:02X}/{timer.target:02X}"
             for timer in self.timers
         ]
         return "A:{:02X} X:{:02X} Y:{:02X} S:{:02X} F:{} T:{} C:{}".format(
@@ -686,10 +658,6 @@ class Apu:
         self.timers_enable = bool(data >> 3 & 1)
         self.external_wait_states = int(data >> 4 & 3)
         self.internal_wait_states = int(data >> 6 & 3)
-
-        cython.cast(Timer, self.timers[0]).syncronize_stage1()
-        cython.cast(Timer, self.timers[1]).syncronize_stage1()
-        cython.cast(Timer, self.timers[2]).syncronize_stage1()
 
     @property
     def control_register(self) -> int:

@@ -1,3 +1,4 @@
+import array
 import numpy as np
 
 ENV_ATTACK, ENV_DECAY, ENV_SUSTAIN, ENV_RELEASE = 0, 1, 2, 3
@@ -40,7 +41,7 @@ class VoiceState:
         self.brr_addr = 0
         self.brr_offset = 0
         self.brr_header = 0
-        self.brr_buf = [0] * 16
+        self.brr_buf = array.array('h', [0] * 16)
         self.loop_addr = 0
         self.pitch_frac = 0
         self.env_state = ENV_ATTACK
@@ -95,7 +96,7 @@ class Dsp:
         v.brr_addr = brr_addr
         v.brr_offset = 0
         v.brr_header = 0
-        v.brr_buf = [0] * 16
+        v.brr_buf = array.array('h', [0] * 16)
         v.loop_addr = 0
         v.pitch_frac = 0
         v.env_state = ENV_ATTACK
@@ -124,7 +125,7 @@ class Dsp:
             loop_hi = self._ram(entry_addr + 3)
             v.brr_addr = start_lo | (start_hi << 8)
             v.loop_addr = loop_lo | (loop_hi << 8)
-            v.brr_buf = [0] * 16
+            v.brr_buf = array.array('h', [0] * 16)
             v.brr_offset = 0
             v.pitch_frac = 0
             v.prev1 = 0

@@ -346,6 +346,11 @@ class Dsp:
         echo_buf = self._echo_buf
         echo_len = len(echo_buf)
 
+        # Pass 1: voice loop — accumulate per-sample mix + echo inputs into arrays.
+        left_arr      = np.zeros(n_samples, dtype=np.int32)
+        right_arr     = np.zeros(n_samples, dtype=np.int32)
+        echo_in       = np.zeros((n_samples, 2), dtype=np.int32)
+
         for s in range(n_samples):
             left = right = 0
             echo_left = echo_right = 0
@@ -401,32 +406,39 @@ class Dsp:
                 if eon & (1 << vi):
                     echo_left  += voice_l
                     echo_right += voice_r
+            left_arr[s]    = left
+            right_arr[s]   = right
+            echo_in[s, 0]  = echo_left
+            echo_in[s, 1]  = echo_right
 
-            # Echo: 8-tap FIR.  Echo buffer stores 16-bit samples; each tap uses
-            # coeff >> 7 to match Mesen's (15-bit history * coeff >> 6) convention.
-            # FIR taps: tap 0 = newest echo sample, tap 7 = oldest.
-            fir_l = fir_r = 0
-            for tap in range(8):
-                pos = (self._echo_pos - tap) % echo_len
-                fir_l += (echo_buf[pos, 0] * fir[tap]) >> 7
-                fir_r += (echo_buf[pos, 1] * fir[tap]) >> 7
-            fir_l = max(-32768, min(32767, fir_l)) & ~1
-            fir_r = max(-32768, min(32767, fir_r)) & ~1
+        # Pass 2: echo FIR — batched with NumPy across all n_samples.
+        # For sample s, tap t reads echo_buf[(ep + s - t) % echo_len].
+        # Applying all taps in NumPy avoids a 8×n_samples Python loop.
+        ep       = self._echo_pos
+        fir_arr  = np.array(fir, dtype=np.int32)
+        fir_out  = np.zeros((n_samples, 2), dtype=np.int32)
+        s_idx    = np.arange(n_samples, dtype=np.int64)
+        for tap in range(8):
+            if fir_arr[tap] == 0:
+                continue
+            positions = (ep + s_idx - tap) % echo_len
+            fir_out += echo_buf[positions] * fir_arr[tap]
+        fir_out = np.clip(fir_out >> 7, -32768, 32767).astype(np.int32) & ~1
 
-            # Write to echo buffer (position always advances; write suppressed when disabled)
-            if not echo_disabled:
-                new_l = max(-32768, min(32767, echo_left + ((fir_l * efb) >> 7))) & ~1
-                new_r = max(-32768, min(32767, echo_right + ((fir_r * efb) >> 7))) & ~1
-                echo_buf[self._echo_pos, 0] = new_l
-                echo_buf[self._echo_pos, 1] = new_r
-            self._echo_pos = (self._echo_pos + 1) % echo_len
+        # Pass 3: write echo buffer and advance position.
+        if not echo_disabled:
+            write_pos = (ep + s_idx) % echo_len
+            new_echo  = np.clip(echo_in + (fir_out * efb >> 7), -32768, 32767).astype(np.int32) & ~1
+            echo_buf[write_pos] = new_echo
+        self._echo_pos = int((ep + n_samples) % echo_len)
 
-            if not muted:
-                out_l = (left  * mvoll) >> 7
-                out_r = (right * mvolr) >> 7
-                out_l += (fir_l * evoll) >> 7
-                out_r += (fir_r * evolr) >> 7
-                output[s, 0] = max(-32768, min(32767, out_l))
-                output[s, 1] = max(-32768, min(32767, out_r))
+        # Pass 4: master volume mix + echo volume.
+        if not muted:
+            out_l = np.clip((left_arr  * mvoll) >> 7, -32768, 32767)
+            out_r = np.clip((right_arr * mvolr) >> 7, -32768, 32767)
+            out_l = np.clip(out_l + ((fir_out[:, 0] * evoll) >> 7), -32768, 32767)
+            out_r = np.clip(out_r + ((fir_out[:, 1] * evolr) >> 7), -32768, 32767)
+            output[:, 0] = out_l
+            output[:, 1] = out_r
 
         return output.astype(np.int16)

@@ -81,7 +81,7 @@ def test_brr_decode_filter0_shift12():
     d = make_dsp(mem)
     d._init_voice_for_test(0, brr_addr=0x1000)
     d._decode_brr_block(0)
-    assert d.voices[0].brr_buf[0] == 2048
+    assert d.voices[0].brr_buf[0] == 4096   # stored ×2: nibble=1, shift=12 → (1<<11)*2
     assert d.voices[0].brr_buf[1] == 0
 
 
@@ -95,7 +95,7 @@ def test_brr_decode_filter0_negative_nibble():
     d = make_dsp(mem)
     d._init_voice_for_test(0, brr_addr=0x2000)
     d._decode_brr_block(0)
-    assert d.voices[0].brr_buf[0] == -2048
+    assert d.voices[0].brr_buf[0] == -4096  # stored ×2: nibble=-1, shift=12 → (-1<<11)*2
 
 
 def test_brr_end_flag_sets_endx():
@@ -185,6 +185,9 @@ def test_generate_samples_produces_nonzero_with_active_voice():
     v.brr_header = 0x00   # no end/loop flags
     v.env_level = 0x400
     v.pitch_frac = 0
+    # Pre-populate Gaussian history so interpolation produces nonzero output
+    # (Gaussian uses hist0..hist3; without KON they start at zero)
+    v.hist0 = v.hist1 = v.hist2 = v.hist3 = 1000
     d.regs[0x02] = 0x00; d.regs[0x03] = 0x00  # pitch=0 (no advance, stays at offset 0)
     d.regs[0x00] = 0x7F   # voice 0 left vol = +127
     d.regs[0x01] = 0x7F   # voice 0 right vol = +127

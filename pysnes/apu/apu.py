@@ -383,6 +383,50 @@ class Apu:
         """Used for testing only"""
         self.ipl_rom = data
 
+    def load_spc(self, spc) -> None:
+        """Load SPC700 state from a parsed SpcFile, bypassing the IPL boot sequence."""
+        ram = spc.ram
+
+        # Page 0 ($0000-$00EF) — general RAM
+        self.page_0[:] = ram[0x0000:0x00F0]
+        # I/O register range $00F0-$00FF is not stored in RAM; skip it.
+        # Page 1 ($0100-$01FF)
+        self.page_1[:] = ram[0x0100:0x0200]
+        # Main RAM ($0200-$FFBF)
+        self.memory[:] = ram[0x0200:0xFFC0]
+        # Extra RAM overlays IPL ROM area ($FFC0-$FFFF)
+        self.ipl_rom = bytearray(spc.extra_ram)
+
+        # CPU registers
+        self.PC  = spc.pc
+        self.A   = spc.a
+        self.X   = spc.x
+        self.Y   = spc.y
+        self.PSW = spc.psw
+        self.S   = spc.sp
+
+        # DSP registers
+        for addr, val in enumerate(spc.dsp_regs):
+            self.dsp.write_register(addr, val)
+
+        self.auxio4 = ram[0x00F8]
+        self.auxio5 = ram[0x00F9]
+        self.dsp_register_address = ram[0x00F2]
+
+        # Timer targets ($FA-$FC) live in the I/O region skipped above — restore explicitly.
+        for i in range(3):
+            cython.cast(Timer, self.timers[i]).target = ram[0x00FA + i]
+
+        # Control register enables/disables timers and may reset port latches (bits 4/5).
+        # Set it before restoring ports_r so the port reset doesn't clobber the saved values.
+        self.control_register = ram[0x00F1]
+        self.ipl_rom_enable = False
+
+        # Restore ports_r/$F4-$F7 after control_register write (bits 4/5 would clear them).
+        for i in range(4):
+            self.ports_r[i] = ram[0x00F4 + i]
+            self.ports_w[i] = ram[0x00F4 + i]
+
     @cython.cfunc
     def _read(self, addr: cython.uint) -> cython.uint:
         self.cycles += 1

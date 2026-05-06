@@ -21,6 +21,7 @@ from .controller import Controller
 from .video import Video
 from .debugger import Debugger, BreakpointHit
 from .audio import AudioSDL2
+from .spc_player import SpcPlayer
 from . import settings as settings_module
 
 if cython.compiled:
@@ -497,7 +498,7 @@ def main():
     print_python_info()
 
     parser = argparse.ArgumentParser(description="PySNES - SNES emulator")
-    parser.add_argument("rom", help="Path to ROM file (.smc/.sfc)")
+    parser.add_argument("rom", help="Path to ROM file (.smc/.sfc) or SPC audio file (.spc)")
     parser.add_argument("--trace", action="store_true",
                         help="Write CPU trace to cpu_trace.log (unlimited)")
     parser.add_argument("--trace-ref", metavar="REF",
@@ -515,6 +516,10 @@ def main():
     parser.add_argument("--breakpoint", metavar="ADDR", action="append",
                         help="Set breakpoint at address (hex, e.g. 0x00A087); may be repeated")
     args = parser.parse_args()
+
+    if pathlib.Path(args.rom).suffix.lower() == ".spc":
+        SpcPlayer(args.rom).run()
+        return
 
     settings = settings_module.load()
     if args.headless:

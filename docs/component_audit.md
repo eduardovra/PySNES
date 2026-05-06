@@ -50,10 +50,10 @@ Features not yet implemented (follow-up work):
 
 | Feature | Impact |
 |---|---|
-| Gaussian interpolation | BRR samples use nearest-neighbour pitch advance; correct hardware uses a 4-tap Gaussian FIR. Audible as slight high-frequency harshness at non-native pitches. |
+| ~~Gaussian interpolation~~ | ✅ Implemented: 4-tap Gaussian FIR with 512-entry bsnes/Mesen table; history ring per voice. |
+| ~~Echo / reverb (EON, EFB, FIR coefficients)~~ | ✅ Implemented: 8-tap FIR echo, EFB feedback, EVOL, EON per-voice routing, lazy init from SPC RAM. |
 | Pitch modulation (PMON register) | Voice N can be pitch-modulated by voice N-1's output. Unused in most games; absent here. |
 | Noise mode (NON register) | Replaces BRR sample with a LFSR noise source per voice. Percussion/SFX that use noise mode will be silent. |
-| Echo / reverb (EON, EFB, FIR coefficients) | Echo buffer and 8-tap FIR filter not implemented. Games with reverb will sound dry. |
 | Programmable GAIN envelope (GAIN bit7=1) | Treated as ADSR; linear-increase / bent-line / decrease / bent-line-decrease modes absent. Affects a minority of instruments. |
 | Stereo hard-clipping | SNES hardware clips each voice's L+R mix separately before master volume. Current code clips only the final output. Audible only on heavily overdriven mixes. |
 
@@ -202,5 +202,5 @@ Covered by `TestTilemapWordBits` in `test_ppu_scroll.py`.
 | Component | Game-Breaking Missing Features | Cython Bottleneck |
 |---|---|---|
 | **CPU** | ✅ Complete | ✅ Complete |
-| **APU + DSP** | ✅ Complete — audio plays. Known gaps: Gaussian interp, noise mode, echo/reverb, PMON, programmable GAIN | ✅ Complete (`__getitem__`/`__setitem__` dispatch is remaining bottleneck) |
+| **APU + DSP** | ✅ Complete — audio plays. Known gaps: noise mode, PMON, programmable GAIN | ✅ Complete (`__getitem__`/`__setitem__` dispatch is remaining bottleneck) |
 | **PPU** | Modes 2/4/5/6/7 missing, `draw_point` discards output (sprites invisible), window/color-math absent, 16×16 tiles broken, 3× `NotImplementedError` getters | `main_bgs` Python list, `get_u32_color` untyped + `bpp**2`, `draw_tile` uses Python `zip`/`reversed`, NDC floats computed but unused |

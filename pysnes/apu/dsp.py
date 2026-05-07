@@ -111,8 +111,8 @@ class Dsp:
     def write_register(self, addr: int, value: int) -> None:
         addr &= 0x7F
         self.regs[addr] = value & 0xFF
-        if addr == 0x4C:       # KON: latch, apply at next generate_samples call
-            self._pending_kon = value & 0xFF
+        if addr == 0x4C:       # KON: accumulate bits; DSP reads them asynchronously
+            self._pending_kon |= value & 0xFF
         elif addr == 0x5C:     # KOFF: immediately request key-off on matching voices
             for v in range(8):
                 if value & (1 << v):
@@ -248,13 +248,38 @@ class Dsp:
         adsr1 = self.regs[voice_idx << 4 | 0x05]
         adsr2 = self.regs[voice_idx << 4 | 0x06]
 
-        # GAIN direct mode: ADSR1 bit7=0, GAIN bit7=0 → fixed envelope level
+        # GAIN mode (ADSR1 bit7=0)
         if not (adsr1 & 0x80):
             gain = self.regs[voice_idx << 4 | 0x07]
             if not (gain & 0x80):
+                # Direct GAIN: fixed envelope level
                 v.env_level = (gain & 0x7F) << 4
                 return
-            # Programmable GAIN (bit7=1) — treat as ADSR for now
+            # Programmable GAIN (gain bit7=1): release always overrides
+            if v.env_state == ENV_RELEASE:
+                v.env_level = max(0, v.env_level - 8)
+                if v.env_level == 0:
+                    v.active = False
+                return
+            rate_idx = gain & 0x1F
+            period = _RATE_TABLE[rate_idx]
+            v.env_counter += 1
+            if period == 0 or v.env_counter < period:
+                return
+            v.env_counter = 0
+            mode = (gain >> 5) & 0x3
+            if mode == 0:    # linear decrease
+                v.env_level = max(0, v.env_level - 32)
+            elif mode == 1:  # exponential decrease
+                v.env_level -= ((v.env_level - 1) >> 8) + 1
+                if v.env_level < 0:
+                    v.env_level = 0
+            elif mode == 2:  # linear increase
+                v.env_level = min(0x7FF, v.env_level + 32)
+            else:            # bent-line increase: +32 until 0x600, then +8
+                step = 8 if v.env_level >= 0x600 else 32
+                v.env_level = min(0x7FF, v.env_level + step)
+            return
 
         # ADSR mode
         sl = (adsr2 >> 5) & 7
@@ -346,70 +371,209 @@ class Dsp:
         echo_buf = self._echo_buf
         echo_len = len(echo_buf)
 
-        # Pass 1: voice loop — accumulate per-sample mix + echo inputs into arrays.
-        left_arr      = np.zeros(n_samples, dtype=np.int32)
-        right_arr     = np.zeros(n_samples, dtype=np.int32)
-        echo_in       = np.zeros((n_samples, 2), dtype=np.int32)
+        # Pass 1: voice-outer loop — process all n_samples for each voice, then mix.
+        # Register reads and voice state are cached as locals to minimise attribute
+        # and array lookups inside the hot per-sample loop.
+        left_arr  = np.zeros(n_samples, dtype=np.int32)
+        right_arr = np.zeros(n_samples, dtype=np.int32)
+        echo_in   = np.zeros((n_samples, 2), dtype=np.int32)
 
-        for s in range(n_samples):
-            left = right = 0
-            echo_left = echo_right = 0
-            for vi in range(8):
-                v = self.voices[vi]
-                if not v.active:
-                    continue
-                self._step_envelope(vi)
-                pitch = (self.regs[vi << 4 | 0x02] | (self.regs[vi << 4 | 0x03] << 8)) & 0x3FFF
-                v.pitch_frac += pitch
-                while v.pitch_frac >= 0x1000:
-                    v.pitch_frac -= 0x1000
-                    v.brr_offset += 1
-                    if v.brr_offset >= 16:
-                        v.brr_offset = 0
-                        end_flag = v.brr_header & 0x01
-                        loop_flag = v.brr_header & 0x02
+        regs = self.regs  # one local reference saves repeated self.regs lookups
+
+        for vi in range(8):
+            v = self.voices[vi]
+            if not v.active:
+                continue
+
+            # --- cache per-voice registers once ---
+            base     = vi << 4
+            pitch    = (regs[base | 0x02] | (regs[base | 0x03] << 8)) & 0x3FFF
+            voll     = _s8(regs[base | 0x00])
+            volr     = _s8(regs[base | 0x01])
+            adsr1    = regs[base | 0x05]
+            adsr2    = regs[base | 0x06]
+            gain_reg = regs[base | 0x07]
+            in_echo  = bool(eon & (1 << vi))
+            endx_bit = 1 << vi
+
+            # --- cache voice state as locals ---
+            pitch_frac  = v.pitch_frac
+            brr_offset  = v.brr_offset
+            brr_buf     = v.brr_buf
+            brr_header  = v.brr_header
+            loop_addr   = v.loop_addr
+            env_level   = v.env_level
+            env_state   = v.env_state
+            env_counter = v.env_counter
+            key_off     = v.key_off
+            prev1       = v.prev1
+            prev2       = v.prev2
+            hist0       = v.hist0
+            hist1       = v.hist1
+            hist2       = v.hist2
+            hist3       = v.hist3
+            active      = True
+
+            # pre-decode envelope mode so the inner loop avoids repeated branches
+            adsr_on  = bool(adsr1 & 0x80)
+            gain_dir = (not adsr_on) and (not (gain_reg & 0x80))
+            if gain_dir:
+                fixed_env = (gain_reg & 0x7F) << 4
+            else:
+                fixed_env = 0  # unused
+            gain_mode = (gain_reg >> 5) & 0x3 if (not adsr_on and not gain_dir) else 0
+            gain_rate = gain_reg & 0x1F if (not adsr_on and not gain_dir) else 0
+            sl = (adsr2 >> 5) & 7
+            ar = adsr1 & 0x0F
+            dr = (adsr1 >> 4) & 0x07
+            sr = adsr2 & 0x1F
+
+            voice_out = np.zeros(n_samples, dtype=np.int32)
+
+            for s in range(n_samples):
+                # --- envelope step (inlined) ---
+                if key_off:
+                    env_state   = ENV_RELEASE
+                    env_counter = 0
+
+                if gain_dir:
+                    env_level = fixed_env
+                elif env_state == ENV_RELEASE:
+                    env_level -= 8
+                    if env_level <= 0:
+                        env_level = 0
+                        active = False
+                elif adsr_on:
+                    if env_state == ENV_ATTACK:
+                        rate_idx = ar * 2 + 1
+                        period = _RATE_TABLE[rate_idx]
+                        env_counter += 1
+                        if period == 0 or env_counter >= period:
+                            env_counter = 0
+                            env_level += 1024 if rate_idx == 31 else 32
+                            if env_level >= 0x7FF:
+                                env_level = 0x7FF
+                            if env_level >= 0x7E0:
+                                env_state   = ENV_DECAY
+                                env_counter = 0
+                    elif env_state == ENV_DECAY:
+                        rate_idx = dr * 2 + 16
+                        period = _RATE_TABLE[rate_idx]
+                        env_counter += 1
+                        if period == 0 or env_counter >= period:
+                            env_counter = 0
+                            env_level -= ((env_level - 1) >> 8) + 1
+                            if env_level < 0:
+                                env_level = 0
+                            if (env_level >> 8) == sl:
+                                env_state   = ENV_SUSTAIN
+                                env_counter = 0
+                    else:  # ENV_SUSTAIN
+                        period = _RATE_TABLE[sr]
+                        if period != 0:
+                            env_counter += 1
+                            if env_counter >= period:
+                                env_counter = 0
+                                env_level -= ((env_level - 1) >> 8) + 1
+                                if env_level < 0:
+                                    env_level = 0
+                else:  # programmable GAIN
+                    period = _RATE_TABLE[gain_rate]
+                    env_counter += 1
+                    if period == 0 or env_counter >= period:
+                        env_counter = 0
+                        if gain_mode == 0:
+                            env_level -= 32
+                            if env_level < 0:
+                                env_level = 0
+                        elif gain_mode == 1:
+                            env_level -= ((env_level - 1) >> 8) + 1
+                            if env_level < 0:
+                                env_level = 0
+                        elif gain_mode == 2:
+                            env_level += 32
+                            if env_level > 0x7FF:
+                                env_level = 0x7FF
+                        else:
+                            env_level += 8 if env_level >= 0x600 else 32
+                            if env_level > 0x7FF:
+                                env_level = 0x7FF
+
+                if not active:
+                    break
+
+                # --- pitch advance ---
+                pitch_frac += pitch
+                while pitch_frac >= 0x1000:
+                    pitch_frac -= 0x1000
+                    brr_offset += 1
+                    if brr_offset >= 16:
+                        brr_offset = 0
+                        end_flag  = brr_header & 0x01
+                        loop_flag = brr_header & 0x02
                         if end_flag:
-                            self.regs[0x7C] |= (1 << vi)
+                            regs[0x7C] |= endx_bit
                             if loop_flag:
-                                v.brr_addr = v.loop_addr
+                                v.brr_addr = loop_addr
                             else:
-                                v.active = False
+                                active = False
                                 break
                         else:
                             v.brr_addr += 9
-                        if v.active:
+                        if active:
+                            v.brr_offset = brr_offset
+                            v.prev1 = prev1
+                            v.prev2 = prev2
                             self._decode_brr_block(vi)
-                    if v.active:
-                        # Shift history and push newest decoded sample
-                        v.hist3 = v.hist2
-                        v.hist2 = v.hist1
-                        v.hist1 = v.hist0
-                        v.hist0 = v.brr_buf[v.brr_offset]
-                if not v.active:
-                    continue
-                # 4-tap Gaussian interpolation (matching SNES hardware)
-                goff = v.pitch_frac >> 4  # 0..255
+                            brr_buf    = v.brr_buf
+                            brr_header = v.brr_header
+                            prev1      = v.prev1
+                            prev2      = v.prev2
+                    if active:
+                        hist3 = hist2
+                        hist2 = hist1
+                        hist1 = hist0
+                        hist0 = brr_buf[brr_offset]
+
+                if not active:
+                    break
+
+                # --- Gaussian interpolation ---
+                goff = pitch_frac >> 4
                 sample = (
-                    (_GAUSS[255 - goff] * v.hist3 +
-                     _GAUSS[511 - goff] * v.hist2 +
-                     _GAUSS[256 + goff] * v.hist1 +
-                     _GAUSS[      goff] * v.hist0) >> 11
+                    (_GAUSS[255 - goff] * hist3 +
+                     _GAUSS[511 - goff] * hist2 +
+                     _GAUSS[256 + goff] * hist1 +
+                     _GAUSS[      goff] * hist0) >> 11
                 )
-                sample = max(-32768, min(32767, sample)) & ~1
-                sample = (sample * v.env_level) >> 11
-                voll = _s8(self.regs[vi << 4 | 0x00])
-                volr = _s8(self.regs[vi << 4 | 0x01])
-                voice_l = (sample * voll) >> 7
-                voice_r = (sample * volr) >> 7
-                left  += voice_l
-                right += voice_r
-                if eon & (1 << vi):
-                    echo_left  += voice_l
-                    echo_right += voice_r
-            left_arr[s]    = left
-            right_arr[s]   = right
-            echo_in[s, 0]  = echo_left
-            echo_in[s, 1]  = echo_right
+                if sample > 32767:
+                    sample = 32767
+                elif sample < -32768:
+                    sample = -32768
+                voice_out[s] = ((sample & ~1) * env_level) >> 11
+
+            # --- write back voice state ---
+            v.pitch_frac  = pitch_frac
+            v.brr_offset  = brr_offset
+            v.brr_header  = brr_header
+            v.env_level   = env_level
+            v.env_state   = env_state
+            v.env_counter = env_counter
+            v.key_off     = key_off
+            v.hist0       = hist0
+            v.hist1       = hist1
+            v.hist2       = hist2
+            v.hist3       = hist3
+            v.active      = active
+
+            # --- apply voice volumes with NumPy ---
+            voice_l = (voice_out * voll) >> 7
+            voice_r = (voice_out * volr) >> 7
+            left_arr  += voice_l
+            right_arr += voice_r
+            if in_echo:
+                echo_in[:, 0] += voice_l
+                echo_in[:, 1] += voice_r
 
         # Pass 2: echo FIR — batched with NumPy across all n_samples.
         # For sample s, tap t reads echo_buf[(ep + s - t) % echo_len].

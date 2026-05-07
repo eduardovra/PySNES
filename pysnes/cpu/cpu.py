@@ -340,28 +340,38 @@ class Cpu:
         self.scheduler.add(0, self._step)
 
     def _step(self) -> None:
-        """Single-instruction step, called by the Scheduler. Reschedules itself."""
-        if self._nmi_pending:
-            self._nmi_pending = False
-            vector = 0xFFFA if self.EF else 0xFFEA
-            mc = self.interrupt(vector)
-        elif self.status.irq_line and not self.IFlag:
-            # IRQ vector: $FFFE (emulation) / $FFEE (native)
-            vector = 0xFFFE if self.EF else 0xFFEE
-            mc = self.interrupt(vector)
-        else:
-            mc = self.fetch_and_execute()
-        # DRAM refresh: once per scanline the CPU is paused for 40 MC
-        # (https://wiki.superfamicom.org/timing). We credit the pause on the
-        # first instruction that crosses into a new scanline. This gives the
-        # APU its expected cycle budget — without it, the SMW APU handshake
-        # spin-loop sees stale port values.
-        scanline = self.scheduler.master_clock // 1364
-        if scanline != self._last_refresh_scanline:
-            self._last_refresh_scanline = scanline
-            mc += 40
-        # mc is in master clocks; schedule the next step that many clocks ahead
-        self.scheduler.add(mc, self._step)
+        """Run CPU instructions until the next non-CPU scheduled event is due.
+
+        Instead of rescheduling through the heapq on every instruction, we run
+        a tight inner loop and only touch the scheduler once per PPU/other event
+        boundary (~2x per scanline). This eliminates ~4M heapq push/pop pairs
+        per 300 frames and lets PyPy trace through the loop body without the
+        scheduler call breaking the JIT trace.
+        """
+        peeked: cython.ulonglong = self.scheduler.peek()
+        # When no other events are scheduled (e.g. unit tests without a PPU),
+        # set next_event = master_clock so the loop exits after one instruction.
+        next_event: cython.ulonglong = peeked if peeked != 0xFFFFFFFFFFFFFFFF else self.scheduler.master_clock
+        while True:
+            if self._nmi_pending:
+                self._nmi_pending = False
+                vector = 0xFFFA if self.EF else 0xFFEA
+                mc = self.interrupt(vector)
+            elif self.status.irq_line and not self.IFlag:
+                vector = 0xFFFE if self.EF else 0xFFEE
+                mc = self.interrupt(vector)
+            else:
+                mc = self.fetch_and_execute()
+            # DRAM refresh: once per scanline the CPU is paused for 40 MC.
+            scanline = self.scheduler.master_clock // 1364
+            if scanline != self._last_refresh_scanline:
+                self._last_refresh_scanline = scanline
+                mc += 40
+            self.scheduler.master_clock += mc
+            if self.scheduler.master_clock >= next_event:
+                break
+        # Reschedule at current time so other events fire before CPU continues.
+        self.scheduler.add(0, self._step)
 
     def nmi_rising_edge(self) -> None:
         """Called by the bus when V-Blank starts (rising NMI edge)."""

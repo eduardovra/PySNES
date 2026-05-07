@@ -1,4 +1,4 @@
-from ...cpu import Cpu
+from ...cpu import Cpu, Reg
 
 from .decorator import decorator_mode_8bit
 
@@ -34,8 +34,6 @@ def BankWrite(cpu: Cpu, mode_8bit: bool, f: str, i: str = ""):
 
 @decorator_mode_8bit
 def LongWrite(cpu: Cpu, mode_8bit: bool, i: str = ""):
-    from ...cpu import Reg
-
     I = getattr(cpu, i, Reg(16, 0x0000))
 
     if mode_8bit:
@@ -53,8 +51,6 @@ def LongWrite(cpu: Cpu, mode_8bit: bool, i: str = ""):
 
 @decorator_mode_8bit
 def DirectWrite(cpu: Cpu, mode_8bit: bool, f: str, i: str = ""):
-    from ...cpu import Reg
-
     F = getattr(cpu, f)
     I = getattr(cpu, i, Reg(16, 0x0000))
 
@@ -130,8 +126,6 @@ def IndirectIndexedWrite(cpu: Cpu, mode_8bit: bool):
 
 @decorator_mode_8bit
 def IndirectLongWrite(cpu: Cpu, mode_8bit: bool, i: str = ""):
-    from ...cpu import Reg
-
     I = getattr(cpu, i, Reg(16, 0x0000))
 
     if mode_8bit:

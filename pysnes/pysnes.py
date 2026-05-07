@@ -77,6 +77,8 @@ class PySNES:
         self.paused = False
         self.frame_time = 0.0
         self.frame_fps = 60.0
+        self._max_frames: int = settings.get("max_frames", 0)
+        self._frame_count: int = 0
 
         # Signal-triggered actions (set flag in handler, execute in main loop)
         self._screenshot_requested = False
@@ -368,6 +370,7 @@ class PySNES:
 
         frame_deadline = time.perf_counter()
         frame_tick = frame_deadline
+        _bench_start = frame_deadline if self._max_frames else 0.0
 
         try:
             while self.running:
@@ -402,6 +405,13 @@ class PySNES:
 
                     self.video.draw_textures(self.ppu.main_bgs)
                     self.video.update_screen()
+
+                    self._frame_count += 1
+                    if self._max_frames and self._frame_count >= self._max_frames:
+                        elapsed = time.perf_counter() - _bench_start
+                        avg_fps = self._frame_count / elapsed if elapsed > 0 else 0.0
+                        print(f"\nBenchmark: {self._frame_count} frames in {elapsed:.2f}s = {avg_fps:.2f} FPS", flush=True)
+                        self.running = False
 
                     # Wall-clock frame limiter: sleep to the next frame deadline so the
                     # emulator runs at exactly NTSC speed when computation finishes early.
@@ -513,6 +523,8 @@ def main():
     parser.add_argument("--apu-trace-limit", metavar="N", type=int, default=0,
                         help="Keep only the last N APU trace lines; written on exit")
     parser.add_argument("--headless", action="store_true", help="Run without opening an SDL2 window")
+    parser.add_argument("--max-frames", metavar="N", type=int, default=0,
+                        help="Exit after rendering N frames (0 = run forever)")
     parser.add_argument("--breakpoint", metavar="ADDR", action="append",
                         help="Set breakpoint at address (hex, e.g. 0x00A087); may be repeated")
     args = parser.parse_args()
@@ -524,6 +536,8 @@ def main():
     settings = settings_module.load()
     if args.headless:
         settings["headless"] = True
+    if args.max_frames:
+        settings["max_frames"] = args.max_frames
     pysnes = PySNES(args.rom, settings=settings)
 
     if args.trace or args.trace_ref or args.trace_limit:

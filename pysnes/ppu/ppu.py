@@ -27,6 +27,17 @@ SCREEN_HEIGHT = 224
 class Ppu:
     """Picture Processor Unit: 15-Bit"""
 
+    _OBJ_DIM_TABLE = (
+        ((8, 8), (16, 16)),
+        ((8, 8), (32, 32)),
+        ((8, 8), (64, 64)),
+        ((16, 16), (32, 32)),
+        ((16, 16), (64, 64)),
+        ((32, 32), (64, 64)),
+        ((16, 32), (32, 64)),
+        ((16, 32), (32, 32)),
+    )
+
     def __init__(
         self,
         *,
@@ -1678,18 +1689,7 @@ class Ppu:
         110 = 16x32 and 32x64 sprites (Not officially supported)
         111 = 16x32 and 32x32 sprites (Not officially supported)
         """
-        table = (
-            ((8, 8), (16, 16)),
-            ((8, 8), (32, 32)),
-            ((8, 8), (64, 64)),
-            ((16, 16), (32, 32)),
-            ((16, 16), (64, 64)),
-            ((32, 32), (64, 64)),
-            ((16, 32), (32, 64)),
-            ((16, 32), (32, 32)),
-        )
-
-        return table[self.oam_base_size][obj_size]
+        return self._OBJ_DIM_TABLE[self.oam_base_size][obj_size]
 
 
 class OAM:

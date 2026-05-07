@@ -5,7 +5,7 @@ Tests round-trip set/get for registers that previously raised
 NotImplementedError, and VRAM address remapping modes.
 
 Run:
-    uv run --python pypy3.10 pytest pysnes/ppu/test_ppu_registers.py -v
+    uv run --python pypy pytest pysnes/ppu/test_ppu_registers.py -v
 """
 
 import pytest

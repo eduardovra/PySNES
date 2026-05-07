@@ -1,6 +1,6 @@
 # PySNES
 
-## Virtualenv (3.10)
+## Virtualenv
 
 ```
 snap install pypy3 --classic
@@ -34,7 +34,7 @@ uv run pytest
 ### Inplace
 
 ```
-uv run --python pypy@3.10 setup.py build_ext --inplace
+uv run --python pypy@3.11 setup.py build_ext --inplace
 ```
 
 ### Release

@@ -13,7 +13,7 @@ across the first 8 pixels of row 0, then assert that enabling mosaic causes
 pixels inside each NxN block to share the top-left pixel's color.
 
 Run:
-    uv run --python pypy3.10 pytest pysnes/ppu/test_ppu_mosaic.py -v
+    uv run --python pypy pytest pysnes/ppu/test_ppu_mosaic.py -v
 """
 
 import pytest

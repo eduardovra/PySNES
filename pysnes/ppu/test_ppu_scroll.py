@@ -14,7 +14,7 @@ Layout used by all tests:
   - Row 1 of tilemap: all tile 1 (BLUE)
 
 Run:
-    uv run --python pypy3.10 pytest pysnes/ppu/test_ppu_scroll.py -v
+    uv run --python pypy pytest pysnes/ppu/test_ppu_scroll.py -v
 """
 
 import pytest

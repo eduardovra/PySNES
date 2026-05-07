@@ -11,7 +11,7 @@ Setup:
   - Brightness = 15 (colours pass through unmodified)
 
 Run:
-    uv run --python pypy3.10 pytest pysnes/ppu/test_ppu_bg_window.py -v
+    uv run --python pypy pytest pysnes/ppu/test_ppu_bg_window.py -v
 """
 
 import pytest

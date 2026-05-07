@@ -1,4 +1,5 @@
 import pytest
+import numpy as np
 
 from .apu import Apu
 
@@ -147,3 +148,18 @@ def test_control_register_bit5_resets_ports_r_23(apu: Apu):
     assert apu.ports_r[3] == 0x00
     assert apu.ports_w[2] == 0x33  # output ports unchanged
     assert apu.ports_w[3] == 0x44
+
+
+def test_dsp_register_write_read_via_apu(apu):
+    """Writing to $F3 routes through DSP; reading $F3 reads back from DSP."""
+    apu.write(0x00F2, 0x10)    # DSP address = 0x10 (voice 1 VOLL)
+    apu.write(0x00F3, 0x55)    # write value 0x55 to DSP register 0x10
+    apu.write(0x00F2, 0x10)    # keep address at 0x10
+    result = apu.read(0x00F3)
+    assert result == 0x55
+
+def test_generate_audio_frame_returns_correct_shape(apu):
+    """generate_audio_frame returns (n, 2) int16 array."""
+    out = apu.generate_audio_frame(532)
+    assert out.shape == (532, 2)
+    assert out.dtype == np.int16

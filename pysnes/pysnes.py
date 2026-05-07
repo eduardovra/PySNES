@@ -20,6 +20,8 @@ from .ppu import Ppu
 from .controller import Controller
 from .video import Video
 from .debugger import Debugger, BreakpointHit
+from .audio import AudioSDL2
+from .spc_player import SpcPlayer
 from . import settings as settings_module
 
 if cython.compiled:
@@ -55,6 +57,15 @@ class PySNES:
         self.video.initialize(headless=settings.get("headless", False))
         self.video.set_window_title(f"PySNES - {self.rom_name}")
 
+        self.audio = None
+        if not settings.get("headless", False):
+            try:
+                self.audio = AudioSDL2()
+                self.audio.initialize()
+            except Exception as e:
+                print(f"Audio init failed (continuing muted): {e}", flush=True)
+        self._audio_frac = 0
+
         self.event = sdl.SDL_Event()
 
         # Reset PC to the address in the cartridge reset vector
@@ -65,7 +76,7 @@ class PySNES:
         self.running = True
         self.paused = False
         self.frame_time = 0.0
-        self.frame_fps = 0.0
+        self.frame_fps = 60.0
 
         # Signal-triggered actions (set flag in handler, execute in main loop)
         self._screenshot_requested = False
@@ -344,30 +355,69 @@ class PySNES:
     def main(self):
         """Main loop driven by the event scheduler."""
         MC_PER_FRAME: int = 262 * 1364
+        # Exact NTSC frame period: 21.477272 MHz / (262 lines * 1364 dots) ≈ 16.6836 ms
+        FRAME_TIME_S: float = MC_PER_FRAME / 21_477_272.0
+        _FRAME_HEADROOM_S: float = 0.001  # busy-wait the last 1 ms for precision
+        # EMA smoothing coefficient for FPS display (≈30-frame window)
+        _FPS_ALPHA: float = 1.0 / 30.0
 
         self.cpu.start(self.scheduler)
         self.ppu.start()
 
         print(f"PID: {__import__('os').getpid()}", flush=True)
 
-        frame_start = time.time()
+        frame_deadline = time.perf_counter()
+        frame_tick = frame_deadline
 
         try:
             while self.running:
                 if not self.paused:
+                    # Reset deadline after a pause or any large gap so the emulator
+                    # doesn't try to catch up across many frames at once.
+                    now = time.perf_counter()
+                    if now - frame_deadline > FRAME_TIME_S * 4:
+                        frame_deadline = now
+                        frame_tick = now
+
                     frame_end = self.scheduler.master_clock + MC_PER_FRAME
                     try:
                         self.scheduler.run_to(frame_end)
                     except BreakpointHit:
                         pass  # paused=True already set; skip draw, next iteration checks paused
 
+                    if self.audio is not None:
+                        # Ensure the SPC700 has run all its cycles for this frame.
+                        # sync_to is normally called lazily from the bus on APU port access;
+                        # if the CPU went the whole frame without touching APU ports the
+                        # SPC700 would be behind and DSP register state would be stale.
+                        self.apu.sync_to(self.scheduler.master_clock)
+                        # Fixed-point accumulator matching Apu.sync_to pattern — avoids rounding drift.
+                        # DSP rate = Apu._APU_MC_DEN / 32 = 32000 Hz
+                        # samples per frame ≈ MC_PER_FRAME * _APU_MC_DEN / (_APU_MC_NUM * 32) ≈ 532.48
+                        self._audio_frac += MC_PER_FRAME * self.apu._APU_MC_DEN
+                        n_samples = self._audio_frac // (self.apu._APU_MC_NUM * 32)
+                        self._audio_frac %= (self.apu._APU_MC_NUM * 32)
+                        samples = self.apu.generate_audio_frame(n_samples)
+                        self.audio.queue_samples(samples)
+
                     self.video.draw_textures(self.ppu.main_bgs)
                     self.video.update_screen()
 
-                    self.frame_time = time.time() - frame_start
-                    if self.frame_time > 0:
-                        self.frame_fps = 1 / self.frame_time
-                    frame_start = time.time()
+                    # Wall-clock frame limiter: sleep to the next frame deadline so the
+                    # emulator runs at exactly NTSC speed when computation finishes early.
+                    # On slow frames we skip the sleep and start the next frame immediately.
+                    frame_deadline += FRAME_TIME_S
+                    remaining = frame_deadline - time.perf_counter()
+                    if remaining > _FRAME_HEADROOM_S:
+                        time.sleep(remaining - _FRAME_HEADROOM_S)
+                    while time.perf_counter() < frame_deadline:
+                        pass  # busy-wait the last ~1 ms for precision
+
+                    now = time.perf_counter()
+                    elapsed = now - frame_tick
+                    frame_tick = now
+                    actual_fps = 1.0 / elapsed if elapsed > 0 else 0.0
+                    self.frame_fps = self.frame_fps * (1.0 - _FPS_ALPHA) + actual_fps * _FPS_ALPHA
 
                     self.video.set_window_title(f"PySNES - {self.rom_name} | {self.frame_fps:.1f} FPS")
 
@@ -408,6 +458,8 @@ class PySNES:
             if self._apu_trace_ref:
                 self._apu_trace_ref.close()
             self.video.teardown_sdl()
+            if self.audio is not None:
+                self.audio.close()
 
     def process_inputs(self):
         if not self.video.window:
@@ -446,7 +498,7 @@ def main():
     print_python_info()
 
     parser = argparse.ArgumentParser(description="PySNES - SNES emulator")
-    parser.add_argument("rom", help="Path to ROM file (.smc/.sfc)")
+    parser.add_argument("rom", help="Path to ROM file (.smc/.sfc) or SPC audio file (.spc)")
     parser.add_argument("--trace", action="store_true",
                         help="Write CPU trace to cpu_trace.log (unlimited)")
     parser.add_argument("--trace-ref", metavar="REF",
@@ -464,6 +516,10 @@ def main():
     parser.add_argument("--breakpoint", metavar="ADDR", action="append",
                         help="Set breakpoint at address (hex, e.g. 0x00A087); may be repeated")
     args = parser.parse_args()
+
+    if pathlib.Path(args.rom).suffix.lower() == ".spc":
+        SpcPlayer(args.rom).run()
+        return
 
     settings = settings_module.load()
     if args.headless:

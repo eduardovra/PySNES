@@ -2,9 +2,9 @@
 APU timer unit tests.
 
 The SPC700 has three timers:
-  Timer 0 ($FA):  8 kHz  — frequency divider 128, 8-bit target
-  Timer 1 ($FB):  8 kHz  — frequency divider 128, 8-bit target
-  Timer 2 ($FC): 64 kHz  — frequency divider  16, 8-bit target
+  Timer 0 ($FA):  8 kHz  — stage2 increments every 128 APU cycles, 8-bit target
+  Timer 1 ($FB):  8 kHz  — stage2 increments every 128 APU cycles, 8-bit target
+  Timer 2 ($FC): 64 kHz  — stage2 increments every  16 APU cycles, 8-bit target
 
 Each timer has a 4-bit output counter (stage3) readable via $FD/$FE/$FF.
 Reading a counter clears it. Counters increment when stage2 wraps from
@@ -160,11 +160,9 @@ def _tick_until_overflow(apu: Apu, timer_idx: int, expected_hits: int) -> None:
     t.enable = True
     t.stage2 = 0
     t.stage3 = 0
-    # Each call passes t.frequency APU cycles so stage0 overflows exactly once per call.
-    # One overflow = one stage1 toggle. Two toggles = one falling edge = stage2 increment.
-    # stage3 increments every target stage2 increments.
-    # We need 2 * target * expected_hits toggles + 1.
-    steps = 2 * t.target * expected_hits + 1
+    # Each call passes t.frequency APU cycles so stage0 overflows exactly once per call,
+    # incrementing stage2 directly. stage3 increments every target stage2 increments.
+    steps = t.target * expected_hits + 1
     for _ in range(steps):
         apu.step_timers(t.frequency)
 

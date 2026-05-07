@@ -5,6 +5,7 @@ import cython
 
 from .spc700.instructions_spc700 import INSTRUCTIONS
 from .spc700.disassembler import SPC700Disassembler
+from .dsp import Dsp
 
 
 @cython.cclass
@@ -54,11 +55,9 @@ class Timer:
     apu = cython.declare(object)
     frequency = cython.declare(cython.uint, visibility="public")
     stage0 = cython.declare(cython.uchar, visibility="public")
-    stage1 = cython.declare(cython.uchar, visibility="public")
     stage2 = cython.declare(cython.uchar, visibility="public")
     stage3 = cython.declare(cython.uchar, visibility="public")
     stage3_shadow = cython.declare(cython.uchar, visibility="public")
-    line = cython.declare(cython.bint, visibility="public")
     enable = cython.declare(cython.bint, visibility="public")
     target = cython.declare(cython.uchar, visibility="public")
 
@@ -66,17 +65,15 @@ class Timer:
         self.apu = apu
         self.frequency = frequency
         self.stage0 = 0x00
-        self.stage1 = 0x00
         self.stage2 = 0x00
         self.stage3 = 0x00
         self.stage3_shadow = 0x00
-        self.line = False
         self.enable = False
         self.target = 0x00
 
     _STATE_FIELDS = (
-        "frequency", "stage0", "stage1", "stage2", "stage3", "stage3_shadow",
-        "line", "enable", "target",
+        "frequency", "stage0", "stage2", "stage3", "stage3_shadow",
+        "enable", "target",
     )
 
     def dump_state(self) -> dict:
@@ -88,46 +85,22 @@ class Timer:
 
     @cython.cfunc
     def step(self, clocks: cython.uint):
-        # stage 0 increment
         self.stage0 = (self.stage0 + clocks) & 0xFF
         if self.stage0 < self.frequency:
             return
         self.stage0 = (self.stage0 - self.frequency) & 0xFF
 
-        # stage 1 increment
-        self.stage1 ^= 1
-        self.syncronize_stage1()
-
-    @cython.cfunc
-    def syncronize_stage1(self):
-        level: cython.bint = self.stage1
-        if not self.apu.timers_enable:
-            level = 0
-        if self.apu.timers_disable:
-            level = 0
-        # only pulse on 1->0 transition
-        if not self.lower(level):
-            return
-
-        # stage 2 increment
         if not self.enable:
             return
+        if not self.apu.timers_enable or self.apu.timers_disable:
+            return
+
         self.stage2 = (self.stage2 + 1) & 0xFF
         if self.stage2 != self.target:
             return
 
-        # stage 3 increment
         self.stage2 = 0
         self.stage3 = (self.stage3 + 1) & 0x0F
-
-    @cython.cfunc
-    def lower(self, level: cython.bint) -> cython.bint:
-        if self.line and not level:
-            self.line = False
-            return True
-        elif not self.line and level:
-            self.line = True
-        return False
 
 
 @cython.cclass
@@ -188,12 +161,14 @@ class Apu:
     trace_enabled = cython.declare(cython.bint, visibility="public")
     trace_log = cython.declare(object, visibility="public")
     _disassembler = cython.declare(object, visibility="public")
+    dsp = cython.declare(object, visibility="public")
 
     def __init__(self) -> None:
         self.reset_registers()
         self.allocate_memory()
         self.load_instructions()
         self._disassembler = SPC700Disassembler(self)
+        self.dsp = Dsp(self.read_ram)
 
     def __str__(self) -> str:
         flags = [
@@ -208,7 +183,7 @@ class Apu:
         ]
         timers = ["1" if timer.enable else "0" for timer in self.timers]
         counters = [
-            f"{timer.stage1}/{timer.stage2:02X}/{timer.stage3:02X}/{timer.target:02X}"
+            f"{timer.stage2:02X}/{timer.stage3:02X}/{timer.target:02X}"
             for timer in self.timers
         ]
         return "A:{:02X} X:{:02X} Y:{:02X} S:{:02X} F:{} T:{} C:{}".format(
@@ -283,6 +258,9 @@ class Apu:
         self.trace_enabled = False
         self.trace_log = []
 
+        if hasattr(self, 'dsp') and self.dsp is not None:
+            self.dsp = Dsp(self.read_ram)
+
     def allocate_memory(self):
         # Init memory regions
         self.memory = bytearray(0xFFBF - 0x0200 + 1)
@@ -355,9 +333,71 @@ class Apu:
         """One internal CPU cycle with no external memory access."""
         self.cycles += 1
 
+    def generate_audio_frame(self, n_samples: int):
+        """Generate n_samples of 16-bit stereo audio. Returns numpy array shape (n_samples, 2)."""
+        return self.dsp.generate_samples(n_samples)
+
+    def read_ram(self, addr: int) -> int:
+        """Read APU RAM for DSP use — no cycle increment, no I/O side-effects."""
+        addr &= 0xFFFF
+        if addr <= 0x00EF:
+            return self.page_0[addr]
+        elif addr <= 0x00FF:
+            return 0  # I/O register range — BRR data never lives here
+        elif addr <= 0x01FF:
+            return self.page_1[addr - 0x0100]
+        elif addr <= 0xFFBF:
+            return self.memory[addr - 0x0200]
+        else:
+            return self.ipl_rom[addr - 0xFFC0]
+
     def load_program(self, data):
         """Used for testing only"""
         self.ipl_rom = data
+
+    def load_spc(self, spc) -> None:
+        """Load SPC700 state from a parsed SpcFile, bypassing the IPL boot sequence."""
+        ram = spc.ram
+
+        # Page 0 ($0000-$00EF) — general RAM
+        self.page_0[:] = ram[0x0000:0x00F0]
+        # I/O register range $00F0-$00FF is not stored in RAM; skip it.
+        # Page 1 ($0100-$01FF)
+        self.page_1[:] = ram[0x0100:0x0200]
+        # Main RAM ($0200-$FFBF)
+        self.memory[:] = ram[0x0200:0xFFC0]
+        # Extra RAM overlays IPL ROM area ($FFC0-$FFFF)
+        self.ipl_rom = bytearray(spc.extra_ram)
+
+        # CPU registers
+        self.PC  = spc.pc
+        self.A   = spc.a
+        self.X   = spc.x
+        self.Y   = spc.y
+        self.PSW = spc.psw
+        self.S   = spc.sp
+
+        # DSP registers
+        for addr, val in enumerate(spc.dsp_regs):
+            self.dsp.write_register(addr, val)
+
+        self.auxio4 = ram[0x00F8]
+        self.auxio5 = ram[0x00F9]
+        self.dsp_register_address = ram[0x00F2]
+
+        # Timer targets ($FA-$FC) live in the I/O region skipped above — restore explicitly.
+        for i in range(3):
+            cython.cast(Timer, self.timers[i]).target = ram[0x00FA + i]
+
+        # Control register enables/disables timers and may reset port latches (bits 4/5).
+        # Set it before restoring ports_r so the port reset doesn't clobber the saved values.
+        self.control_register = ram[0x00F1]
+        self.ipl_rom_enable = False
+
+        # Restore ports_r/$F4-$F7 after control_register write (bits 4/5 would clear them).
+        for i in range(4):
+            self.ports_r[i] = ram[0x00F4 + i]
+            self.ports_w[i] = ram[0x00F4 + i]
 
     @cython.cfunc
     def _read(self, addr: cython.uint) -> cython.uint:
@@ -372,7 +412,8 @@ class Apu:
         elif addr == 0x00F2:
             result = self.dsp_register_address
         elif addr == 0x00F3:
-            result = self.dsp_register_data
+            result = self.dsp.read_register(self.dsp_register_address)
+            self.dsp_register_data = result
         elif addr <= 0x00F7:
             result = self.ports_r[addr - 0x00F4]
         elif addr == 0x00F8:
@@ -411,6 +452,7 @@ class Apu:
             self.dsp_register_address = value
         elif addr == 0x00F3:
             self.dsp_register_data = value
+            self.dsp.write_register(self.dsp_register_address, value)
         elif addr <= 0x00F7:
             # $F4-$F7 from SPC side: writing updates the SPC→CPU latch (ports_w).
             # The CPU→SPC latch (ports_r) is separate hardware; do NOT mirror — the
@@ -616,10 +658,6 @@ class Apu:
         self.timers_enable = bool(data >> 3 & 1)
         self.external_wait_states = int(data >> 4 & 3)
         self.internal_wait_states = int(data >> 6 & 3)
-
-        cython.cast(Timer, self.timers[0]).syncronize_stage1()
-        cython.cast(Timer, self.timers[1]).syncronize_stage1()
-        cython.cast(Timer, self.timers[2]).syncronize_stage1()
 
     @property
     def control_register(self) -> int:

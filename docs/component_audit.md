@@ -23,9 +23,9 @@ Missing features and Cython performance analysis for CPU, APU, and PPU.
 
 ---
 
-## APU (`pysnes/apu/apu.py`)
+## APU (`pysnes/apu/apu.py`) + DSP (`pysnes/apu/dsp.py`) + Audio (`pysnes/audio/audio_sdl2.py`)
 
-**Status: COMPLETE** (except DSP/audio synthesis — separate feature work)
+**Status: COMPLETE** (S-DSP implemented with known limitations documented below)
 
 ### Resolved Items
 
@@ -40,12 +40,22 @@ Missing features and Cython performance analysis for CPU, APU, and PPU.
 | `f8` / `f9` registers unknown purpose | Confirmed correct as-is — they are general-purpose RAM bytes with no special hardware behavior |
 | `__getitem__`/`__setitem__` if-elif dispatch | Replaced with `_read`/`_write` `@cython.cfunc`; `_mem_log` field replaces test patching (+10%: 16.3M → 17.9M instr/sec) |
 | `functools.partial` instruction dispatch | Replaced with `InstructionSlot` cclass + `cython.cast` (+48%: 17.9M → 26.5M instr/sec) |
+| DSP register writes (`$F2`/`$F3`) are no-ops | Implemented full S-DSP (`dsp.py`): BRR decoding, ADSR/GAIN envelopes with hardware rate table, 8-voice mixing, KON/KOFF/ENDX/ENVX |
+| No audio output | SDL2 queue-mode output (`audio_sdl2.py`): 32 kHz stereo int16, `SDL_AUDIO_ALLOW_FREQUENCY_CHANGE` + numpy linear resample when device rate ≠ 32 kHz |
+| Audio/video sync | Wall-clock frame limiter in main loop (sleep + 1 ms busy-wait to NTSC deadline); audio queue as overflow safety valve; EMA-smoothed FPS display |
 
-### Remaining (out of scope for this branch)
+### DSP Known Limitations
 
-| Issue | Impact |
+Features not yet implemented (follow-up work):
+
+| Feature | Impact |
 |---|---|
-| DSP register writes (`$F2`/`$F3`) are no-ops | No audio synthesis; sound absent entirely — separate feature |
+| ~~Gaussian interpolation~~ | ✅ Implemented: 4-tap Gaussian FIR with 512-entry bsnes/Mesen table; history ring per voice. |
+| ~~Echo / reverb (EON, EFB, FIR coefficients)~~ | ✅ Implemented: 8-tap FIR echo, EFB feedback, EVOL, EON per-voice routing, lazy init from SPC RAM. |
+| Pitch modulation (PMON register) | Voice N can be pitch-modulated by voice N-1's output. Unused in most games; absent here. |
+| Noise mode (NON register) | Replaces BRR sample with a LFSR noise source per voice. Percussion/SFX that use noise mode will be silent. |
+| Programmable GAIN envelope (GAIN bit7=1) | Treated as ADSR; linear-increase / bent-line / decrease / bent-line-decrease modes absent. Affects a minority of instruments. |
+| Stereo hard-clipping | SNES hardware clips each voice's L+R mix separately before master volume. Current code clips only the final output. Audible only on heavily overdriven mixes. |
 
 ---
 
@@ -192,5 +202,5 @@ Covered by `TestTilemapWordBits` in `test_ppu_scroll.py`.
 | Component | Game-Breaking Missing Features | Cython Bottleneck |
 |---|---|---|
 | **CPU** | ✅ Complete | ✅ Complete |
-| **APU** | ✅ Complete (DSP/audio out of scope) | ✅ Complete (`__getitem__`/`__setitem__` dispatch is remaining bottleneck) |
+| **APU + DSP** | ✅ Complete — audio plays. Known gaps: noise mode, PMON, programmable GAIN | ✅ Complete (`__getitem__`/`__setitem__` dispatch is remaining bottleneck) |
 | **PPU** | Modes 2/4/5/6/7 missing, `draw_point` discards output (sprites invisible), window/color-math absent, 16×16 tiles broken, 3× `NotImplementedError` getters | `main_bgs` Python list, `get_u32_color` untyped + `bpp**2`, `draw_tile` uses Python `zip`/`reversed`, NDC floats computed but unused |

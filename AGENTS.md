@@ -4,7 +4,7 @@
 
 A SNES emulator written in Python, targeting real-time emulation speed while keeping elegant Python syntax. The performance strategy is Cython (pure Python mode) compiled with PyPy 3.10, or a combination of both.
 
-The codebase is in active development. CPU and SPC700 instruction tests pass against the SingleStepTests suite. Super Mario World boots past the SPC700 IPL handshake and second-stage audio upload and renders the animated title screen (branch `apu-sync-timing-fixes`).
+The codebase is in active development. CPU and SPC700 instruction tests pass against the SingleStepTests suite. Super Mario World boots past the SPC700 IPL handshake and second-stage audio upload and renders the animated title screen.
 
 ## Build & Run
 
@@ -134,7 +134,7 @@ On startup, `pysnes.py` opens `cpu_trace.log` and compares CPU execution against
 ### Build System Notes
 - **Cython compilation is on hold.** PyPy alone is ~20× faster than CPython+Cython for this codebase as it currently stands, so the project runs from pure-Python source under PyPy. The `make build_pysnes` target and Cython decorators in the source still work, but you do not need to run `make build_pysnes` to develop or test — pure-Python source under PyPy is the supported path. If `*.so` files exist (left over from a previous build), Python imports them in preference to the `.py` source; `find pysnes -name "*.so" -delete` to fall back to the `.py` files.
 - **Cython version is pinned to 3.1.1** — DO NOT upgrade to 3.1.2, it has a "multiple definitions of function" bug: https://stackoverflow.com/questions/79687815/cython-multiple-definitions-of-function
-- **Python version must be ~3.10** — ImGui (now removed but still in pyproject.toml) didn't compile in 3.11 with PyPy
+- **Python version must be ~3.10** — ImGui (still in `pyproject.toml`) didn't compile in 3.11 with PyPy
 - All `.py` files in `pysnes/` are compiled into a single monolithic Cython `.so` extension
 - `setup.py` compiles everything and links against SDL2
 - `cythonize()` uses `cache=True` and `nthreads=cpu_count()` — only changed `.py` files are re-transpiled; Cython step is parallelised
@@ -144,21 +144,19 @@ On startup, `pysnes.py` opens `cpu_trace.log` and compares CPU execution against
 ## Architecture
 
 ```
-pysnes/pysnes.py               Main emulator class (PySNES) + entry point
-pysnes/bus/bus.py              Memory bus - routes reads/writes to all peripherals
-pysnes/rom.py                  ROM parser (LoROM/HiROM, header, vectors)
-pysnes/controller/controller.py  SNES controller input (keyboard mapping)
-pysnes/video/video.py          Video renderer wrapper
-pysnes/video/video_sdl2.py     SDL2 2D rendering engine (hardware-accelerated)
-pysnes/scheduler/scheduler.py  Event-driven master-clock scheduler
-pysnes/cpu/cpu.py              WDC65816 CPU core
-pysnes/cpu/dma.py              DMA/HDMA engine
-pysnes/cpu/wdc65816/           65816 instruction set, opcodes, addressing modes, disassembler
-pysnes/apu/apu.py              SPC700 audio CPU core + APU port I/O
-pysnes/apu/spc700/             SPC700 instructions, opcodes, addressing modes
-pysnes/ppu/ppu.py              Picture Processing Unit (main graphics pipeline)
-pysnes/ppu/data_structures.py  Background and sprite data structures
-pysnes/debugger/debugger.py    Debugger + live UI window
+pysnes/pysnes.py    Main emulator class + entry point
+pysnes/cpu/         WDC65816 CPU, DMA/HDMA engine, instruction set
+pysnes/apu/         SPC700 APU, S-DSP, SPC file support
+pysnes/ppu/         PPU graphics pipeline, data structures
+pysnes/bus/         Memory bus (address decoding, register routing)
+pysnes/scheduler/   Event-driven master-clock scheduler
+pysnes/video/       SDL2 video renderer
+pysnes/audio/       SDL2 audio output
+pysnes/controller/  SNES controller input
+pysnes/savestate/   Save state serialization
+pysnes/harness/     Headless scripting harness + NDJSON RPC CLI
+pysnes/debugger/    Live debug TUI
+pysnes/rom.py       ROM parser (LoROM/HiROM, header, vectors)
 ```
 
 ### Main Loop (scanline-based)
@@ -169,68 +167,22 @@ pysnes/debugger/debugger.py    Debugger + live UI window
 2. When all scanlines done → render frame buffer via SDL2 → back to scanline 0
 
 ### Component Details
-- **CPU**: WDC65816, 3.58 MHz, 16-bit with 6502 emulation mode. Full 256-opcode set, all addressing modes.
-- **APU**: SPC700 @ 1.024 MHz. 3 timers, 4 I/O ports to main CPU, 64KB address space, embedded IPL ROM.
-- **PPU**: 64KB VRAM, 512B CGRAM (256 colors), OAM sprites, 4 backgrounds (BG1-4), 256x256 pixel buffer.
-- **Bus**: Routes 24-bit address space — LoROM mapping, RAM shadows, PPU/APU registers, DMA.
-- **Video**: SDL2 hardware-accelerated 2D renderer. OpenGL and ImGui were removed for performance reasons.
+- **CPU**: WDC65816, 3.58 MHz, 16-bit with 6502 emulation mode
+- **APU**: SPC700 @ 1.024 MHz, 3 timers, 4 I/O ports, 64KB address space, embedded IPL ROM
+- **PPU**: 64KB VRAM, 512B CGRAM, OAM, 4 backgrounds, 256×224 output
+- **Bus**: 24-bit address space — LoROM/HiROM mapping, RAM, PPU/APU registers, DMA
+- **Video/Audio**: SDL2 hardware-accelerated renderer + 32 kHz stereo audio queue
 
 ## Implementation Status
 
-### Fully Implemented
 - WDC65816 CPU: all 256 opcodes, all addressing modes, flags, registers. Passes all 512 SingleStepTests (1 case/opcode/mode by default)
 - SPC700 APU: full instruction set, registers, memory, timers, I/O ports to CPU. Passes all 25,600 SingleStepTests cases at 100/opcode
-- PPU basics: tilemap rendering, BG1-4, sprite composition, CGRAM palette
-- Memory bus: address decoding, LoROM mapping, RAM regions, PPU/APU register access
-- ROM loading: header parsing, vector extraction (RESET, NMI, IRQ, COP, ABORT)
-- SDL2 video rendering
-- Keyboard input (SNES controller mapping)
-- Debug TUI: Rich-based live display (FPS, CPU registers, instruction trace) — toggle with F12, pause with SPACE
+- PPU: all 8 BG modes (some with approximations), sprites, color math, window masking, HDMA, mosaic
+- S-DSP: BRR decoding, ADSR/GAIN, Gaussian interpolation, echo/reverb, 8-voice mixing
+- Save states, memory bus, ROM loading, SDL2 video and audio, keyboard input, debug TUI
 
-### Partially Implemented / Known TODOs
-- **Mosaic effect**: stubbed (`if self.mosaic_enabled[bg.number - 1] and False:`)
-- **PPU Mode 7**: M7A-M7Y matrix registers present but not functional
-- **NMI/V-Blank**: basic implementation, timing edge cases likely
-- **DMA/HDMA**: partial, timing accuracy unknown
-- **OAM Y wrapping**: X sign-extension done; Y still uses the `y==240 → hide` heuristic, which is close but not exactly hardware-accurate.
-- **HiROM**: LoROM is the primary target; HiROM may have mapping issues
-- **Window effects**: masking/windowing not implemented
-- **Color math**: SNES special effects processing not implemented
+Known gaps are documented as `# TODO` comments at the relevant code sites.
 
-### Not Implemented
-- Audio output (DSP registers are accessed but no actual sound synthesis)
-- SRAM / save states
-- PPU Mode 0-7 full support (only basic modes work)
-- Overscan mode (partially recognized)
-
-## PPU Test Status
-
-### Passing (ppu_improvements branch)
-| Test | ROM | Notes |
-|------|-----|-------|
-| bg1_2bpp | BGMAP/8x8/2BPP/8x8BG1Map2BPP32x328PAL | 5 frames |
-| bg2_2bpp | BGMAP/8x8/2BPP/8x8BG2Map2BPP32x328PAL | 5 frames |
-| bg3_2bpp | BGMAP/8x8/2BPP/8x8BG3Map2BPP32x328PAL | 5 frames |
-| bg4_2bpp | BGMAP/8x8/2BPP/8x8BG4Map2BPP32x328PAL | 5 frames |
-| bg_4bpp | BGMAP/8x8/4BPP/8x8BGMap4BPP32x328PAL | 5 frames |
-| tile_flip | BGMAP/8x8/8BPP/TileFlip | 20 frames (FadeIN finishes at frame 15) |
-| window_hdma | Window/WindowHDMA | 3 frames (brightness=3 into FadeIN) |
-| mosaic_mode3 | Mosaic/Mode3 | 2 frames (brightness=2 into FadeIN) |
-| scroll tests | synthetic (no ROM) | 18 unit tests in test_ppu_scroll.py |
-
-### Failing / Excluded
-| Test | Status | Root Cause |
-|------|--------|------------|
-| bg_8bpp | removed | ROM scrolls 1px/frame — any timing difference = totally different image |
-| mode7_rotzoom | NotImplementedError | Mode 7 matrix transform not implemented |
-
-### Key PPU Fixes (this branch)
-- `tiledata_addr` formula: `<< 12` → `<< 13` (8KB steps, not 4KB) in `bg12nba_set` / `bg34nba_set`
-- Scanline offset: `orgy = scry - 1` correctly writes scanline N to row N-1 of framebuffer
-- Bus registers: implemented missing BG scroll, BG tilemap/tiledata address registers
-- HDMA engine: `hdma_init()` per-frame, `hdma_scanline()` per H-blank; render-before-HDMA ordering
-- HDMA bit 7 semantics: 0 = do-not-repeat (same data per scanline), 1 = do-repeat (fresh data per scanline)
-- Window masking: W1 enable/invert for BG1-BG4 via W12SEL/W34SEL/TMW applied per-pixel
 
 ## Integration Testing (Mesen oracle)
 
@@ -279,13 +231,11 @@ uv run pytest pysnes/apu/test_spc700.py
 # APU / timer / interrupt / scheduler unit tests
 uv run pytest pysnes/apu/test_apu.py pysnes/apu/test_timers.py pysnes/bus/test_interrupts.py pysnes/scheduler/test_scheduler.py
 
-# PPU scroll unit tests (synthetic, no ROM needed):
-uv run pytest pysnes/ppu/test_ppu_scroll.py -v
+# PPU unit tests (synthetic, no ROM, no Mesen):
+uv run pytest pysnes/ppu/test_ppu_scroll.py pysnes/ppu/test_ppu_sprites.py pysnes/ppu/test_ppu_bgmode.py pysnes/ppu/test_ppu_registers.py pysnes/ppu/test_ppu_bg_window.py pysnes/ppu/test_ppu_color_math.py pysnes/ppu/test_ppu_color_math_window.py pysnes/ppu/test_ppu_mosaic.py pysnes/ppu/test_ppu_forced_blank.py -v
 
-# PPU screenshot regression tests (requires reference PNGs in tests/ppu_references/)
+# PPU screenshot regression tests (Mesen is the live oracle — no static reference PNGs needed):
 uv run pytest pysnes/ppu/test_ppu.py -m ppu
-# Generate/update reference PNGs from Mesen (run once, then commit the PNGs):
-uv run pytest pysnes/ppu/test_ppu.py -m ppu --update-refs
 
 # Filter options (apply to test_cpu.py and test_spc700.py)
 uv run pytest pysnes/cpu/test_cpu.py --opcode ea           # single opcode
@@ -305,40 +255,6 @@ uv run pytest pysnes/cpu/test_cpu.py --opcode ea --mode n  # combine filters
 - **Recommended invocation: `-n auto --dist=loadgroup`** for `test_cpu.py` and `test_spc700.py`. Each param carries an `xdist_group(file_path)` marker, so `--dist=loadgroup` pins all cases from one JSON file to a single worker; a single-slot file cache in `_load_case` then parses that JSON only once per worker. Delete `.pytest_cache/ss_*.pickle` if you suspect stale cache (it's keyed on filter args + JSON mtimes and should self-invalidate).
 - Cycle count is checked against `len(test_case["cycles"])` for every CPU opcode. The 65816 harness does not verify per-cycle bus-status bits (VDA/VPA/VPB/MLB/M/X/E); only R/W.
 
-## Performance Notes
-- SDL2 rendering is 10-20x faster than the previous OpenGL approach
-- ImGui was dropped — it was killing performance (replaced by Rich TUI)
-- Current FPS target: ~60 Hz; last measured around 21-22 FPS with SDL2 (pure PyPy, no Cython)
-- `Profile.prof` exists in root — can be analyzed with pstats/snakeviz
-- `make profile` runs cProfile
-
-### PyPy vs Cython — Critical Finding
-
-**Pure PyPy (no `make build`) is currently faster than PyPy + Cython.**
-
-Measured on Super Mario World:
-- Pure PyPy (no compiled extensions): **>20 FPS**
-- PyPy + Cython compiled extensions: **~4 FPS**
-
-**Why Cython hurts PyPy performance:** PyPy's JIT traces through pure-Python call graphs freely. Every call into a compiled C extension (`.so`) breaks the JIT trace — the JIT must exit, make the C call, then re-enter and re-warm on return. With the PPU called 262 times/frame and APU called multiple times per scanline, these trace breaks accumulate into a ~5× slowdown.
-
-**Current strategy:** Run without building (or after `make clean`) to use pure PyPy JIT. The Cython build infrastructure is retained because:
-- The per-module `setup.py` is correct and needed if ever targeting CPython
-- Individual self-contained modules (PPU, APU) may benefit from Cython on CPython
-- Hot-path modules (cpu.py, bus.py, dma.py, wdc65816/*.py) are explicitly excluded from compilation even when building, because they cross module boundaries on every instruction and would break JIT traces
-
-**If evaluating Cython further:** The right target is CPython + Cython (not PyPy + Cython). Alternatively, compile only truly self-contained modules with no cross-module hot calls. Avoid `annotation_typing=False` — it silently disables all Cython type optimizations and causes severe slowdowns.
-
-- **Cython HTML annotation reports**: after `make build`, each `.py` file gets a `.html` counterpart (e.g. `ppu.html`). Open it in a browser — yellow-highlighted lines are slow paths that still go through the Python interpreter. Darker yellow = more interpreter calls. These are the primary indicator of Cython optimization bottlenecks: typed variables, `@cython.cfunc`, and avoiding Python builtins (`zip`, `reversed`, `**`) on hot paths eliminate the yellow.
-
-### Benchmarking Rule
-**Before and after every performance change, measure and record results.** Use the relevant benchmark for the component being optimized:
-- **CPU throughput**: `uv run pytest pysnes/cpu/test_cpu.py --opcode ea -s` — look for "instr/sec" in output
-- **APU throughput**: `uv run pytest pysnes/apu/test_spc700.py --opcode 00 -s` — look for "instr/sec"
-- **FPS (full emulator)**: run with a ROM and read the FPS from the window title bar
-- **PPU rendering throughput**: `time uv run pytest pysnes/ppu/test_ppu.py -m ppu` — wall-clock time dominated by PPU rendering; fully automated and reproducible
-
-Document results in the PR/commit message as: `before: X instr/sec → after: Y instr/sec (+Z%)` or `before: Xs → after: Ys` for PPU.
 
 ## Git Workflow
 - **Always create a new branch off `main` before making changes.** Check `git branch` first; if already on a feature branch (not `main`), continue there. If on `main`, run `git checkout -b <descriptive-branch-name>` before editing any files.
@@ -347,7 +263,7 @@ Document results in the PR/commit message as: `before: X instr/sec → after: Y 
 
 ## Key Design Decisions
 - **Pure Python mode Cython**: No `.pyx` files — all `.py` files compiled by Cython. This allows running without a build step during development.
-- **PyPy + Cython**: Can run either way — PyPy JIT or Cython-compiled CPython. Cython build is the primary path.
+- **PyPy + Cython**: Can run either way — PyPy JIT or Cython-compiled CPython. Pure PyPy (no build step) is faster; every `.so` call breaks the JIT trace, causing a ~5× slowdown when PPU/APU are compiled.
 - **SDL2 over OpenGL/ImGui**: Switched for major performance gains. Don't reintroduce OpenGL/ImGui.
 - **Automated testing**: We aim for every functionallity to be covered by automated tests. When there is a change to be made, the tests need to be created first to perfectly outline the end goal.
 - **Scanline-based timing**: CPU runs until scanline budget, then PPU renders that scanline. This is not how real SNES hardware operates, but it's a compromise to improve performance in hopes for most games to work.
@@ -357,14 +273,3 @@ Document results in the PR/commit message as: `before: X instr/sec → after: Y 
 - ROM path is passed as a positional CLI argument: `python -m pysnes.pysnes <rom>`
 - Optional `--trace <ref>` flag enables CPU trace comparison against a reference log
 
-## APU↔CPU Handshake Notes
-
-Super Mario World boots to the animated title screen on branch `apu-sync-timing-fixes`. Three APU-related fixes live on that branch:
-
-1. **Cycle-accurate APU sync on CPU port reads** — in `pysnes/bus/bus.py` the sync target is `scheduler.master_clock + (cpu.cycles - cpu.prev_cycles)` so the APU catches up to the actual bus-cycle time of the $2140–$2143 read, not the instruction start.
-2. **Exact 21477272/1024000 MC↔APU-clock ratio** — integer 21 approximation accumulated ~60 MC drift over IPL boot; exact ratio eliminates it.
-3. **SPC-side port writes no longer mirror into the CPU→SPC latch** — the four $F4/$2140-style I/O pairs are independent physical registers (one SPC-writes/CPU-reads, one CPU-writes/SPC-reads). An old mirror in `Apu._write` corrupted the CPU→SPC latch on every SPC write, so the N-SPC driver read back its own acknowledgement bytes instead of the CPU's handshake values and the second-stage upload deadlocked.
-
-**cycles vs icycles** (reference):
-- `icycles`: counts bus transactions for the current instruction (each read/write/idle = +1). What SingleStepTests verify.
-- `cycles`: counts actual SNES master clock units elapsed (each bus cycle adds 6, 8, or 12 MC depending on memory region). What the scheduler uses.

@@ -215,7 +215,13 @@ class DMA:
             channel.hdma_enable = data & (1 << enable_bit)
 
     def hdma_init(self) -> None:
-        """Initialize all HDMA-enabled channels at the start of each frame."""
+        """Initialize all HDMA-enabled channels at the start of each frame.
+
+        TODO: DMA/HDMA timing — cycle counts for DMA transfers and HDMA setup are
+        not deducted from the CPU cycle budget; games that rely on precise DMA
+        timing (e.g. mid-frame HDMA effects that depend on cycle-accurate firing)
+        may render incorrectly.
+        """
         for ch in self.channels:
             if not ch.hdma_enable:
                 ch._hdma_active = False

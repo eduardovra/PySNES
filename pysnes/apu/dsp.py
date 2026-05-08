@@ -388,6 +388,7 @@ class Dsp:
             # --- cache per-voice registers once ---
             base     = vi << 4
             pitch    = (regs[base | 0x02] | (regs[base | 0x03] << 8)) & 0x3FFF
+            # TODO: PMON (0x2D) — if bit vi is set, modulate pitch by previous voice's output sample
             voll     = _s8(regs[base | 0x00])
             volr     = _s8(regs[base | 0x01])
             adsr1    = regs[base | 0x05]
@@ -538,6 +539,7 @@ class Dsp:
                 if not active:
                     break
 
+                # TODO: NON (0x3D) — if bit vi is set, replace BRR sample with LFSR noise output
                 # --- Gaussian interpolation ---
                 goff = pitch_frac >> 4
                 sample = (
@@ -597,6 +599,8 @@ class Dsp:
         self._echo_pos = int((ep + n_samples) % echo_len)
 
         # Pass 4: master volume mix + echo volume.
+        # TODO: stereo hard-clipping — SNES clips each voice's L+R independently before summing
+        # into left_arr/right_arr; current code clips only the final master mix.
         if not muted:
             out_l = np.clip((left_arr  * mvoll) >> 7, -32768, 32767)
             out_r = np.clip((right_arr * mvolr) >> 7, -32768, 32767)

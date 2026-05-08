@@ -42,6 +42,8 @@ class Bus:
         self.rom = rom  # program memory (LoROM or HiROM, selected below)
         mapping_mode = rom.snes_header.mapping_mode
         self.is_hirom = mapping_mode == MappingMode.HIROM or mapping_mode == MappingMode.HIROM_FAST
+        # TODO: HiROM mapping is implemented but lightly tested; address mirroring and
+        # SRAM window placement may diverge from hardware for some titles.
         self.cpu = cpu
         self.apu = apu  # Sound system [0x2140-0x217F]
         self.ppu = ppu
@@ -123,7 +125,12 @@ class Bus:
         return self.sram_size
 
     def raise_nmi(self) -> None:
-        """Called by PPU at V-Blank start (rising NMI edge)."""
+        """Called by PPU at V-Blank start (rising NMI edge).
+
+        TODO: NMI timing — on real hardware the NMI fires ~2 CPU cycles after V-Blank
+        starts; we fire it synchronously which may be slightly early for games that
+        poll $4210 before the NMI handler runs.
+        """
         self.cpu.status.nmi_line = True
         if self.cpu.status.auto_joypad_read_enable:
             self._update_controller_autojoypad_read()

@@ -19,7 +19,7 @@ _TOTAL_SCANLINES: int = 262         # total scanlines per frame (NTSC)
 # SNES default resolution (NTSC)
 SCREEN_WIDTH = 256
 SCREEN_HEIGHT = 224
-# For PAL mode:
+# TODO: overscan — PAL uses 239/240 visible lines; SETINI $2133 bit 2 enables NTSC pseudo-overscan to 239 lines
 # SCREEN_HEIGHT = 240
 
 
@@ -1032,6 +1032,13 @@ class Ppu:
 
         VRAM layout: each word at address N has low byte = tilemap tile number
         (128×128 grid) and high byte = 8bpp pixel data for tile/pixel lookups.
+
+        TODO: EXTBG — M7SEL bit 6 enables a second BG layer from the high byte of
+        the VRAM word; priority split between BG1 and BG2(EXTBG) not yet wired.
+        TODO: repeat/wrap — M7SEL bits 0-1 control out-of-bounds behavior
+        (0=wrap, 1=transparent, 2=fill with tile 0); currently always wraps.
+        TODO: border fill — M7SEL bit 7 selects between transparent and tile-0
+        fill for pixels that map outside the 1024×1024 mode-7 plane.
         """
         # v_counter is the hardware scanline (1 = first visible line).
         # The affine transform uses the hardware scanline directly; the output
@@ -1653,7 +1660,7 @@ class Ppu:
         for obj in self.oam.objects:
             if priority >= 0 and obj.priority != priority:
                 continue
-            if obj.y == 240:  # Games use y=240 to hide a sprite entirely off-screen.
+            if obj.y == 240:  # TODO: replace with proper Y-bounds check; y=240 is the common hide convention but not the hardware rule
                 continue
 
             # OBJ X is 9-bit signed (Anomie/fullsnes): values 256..511 represent

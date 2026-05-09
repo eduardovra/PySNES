@@ -18,6 +18,9 @@ _TOTAL_SCANLINES: int = 262         # total scanlines per frame (NTSC)
 
 # SNES default resolution (NTSC)
 SCREEN_WIDTH = 256
+
+# Bit positions for each of the 8 pixels in a tile byte, right-to-left.
+_PIXEL_SEQUENCE = [7, 6, 5, 4, 3, 2, 1, 0]
 SCREEN_HEIGHT = 224
 # TODO: overscan — PAL uses 239/240 visible lines; SETINI $2133 bit 2 enables NTSC pseudo-overscan to 239 lines
 # SCREEN_HEIGHT = 240
@@ -150,6 +153,7 @@ class Ppu:
         # array.array('I') gives PyPy direct unboxed 32-bit integer access.
         self._cgram_cache = array('I', [0] * 256)
         self._cgram_dirty: bool = True
+
 
     _SCALAR_STATE = (
         "vmain", "vmaddl", "vmaddh", "_vmdatal", "_vmdatah", "_vram_prefetch",
@@ -1474,18 +1478,25 @@ class Ppu:
         tile_height: int,
         tile_character: int,
     ) -> None:
-        """
-        Determines the number of horizontal and vertical
-        tiles to be drawn accordingly to width and height,
-        then calls self.draw_tile to render them
-        """
         h_tiles = tile_width // 8
         v_tiles = tile_height // 8
         vc = self.v_counter
+        h_flip = tile.h_flip
+        v_flip = tile.v_flip
+        palette = tile.palette
+        vram = self.vram
+        main_bgs = self.main_bgs
+        main_layer = self.main_layer
+        if self._cgram_dirty:
+            self._rebuild_cgram_cache()
+        cgram_cache = self._cgram_cache
+        tile_size = 8 * bpp
+        palette_base = palette * (1 << bpp)
+        y_idx = (vc - 1) * SCREEN_WIDTH
 
         for tile_pos_v in range(v_tiles):
             # Compute the screen-Y of the top of this tile row (before flip).
-            if tile.v_flip:
+            if v_flip:
                 tile_row_y = y_offset + (v_tiles - 1 - tile_pos_v) * 8
             else:
                 tile_row_y = y_offset + tile_pos_v * 8
@@ -1493,86 +1504,42 @@ class Ppu:
             if not (tile_row_y <= vc < tile_row_y + 8):
                 continue
 
-            # Which pixel row within the 8x8 tile corresponds to vc.
+            # Which VRAM row within the 8×8 tile maps to vc.
             # v_flip reverses the tile's internal row order.
             row_in_tile = vc - tile_row_y
-            vram_row = (7 - row_in_tile) if tile.v_flip else row_in_tile
+            i_base = ((7 - row_in_tile) if v_flip else row_in_tile) * 2
 
             for tile_pos_h in range(h_tiles):
-                # compute x position
-                if tile.h_flip:
+                if h_flip:
                     x = x_offset + (h_tiles - 1 - tile_pos_h) * 8
                 else:
                     x = x_offset + tile_pos_h * 8
 
-                # bytes per 8×8 tile: 8 rows × bpp bytes/row (32 for 4BPP)
-                tile_size = 8 * bpp
                 tile_addr = tile_character + tile_pos_h + tile_pos_v * 16
-                vram_index = (tile_base_addr + tile_addr * tile_size) & 0xFFFF
+                # VRAM is 64KB; mask to 16 bits to wrap correctly.
+                i = (i_base + tile_base_addr + tile_addr * tile_size) & 0xFFFF
 
-                self.draw_tile(
-                    tile=tile,
-                    tile_data=self.vram,
-                    tile_data_index=vram_index,
-                    bpp=bpp,
-                    x_offset=x,
-                    vram_row=vram_row,
-                )
+                if h_flip:
+                    x_sequence = range(x + 7, x - 1, -1)
+                else:
+                    x_sequence = range(x, x + 8)
 
-    def draw_tile(
-        self,
-        tile: Tilemap | Object,
-        tile_data,
-        tile_data_index: int,
-        bpp: int,
-        x_offset: int,
-        vram_row: int,
-    ) -> None:
-        """Draw one 8x8 tile row onto the current scanline"""
-        x_sequence = range(x_offset, x_offset + 8)
-        if tile.h_flip:
-            x_sequence = list(reversed(x_sequence))
-
-        pixel_sequence = list(reversed(range(8)))
-        i = vram_row * 2
-        y = self.v_counter
-        for pixel, x in zip(pixel_sequence, x_sequence):
-            self.draw_point(i, tile_data, tile_data_index, bpp, tile.palette, pixel, x, y)
-
-    def draw_point(
-        self,
-        i: int,
-        tile_data,
-        tile_data_index: int,
-        bpp: int,
-        palette: int,
-        pixel: int,
-        x: int,
-        y: int,
-    ) -> None:
-        mask = 1 << pixel
-        # offset to the correct vram byte. VRAM is 64KB and wraps on real
-        # hardware, so mask each byte index to 16 bits to avoid IndexError
-        # when a sprite's tile data sits near the top of VRAM.
-        i += tile_data_index
-        tlen = len(tile_data)
-
-        l = tile_data[(i + 0) % tlen]
-        h = tile_data[(i + 1) % tlen]
-        color = (h & mask) >> pixel << 1 | (l & mask) >> pixel << 0
-        if bpp >= 4:
-            l = tile_data[(i + 16) % tlen]
-            h = tile_data[(i + 17) % tlen]
-            color |= (h & mask) >> pixel << 3 | (l & mask) >> pixel << 2
-
-        # color == 0 is transparent — do not overwrite existing pixel
-        if color and 0 <= x < SCREEN_WIDTH:
-            u32_color = self.get_u32_color(bpp, palette, color)
-            idx: cython.uint = (y - 1) * SCREEN_WIDTH + x
-            self.main_bgs[idx] = u32_color
-            # OBJ palettes 4-7 (stored as 12-15 in the global palette space) participate
-            # in color math (layer 5). Palettes 0-3 are immune (layer 6, never matched).
-            self.main_layer[idx] = 5 if palette >= 12 else 6
+                for pixel, px in zip(_PIXEL_SEQUENCE, x_sequence):
+                    mask = 1 << pixel
+                    l = vram[i]
+                    h = vram[(i + 1) & 0xFFFF]
+                    color = (h & mask) >> pixel << 1 | (l & mask) >> pixel << 0
+                    if bpp >= 4:
+                        l = vram[(i + 16) & 0xFFFF]
+                        h = vram[(i + 17) & 0xFFFF]
+                        color |= (h & mask) >> pixel << 3 | (l & mask) >> pixel << 2
+                    if color and 0 <= px < SCREEN_WIDTH:
+                        u32_color = cgram_cache[palette_base + color]
+                        idx: cython.uint = y_idx + px
+                        main_bgs[idx] = u32_color
+                        # OBJ palettes 4-7 (12-15 in global space) use color math (layer 5).
+                        # Palettes 0-3 are immune (layer 6).
+                        main_layer[idx] = 5 if palette >= 12 else 6
 
     def _rebuild_cgram_cache(self) -> None:
         cgram = self.cgram
@@ -1644,8 +1611,7 @@ class Ppu:
                 continue
 
             # OBJ X is 9-bit signed (Anomie/fullsnes): values 256..511 represent
-            # -256..-1, letting sprites straddle the left edge. draw_point's
-            # 0 ≤ x < 256 guard clips the off-screen pixels.
+            # -256..-1, letting sprites straddle the left edge.
             x_screen = obj.x - 512 if obj.x >= 256 else obj.x
             # Apply name_select: OAM byte 3 bit 0 selects the second sprite name
             # table, offset from the first by (oam_nameselect+1)*0x1000 VRAM words.

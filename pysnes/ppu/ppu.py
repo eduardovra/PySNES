@@ -1493,13 +1493,17 @@ class Ppu:
             if not (tile_row_y <= vc < tile_row_y + 8):
                 continue
 
+            # Which pixel row within the 8x8 tile corresponds to vc.
+            # v_flip reverses the tile's internal row order.
+            row_in_tile = vc - tile_row_y
+            vram_row = (7 - row_in_tile) if tile.v_flip else row_in_tile
+
             for tile_pos_h in range(h_tiles):
-                # compute x, y positions
+                # compute x position
                 if tile.h_flip:
                     x = x_offset + (h_tiles - 1 - tile_pos_h) * 8
                 else:
                     x = x_offset + tile_pos_h * 8
-                y = tile_row_y
 
                 # bytes per 8×8 tile: 8 rows × bpp bytes/row (32 for 4BPP)
                 tile_size = 8 * bpp
@@ -1512,7 +1516,7 @@ class Ppu:
                     tile_data_index=vram_index,
                     bpp=bpp,
                     x_offset=x,
-                    y_offset=y,
+                    vram_row=vram_row,
                 )
 
     def draw_tile(
@@ -1522,34 +1526,18 @@ class Ppu:
         tile_data_index: int,
         bpp: int,
         x_offset: int,
-        y_offset: int,
+        vram_row: int,
     ) -> None:
-        """Draw one 8x8 tile"""
+        """Draw one 8x8 tile row onto the current scanline"""
         x_sequence = range(x_offset, x_offset + 8)
         if tile.h_flip:
             x_sequence = list(reversed(x_sequence))
-        y_sequence = range(y_offset, y_offset + 8)
-        if tile.v_flip:
-            y_sequence = list(reversed(y_sequence))
 
-        # Iterator for lines in the tile
-        line_sequence = range(0, 16, 2)
-        # Iterator for pixels in lines
         pixel_sequence = list(reversed(range(8)))
-        # Each iteration will print a line of a tile
-        for i, y in zip(line_sequence, y_sequence):
-            # Wrap y around
-            screen_height = 448 # 224 when non interlaced
-            if y >= screen_height:
-                y = y % screen_height
-
-            # ugly hack to only draw the current scanline
-            if y != self.v_counter:
-                continue
-
-            # Each iteration will print a pixel from the line
-            for pixel, x in zip(pixel_sequence, x_sequence):
-                self.draw_point(i, tile_data, tile_data_index, bpp, tile.palette, pixel, x, y)
+        i = vram_row * 2
+        y = self.v_counter
+        for pixel, x in zip(pixel_sequence, x_sequence):
+            self.draw_point(i, tile_data, tile_data_index, bpp, tile.palette, pixel, x, y)
 
     def draw_point(
         self,
@@ -1563,8 +1551,6 @@ class Ppu:
         y: int,
     ) -> None:
         mask = 1 << pixel
-        assert bpp in (2, 4), bpp
-
         # offset to the correct vram byte. VRAM is 64KB and wraps on real
         # hardware, so mask each byte index to 16 bits to avoid IndexError
         # when a sprite's tile data sits near the top of VRAM.

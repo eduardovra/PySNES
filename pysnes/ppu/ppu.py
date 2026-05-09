@@ -1644,17 +1644,23 @@ class Ppu:
         if not self.oam_main_screen_enable:
             return
 
+        vc = self.v_counter
         for obj in self.oam.objects:
             if priority >= 0 and obj.priority != priority:
                 continue
             if obj.y == 240:  # TODO: replace with proper Y-bounds check; y=240 is the common hide convention but not the hardware rule
                 continue
 
+            tile_width, tile_height = self.get_obj_dimensions(obj.size)
+            # Skip sprites whose Y range doesn't include the current scanline,
+            # avoiding draw_tiles call overhead for the majority of objects.
+            if not (obj.y <= vc < obj.y + tile_height):
+                continue
+
             # OBJ X is 9-bit signed (Anomie/fullsnes): values 256..511 represent
             # -256..-1, letting sprites straddle the left edge. draw_point's
             # 0 ≤ x < 256 guard clips the off-screen pixels.
             x_screen = obj.x - 512 if obj.x >= 256 else obj.x
-            tile_width, tile_height = self.get_obj_dimensions(obj.size)
             # Apply name_select: OAM byte 3 bit 0 selects the second sprite name
             # table, offset from the first by (oam_nameselect+1)*0x1000 VRAM words.
             tile_base_word = self.oam_tiledata_address

@@ -24,34 +24,31 @@ def test_forced_blank_overwrites_stale_scanline_with_black():
         assert ppu.main_layer[x] == 0
 
 
-def test_forced_blank_mid_frame_clears_already_rendered_rows():
-    """When forced blank is asserted after a few scanlines have rendered,
-    inidisp_set must retroactively clear those rows so stale content
-    (e.g. old sprites from a previous scene) doesn't flash at the top."""
+def test_forced_blank_mid_frame_does_not_clear_earlier_snapshots():
+    """With deferred rendering, asserting forced blank mid-frame affects only
+    scanlines whose HBlank snapshot is captured after the assertion.  Scanlines
+    snapshotted before display_disable=True are rendered normally at VBlank;
+    no retroactive clearing of the framebuffer occurs (that matched the old
+    immediate-render model, not real hardware behaviour)."""
     ppu = Ppu()
 
-    # Simulate 4 scanlines already rendered with visible data (rows 0..3).
+    # Seed 4 rows with red so we can tell whether they were cleared.
     for row in range(4):
         base = row * SCREEN_WIDTH
         for x in range(SCREEN_WIDTH):
-            ppu.main_bgs[base + x] = 0xFF0000FF  # red
+            ppu.main_bgs[base + x] = 0xFF0000FF
             ppu.sub_bgs[base + x] = 0xFF0000FF
-            ppu.main_layer[base + x] = 5  # OBJ layer
+            ppu.main_layer[base + x] = 5
 
-    # v_counter=4 means scanlines 1..4 have already been rendered (rows 0..3).
+    # v_counter=4 — HBlank snapshots for scanlines 1-4 would have been taken
+    # with display_disable=False (already).  Asserting forced blank now only
+    # affects subsequent snapshots, not the existing framebuffer data.
     ppu.v_counter = 4
+    ppu.inidisp_set(0x80)  # forced blank, brightness 0
 
-    # Game writes $80 to $2100 mid-frame (e.g. from main loop, not NMI).
-    ppu.inidisp_set(0x80)
-
-    # All 4 rendered rows must now be black, not the stale red pixels.
+    # Framebuffer is written only at VBlank; inidisp_set alone must not touch it.
     for row in range(4):
         base = row * SCREEN_WIDTH
         for x in (0, 64, 128, 255):
-            assert _rgb(ppu.main_bgs[base + x]) == (0, 0, 0), \
-                f"row {row} x={x} should be black after mid-frame forced blank"
-            assert _rgb(ppu.sub_bgs[base + x]) == (0, 0, 0)
-            assert ppu.main_layer[base + x] == 0
-
-    # Rows beyond v_counter should be untouched (not yet rendered).
-    assert ppu.main_bgs[4 * SCREEN_WIDTH] == 0, "row 4 should be untouched"
+            assert _rgb(ppu.main_bgs[base + x]) == (255, 0, 0), \
+                f"row {row} x={x} framebuffer must be untouched by inidisp_set alone"

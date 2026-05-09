@@ -1472,8 +1472,7 @@ class Ppu:
         tile_base_addr: int,
         tile_width: int,
         tile_height: int,
-        tile_addr: Optional[int] = None,
-        tile_character: Optional[int] = None,
+        tile_character: int,
     ) -> None:
         """
         Determines the number of horizontal and vertical
@@ -1502,22 +1501,10 @@ class Ppu:
                     x = x_offset + tile_pos_h * 8
                 y = tile_row_y
 
-                # used when drawing objects...
-                if tile_character is not None:
-                    # bytes per 8×8 tile: 8 rows × bpp bytes/row (32 for 4BPP)
-                    tile_size = 8 * bpp
-                    tile_addr = tile_character + tile_pos_h + tile_pos_v * 16
-                    vram_index = (tile_base_addr + tile_addr * tile_size) & 0xFFFF
-                else:
-                    c = tile_addr
-                    if bpp == 2:
-                        vram_index = (tile_base_addr + c * 16) & 0x1fff0 & 0xFFFF
-                    elif bpp == 4:
-                        vram_index = (tile_base_addr + c * 32) & 0x1ffe0 & 0xFFFF
-                    elif bpp == 8:
-                        vram_index = (tile_base_addr + c * 16) & 0x1fff0 & 0xFFFF
-                    else:
-                        raise RuntimeError(f"Unsupported bpp {bpp}")
+                # bytes per 8×8 tile: 8 rows × bpp bytes/row (32 for 4BPP)
+                tile_size = 8 * bpp
+                tile_addr = tile_character + tile_pos_h + tile_pos_v * 16
+                vram_index = (tile_base_addr + tile_addr * tile_size) & 0xFFFF
 
                 self.draw_tile(
                     tile=tile,

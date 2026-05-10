@@ -429,7 +429,7 @@ class Dsp:
             dr = (adsr1 >> 4) & 0x07
             sr = adsr2 & 0x1F
 
-            voice_out = np.zeros(n_samples, dtype=np.int32)
+            voice_out = [0] * n_samples
 
             for s in range(n_samples):
                 # --- envelope step (inlined) ---
@@ -569,8 +569,9 @@ class Dsp:
             v.active      = active
 
             # --- apply voice volumes with NumPy ---
-            voice_l = (voice_out * voll) >> 7
-            voice_r = (voice_out * volr) >> 7
+            voice_np = np.array(voice_out, dtype=np.int32)
+            voice_l = (voice_np * voll) >> 7
+            voice_r = (voice_np * volr) >> 7
             left_arr  += voice_l
             right_arr += voice_r
             if in_echo:

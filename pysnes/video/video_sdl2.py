@@ -2,7 +2,6 @@
 SDL2-based video renderer for PySNES
 Replaces OpenGL with direct SDL2 2D rendering for better performance
 """
-import array as _stdlib_array
 import sdl2 as sdl
 import numpy as np
 import ctypes
@@ -78,23 +77,12 @@ class SDL2Renderer:
         if not self.renderer or not self.texture:
             raise RuntimeError("SDL2 renderer not properly initialized!")
 
-        # Fast path: array.array framebuffer — create a zero-copy uint8 view once
-        # and reuse it every frame (np.frombuffer wraps the same buffer in-place).
-        if isinstance(texture_data, _stdlib_array.array):
-            if self._pixel_data is None:
-                n = self.width * self.height
-                self._pixel_data = np.frombuffer(texture_data, dtype=np.uint32, count=n).view(np.uint8)
-            pixel_data = self._pixel_data
-        elif hasattr(texture_data, 'dtype'):
-            pixel_data = texture_data.view(np.uint8) if texture_data.dtype == np.uint32 else texture_data.astype(np.uint32).view(np.uint8)
-            expected = self.width * self.height * 4
-            if len(pixel_data) > expected:
-                pixel_data = pixel_data[:expected]
-        else:
-            pixel_data = np.asarray(texture_data, dtype=np.uint32).view(np.uint8)
-            expected = self.width * self.height * 4
-            if len(pixel_data) > expected:
-                pixel_data = pixel_data[:expected]
+        # Zero-copy uint8 view of the framebuffer, cached so we don't allocate
+        # a new view object every frame.
+        if self._pixel_data is None:
+            n = self.width * self.height
+            self._pixel_data = np.frombuffer(texture_data, dtype=np.uint32, count=n).view(np.uint8)
+        pixel_data = self._pixel_data
 
         # Update texture with pixel data
         pitch = self.width * 4  # 4 bytes per pixel

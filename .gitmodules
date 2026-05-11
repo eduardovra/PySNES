@@ -16,3 +16,6 @@
 [submodule "submodules/SMWDisX"]
 	path = submodules/SMWDisX
 	url = git@github.com:IsoFrieze/SMWDisX.git
+[submodule "submodules/PyBoy"]
+	path = submodules/PyBoy
+	url = git@github.com:Baekalfen/PyBoy.git

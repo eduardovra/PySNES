@@ -151,6 +151,33 @@ class Ppu:
         self._cgram_cache = array('I', [0] * 256)
         self._cgram_dirty: bool = True
 
+        # Deferred rendering: per-scanline register snapshots captured at HBlank,
+        # consumed in a single render burst at VBlank start.
+        self._scanline_snapshots: list = [None] * _TOTAL_SCANLINES
+        # Dirty flags for copy-on-change optimisation — True forces a fresh
+        # capture on the next snapshot; initialised True so the first frame
+        # gets a valid baseline even before any writes occur.
+        self._cgram_written_since_snapshot: bool = True
+        self._last_snapshot_cgram: bytes = bytes(512)
+        self._oam_written_since_snapshot: bool = True
+        self._last_snapshot_oam = None
+
+    # Render-relevant registers that can change per-scanline via HDMA.
+    # mosaic_enabled is excluded (it's a list — handled explicitly in _capture_snapshot).
+    _RENDER_SNAPSHOT_FIELDS = (
+        "display_disable", "display_brightness",
+        "_bgmode", "_bgpriority",
+        "oam_main_screen_enable", "oam_sub_screen_enable",
+        "oam_tiledata_address", "oam_nameselect", "oam_base_size",
+        "w12sel", "w34sel", "wobjsel",
+        "wh0", "wh1", "wh2", "wh3",
+        "wbglog", "wobjlog", "tmw", "tsw",
+        "cgwsel", "cgadsub",
+        "coldata_r", "coldata_g", "coldata_b",
+        "m7a", "m7b", "m7c", "m7d", "m7x", "m7y", "m7sel", "m7_extbg",
+        "mosaic_size",
+    )
+
     _SCALAR_STATE = (
         "vmain", "vmaddl", "vmaddh", "_vmdatal", "_vmdatah", "_vram_prefetch",
         "display_brightness", "display_disable",
@@ -203,16 +230,10 @@ class Ppu:
         # also fires at V-Blank entry when forced-blank is off. Not yet wired —
         # belongs in the V-Blank transition in _vblank_start, not here.
         new_disable = (data >> 7) & 1
-        if new_disable and not self.display_disable and 0 < self.v_counter < _VBLANK_START_LINE:
-            # Forced blank just asserted during active display. Rows 0..v_counter-1
-            # have already been rendered with display enabled; retroactively clear
-            # them so stale pixels don't appear at the top of the frame.
-            black = 0x000000FF
-            limit = self.v_counter * SCREEN_WIDTH
-            for i in range(limit):
-                self.main_bgs[i] = black
-                self.sub_bgs[i] = black
-                self.main_layer[i] = 0
+        # With deferred rendering the framebuffer is written at VBlank, not
+        # scanline-by-scanline, so retroactive clearing is no longer needed.
+        # Forced blank is captured in each scanline's snapshot; the render pass
+        # naturally outputs black for those scanlines via draw_scanline_forced_blank.
         self.display_brightness = data & 0xF
         self.display_disable = new_disable
 
@@ -355,6 +376,7 @@ class Ppu:
         self._cgadd.value += 1
         self._cgdata = None
         self._cgram_dirty = True
+        self._cgram_written_since_snapshot = True
 
     @property
     def stat78(self) -> int:
@@ -417,6 +439,7 @@ class Ppu:
             self.oam.write(index - 0, data & 0xFF)
 
         self.oam_next()
+        self._oam_written_since_snapshot = True
 
     def oam_index(self) -> int:
         addr = (self._oamadd * 2) + self._oamodd
@@ -582,11 +605,11 @@ class Ppu:
         self.h_counter = 274
         self.bus.hblank = True
 
-        # Render the current scanline first, then fire HDMA.
-        # On real hardware, H-blank occurs after active display ends, so HDMA
-        # updates registers for the NEXT scanline, not the current one.
+        # Snapshot register state for deferred rendering (render pass runs at VBlank).
+        # HDMA fires after the snapshot so its register updates apply to the next
+        # scanline's snapshot, matching real hardware behaviour.
         if 0 < self.v_counter < _VBLANK_START_LINE:
-            self.render_scanline()
+            self._capture_snapshot(self.v_counter)
 
         # HDMA fires at H-blank for each active scanline (including scanline 0)
         if 0 <= self.v_counter < _VBLANK_START_LINE:
@@ -640,6 +663,7 @@ class Ppu:
         self.scheduler.add(_HBLANK_START_MC, self._hblank)
 
     def _vblank_start(self) -> None:
+        self._render_frame()
         self.bus.vblank = True
         self.bus.raise_nmi()
 
@@ -652,6 +676,130 @@ class Ppu:
         self.frames += 1
         # Initialize HDMA table pointers for the new frame
         self.bus.cpu.dma.hdma_init()
+
+    def _capture_snapshot(self, y: int) -> None:
+        """Capture the current PPU register state for scanline y.
+
+        Stored as a flat tuple to avoid per-scanline dict allocation.
+        Layout: 34 scalars | 4 mosaic flags | 8×BG1 | 8×BG2 | 8×BG3 | 8×BG4 | cgram | oam
+        (BG fields match Background._STATE_FIELDS order)
+        """
+        if self._cgram_written_since_snapshot:
+            cgram_snap = bytes(self.cgram)
+            self._last_snapshot_cgram = cgram_snap
+            self._cgram_written_since_snapshot = False
+        else:
+            cgram_snap = self._last_snapshot_cgram
+        if self._oam_written_since_snapshot:
+            oam_snap = self.oam.dump_state()
+            self._last_snapshot_oam = oam_snap
+            self._oam_written_since_snapshot = False
+        else:
+            oam_snap = self._last_snapshot_oam
+        bg1 = self.bg1;  bg2 = self.bg2;  bg3 = self.bg3;  bg4 = self.bg4
+        me = self.mosaic_enabled
+        self._scanline_snapshots[y] = (
+            self.display_disable,    self.display_brightness,
+            self._bgmode,            self._bgpriority,
+            self.oam_main_screen_enable, self.oam_sub_screen_enable,
+            self.oam_tiledata_address,   self.oam_nameselect, self.oam_base_size,
+            self.w12sel, self.w34sel, self.wobjsel,
+            self.wh0, self.wh1, self.wh2, self.wh3,
+            self.wbglog, self.wobjlog, self.tmw, self.tsw,
+            self.cgwsel, self.cgadsub,
+            self.coldata_r, self.coldata_g, self.coldata_b,
+            self.m7a, self.m7b, self.m7c, self.m7d, self.m7x, self.m7y, self.m7sel, self.m7_extbg,
+            self.mosaic_size,
+            me[0], me[1], me[2], me[3],
+            bg1.screen_size, bg1.screen_addr, bg1.tiledata_addr, bg1.tile_size,
+            bg1.main_screen_enable, bg1.sub_screen_enable, bg1.hoffset, bg1.voffset,
+            bg2.screen_size, bg2.screen_addr, bg2.tiledata_addr, bg2.tile_size,
+            bg2.main_screen_enable, bg2.sub_screen_enable, bg2.hoffset, bg2.voffset,
+            bg3.screen_size, bg3.screen_addr, bg3.tiledata_addr, bg3.tile_size,
+            bg3.main_screen_enable, bg3.sub_screen_enable, bg3.hoffset, bg3.voffset,
+            bg4.screen_size, bg4.screen_addr, bg4.tiledata_addr, bg4.tile_size,
+            bg4.main_screen_enable, bg4.sub_screen_enable, bg4.hoffset, bg4.voffset,
+            cgram_snap, oam_snap,
+        )
+
+    def _render_frame(self) -> None:
+        """Render all active scanlines using their captured register snapshots."""
+        saved_v = self.v_counter
+        last_cgram = None
+        last_oam = None
+        for y in range(1, _VBLANK_START_LINE):
+            snap = self._scanline_snapshots[y]
+            if snap is None:
+                continue
+            (display_disable,    display_brightness,
+             bgmode_val,         bgpriority,
+             oam_mse,            oam_sse,
+             oam_tda,            oam_ns,  oam_bs,
+             w12sel, w34sel, wobjsel,
+             wh0, wh1, wh2, wh3,
+             wbglog, wobjlog, tmw, tsw,
+             cgwsel, cgadsub,
+             coldata_r, coldata_g, coldata_b,
+             m7a, m7b, m7c, m7d, m7x, m7y, m7sel, m7_extbg,
+             mosaic_size,
+             me0, me1, me2, me3,
+             b1_ss, b1_sa, b1_ta, b1_ts, b1_me, b1_se, b1_ho, b1_vo,
+             b2_ss, b2_sa, b2_ta, b2_ts, b2_me, b2_se, b2_ho, b2_vo,
+             b3_ss, b3_sa, b3_ta, b3_ts, b3_me, b3_se, b3_ho, b3_vo,
+             b4_ss, b4_sa, b4_ta, b4_ts, b4_me, b4_se, b4_ho, b4_vo,
+             cgram_snap, oam_snap,
+            ) = snap
+            self.display_disable = display_disable
+            self.display_brightness = display_brightness
+            self._bgmode = bgmode_val
+            self._bgpriority = bgpriority
+            self.oam_main_screen_enable = oam_mse
+            self.oam_sub_screen_enable = oam_sse
+            self.oam_tiledata_address = oam_tda
+            self.oam_nameselect = oam_ns
+            self.oam_base_size = oam_bs
+            self.w12sel = w12sel;  self.w34sel = w34sel;  self.wobjsel = wobjsel
+            self.wh0 = wh0;  self.wh1 = wh1;  self.wh2 = wh2;  self.wh3 = wh3
+            self.wbglog = wbglog;  self.wobjlog = wobjlog
+            self.tmw = tmw;  self.tsw = tsw
+            self.cgwsel = cgwsel;  self.cgadsub = cgadsub
+            self.coldata_r = coldata_r;  self.coldata_g = coldata_g;  self.coldata_b = coldata_b
+            self.m7a = m7a;  self.m7b = m7b;  self.m7c = m7c;  self.m7d = m7d
+            self.m7x = m7x;  self.m7y = m7y;  self.m7sel = m7sel;  self.m7_extbg = m7_extbg
+            self.mosaic_size = mosaic_size
+            self.mosaic_enabled[0] = me0;  self.mosaic_enabled[1] = me1
+            self.mosaic_enabled[2] = me2;  self.mosaic_enabled[3] = me3
+            bg1 = self.bg1
+            bg1.screen_size = b1_ss;  bg1.screen_addr = b1_sa
+            bg1.tiledata_addr = b1_ta; bg1.tile_size = b1_ts
+            bg1.main_screen_enable = b1_me;  bg1.sub_screen_enable = b1_se
+            bg1.hoffset = b1_ho;  bg1.voffset = b1_vo
+            bg2 = self.bg2
+            bg2.screen_size = b2_ss;  bg2.screen_addr = b2_sa
+            bg2.tiledata_addr = b2_ta; bg2.tile_size = b2_ts
+            bg2.main_screen_enable = b2_me;  bg2.sub_screen_enable = b2_se
+            bg2.hoffset = b2_ho;  bg2.voffset = b2_vo
+            bg3 = self.bg3
+            bg3.screen_size = b3_ss;  bg3.screen_addr = b3_sa
+            bg3.tiledata_addr = b3_ta; bg3.tile_size = b3_ts
+            bg3.main_screen_enable = b3_me;  bg3.sub_screen_enable = b3_se
+            bg3.hoffset = b3_ho;  bg3.voffset = b3_vo
+            bg4 = self.bg4
+            bg4.screen_size = b4_ss;  bg4.screen_addr = b4_sa
+            bg4.tiledata_addr = b4_ta; bg4.tile_size = b4_ts
+            bg4.main_screen_enable = b4_me;  bg4.sub_screen_enable = b4_se
+            bg4.hoffset = b4_ho;  bg4.voffset = b4_vo
+            if cgram_snap is not last_cgram:
+                self.cgram[:] = cgram_snap
+                self._cgram_dirty = True
+                last_cgram = cgram_snap
+            if oam_snap is not last_oam:
+                self.oam.load_state(oam_snap)
+                last_oam = oam_snap
+            self.v_counter = y
+            self.render_scanline()
+            self._scanline_snapshots[y] = None
+        self.v_counter = saved_v
 
     def render_scanline(self):
         """

@@ -2,7 +2,7 @@ from typing import Tuple
 
 import cython
 
-from ._constants import SCREEN_WIDTH, _PIXEL_SEQUENCE
+from .constants import SCREEN_WIDTH, _PIXEL_SEQUENCE
 from .data_structures import Object, Tilemap
 
 

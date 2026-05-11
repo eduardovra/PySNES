@@ -1,6 +1,6 @@
 import cython
 
-from ._constants import SCREEN_WIDTH, _colorcode_table
+from .constants import SCREEN_WIDTH, _colorcode_table
 from .data_structures import Background
 
 

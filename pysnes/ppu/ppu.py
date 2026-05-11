@@ -4,13 +4,13 @@ from typing import Optional, Tuple, TYPE_CHECKING
 
 import cython
 
-from ._bg_renderer import BgRendererMixin
-from ._color_math import ColorMathMixin
-from ._constants import (
+from .bg_renderer import BgRendererMixin
+from .color_math import ColorMathMixin
+from .constants import (
     _MC_PER_SCANLINE, _HBLANK_START_MC, _VBLANK_START_LINE, _TOTAL_SCANLINES,
     SCREEN_WIDTH, SCREEN_HEIGHT,
 )
-from ._obj_renderer import ObjRendererMixin
+from .obj_renderer import ObjRendererMixin
 from .data_structures import Background, Object, Tilemap
 from .oam import OAM
 

@@ -1,6 +1,6 @@
 import cython
 
-from ._constants import SCREEN_WIDTH
+from .constants import SCREEN_WIDTH
 
 # CGADSUB ($2131) bit masks
 _CGADSUB_SUBTRACT = 0x80  # 0=add, 1=subtract

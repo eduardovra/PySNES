@@ -906,6 +906,41 @@ class Ppu:
             self.draw_objects(priority=2)
             self.draw_objects(priority=3)
 
+    def _build_window_mask(
+        self,
+        buf: bytearray,
+        w1_enable: cython.bint,
+        w1_invert: cython.bint,
+        w2_enable: cython.bint,
+        w2_invert: cython.bint,
+        combine_logic: cython.uint,
+    ) -> None:
+        """Fill buf[0..255] with 1 where the pixel is inside the combined window, 0 elsewhere."""
+        wh0: cython.uint = self.wh0
+        wh1: cython.uint = self.wh1
+        wh2: cython.uint = self.wh2
+        wh3: cython.uint = self.wh3
+        for _x in range(SCREEN_WIDTH):
+            _w1: cython.bint = False
+            if w1_enable:
+                _w1 = bool((wh0 <= _x <= wh1) ^ w1_invert)
+            _w2: cython.bint = False
+            if w2_enable:
+                _w2 = bool((wh2 <= _x <= wh3) ^ w2_invert)
+            if w1_enable and w2_enable:
+                if combine_logic == 0:
+                    buf[_x] = _w1 or _w2
+                elif combine_logic == 1:
+                    buf[_x] = _w1 and _w2
+                elif combine_logic == 2:
+                    buf[_x] = _w1 != _w2
+                else:
+                    buf[_x] = _w1 == _w2
+            elif w1_enable:
+                buf[_x] = _w1
+            else:
+                buf[_x] = _w2
+
     def composite_scanline(self) -> None:
         """Apply CGADSUB color math, blending sub_bgs into main_bgs.
 
@@ -952,31 +987,13 @@ class Ppu:
         # Eliminates per-pixel window boundary math (same pattern as draw_background_scanline).
         cmath_mask = None
         if cmath_mode != 0 and (math_w1_enable or math_w2_enable):
-            wh0: cython.uint = self.wh0
-            wh1: cython.uint = self.wh1
-            wh2: cython.uint = self.wh2
-            wh3: cython.uint = self.wh3
             cmath_mask = self._window_mask_buf
-            for _x in range(SCREEN_WIDTH):
-                _w1: cython.bint = False
-                if math_w1_enable:
-                    _w1 = bool((wh0 <= _x <= wh1) ^ math_w1_invert)
-                _w2: cython.bint = False
-                if math_w2_enable:
-                    _w2 = bool((wh2 <= _x <= wh3) ^ math_w2_invert)
-                if math_w1_enable and math_w2_enable:
-                    if math_logic == 0:
-                        cmath_mask[_x] = _w1 or _w2
-                    elif math_logic == 1:
-                        cmath_mask[_x] = _w1 and _w2
-                    elif math_logic == 2:
-                        cmath_mask[_x] = _w1 != _w2
-                    else:
-                        cmath_mask[_x] = _w1 == _w2
-                elif math_w1_enable:
-                    cmath_mask[_x] = _w1
-                else:
-                    cmath_mask[_x] = _w2
+            self._build_window_mask(
+                cmath_mask,
+                math_w1_enable, math_w1_invert,
+                math_w2_enable, math_w2_invert,
+                math_logic,
+            )
 
         y: cython.int = self.v_counter - 1
         row: cython.uint = y * SCREEN_WIDTH
@@ -1303,26 +1320,12 @@ class Ppu:
         window_masked = None
         if window_active and (w1_enable or w2_enable):
             window_masked = self._window_mask_buf
-            for _x in range(256):
-                _w1: cython.bint = False
-                if w1_enable:
-                    _w1 = bool((wh0 <= _x <= wh1) ^ w1_invert)
-                _w2: cython.bint = False
-                if w2_enable:
-                    _w2 = bool((wh2 <= _x <= wh3) ^ w2_invert)
-                if w1_enable and w2_enable:
-                    if combine_logic == 0:
-                        window_masked[_x] = _w1 or _w2
-                    elif combine_logic == 1:
-                        window_masked[_x] = _w1 and _w2
-                    elif combine_logic == 2:
-                        window_masked[_x] = _w1 != _w2
-                    else:
-                        window_masked[_x] = _w1 == _w2
-                elif w1_enable:
-                    window_masked[_x] = _w1
-                else:
-                    window_masked[_x] = _w2
+            self._build_window_mask(
+                window_masked,
+                w1_enable, w1_invert,
+                w2_enable, w2_invert,
+                combine_logic,
+            )
 
         if mosaic_on and mosaic_size > 1:
             # Slow path: mosaic snaps scry per pixel — cannot batch by tile column.

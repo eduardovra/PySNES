@@ -19,6 +19,7 @@ Run:
 
 import pytest
 
+from pysnes.ppu import bg_renderer
 from pysnes.ppu.ppu import Ppu
 
 SCREEN_W = 256
@@ -114,7 +115,7 @@ def _setup(ppu: Ppu, hoffset: int = 0, voffset: int = 0) -> None:
 def _draw_row(ppu: Ppu, scanline: int) -> None:
     """Draw one scanline.  Output lands in main_bgs at row (scanline-1)."""
     ppu.v_counter = scanline
-    ppu.draw_background_scanline(ppu.bg1, bpp=2, priority_selector=0)
+    bg_renderer.draw_background_scanline(ppu, ppu.bg1, bpp=2, priority_selector=0)
 
 
 # ---------------------------------------------------------------------------
@@ -326,7 +327,7 @@ class TestTilemapWordBits:
         assert _pixel(ppu, 0, 0) == (0, 0, 0), "priority=1 tile must not render on low pass"
 
         # High-priority pass: SHOULD render
-        ppu.draw_background_scanline(ppu.bg1, bpp=2, priority_selector=1)
+        bg_renderer.draw_background_scanline(ppu, ppu.bg1, bpp=2, priority_selector=1)
         assert _pixel(ppu, 0, 0) == (255, 0, 0), "priority=1 tile should render on high pass"
 
 

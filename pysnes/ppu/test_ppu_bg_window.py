@@ -16,6 +16,7 @@ Run:
 
 import pytest
 
+from pysnes.ppu import bg_renderer
 from pysnes.ppu.ppu import Ppu
 
 SCREEN_W = 256
@@ -76,8 +77,8 @@ def _setup_bg1_solid_red(ppu: Ppu) -> None:
 def _draw_row_with_backdrop(ppu: Ppu, scanline: int) -> None:
     """Fill backdrop, then draw BG1 — matches real render_scanline ordering."""
     ppu.v_counter = scanline
-    ppu.draw_scanline_backdrop()
-    ppu.draw_background_scanline(ppu.bg1, bpp=2, priority_selector=0)
+    bg_renderer.draw_scanline_backdrop(ppu)
+    bg_renderer.draw_background_scanline(ppu, ppu.bg1, bpp=2, priority_selector=0)
 
 
 # ---------------------------------------------------------------------------

@@ -1,17 +1,15 @@
 from array import array
 from ctypes import c_uint8
-from typing import Optional, Tuple, TYPE_CHECKING
+from typing import Optional, TYPE_CHECKING
 
 import cython
 
-from .bg_renderer import BgRendererMixin
-from .color_math import ColorMathMixin
+from . import bg_renderer, color_math, obj_renderer
 from .constants import (
     _MC_PER_SCANLINE, _HBLANK_START_MC, _VBLANK_START_LINE, _TOTAL_SCANLINES,
     SCREEN_WIDTH, SCREEN_HEIGHT,
 )
-from .obj_renderer import ObjRendererMixin
-from .data_structures import Background, Object, Tilemap
+from .data_structures import Background
 from .oam import OAM
 
 if TYPE_CHECKING:
@@ -20,7 +18,7 @@ if TYPE_CHECKING:
 
 
 @cython.cclass
-class Ppu(BgRendererMixin, ObjRendererMixin, ColorMathMixin):
+class Ppu:
     """Picture Processor Unit: 15-Bit"""
 
     _OBJ_DIM_TABLE = (
@@ -672,15 +670,15 @@ class Ppu(BgRendererMixin, ObjRendererMixin, ColorMathMixin):
         """
         # Forced blank outputs black, not the previous framebuffer contents.
         if self.display_disable:
-            self.draw_scanline_forced_blank()
+            color_math.draw_scanline_forced_blank(self)
             return
 
         if self._cgram_dirty:
             self._rebuild_cgram_cache()
         self._render_layers()
-        self.composite_scanline()
+        color_math.composite_scanline(self)
         if self.display_brightness < 15:
-            self.apply_brightness_scanline()
+            color_math.apply_brightness_scanline(self)
 
     def _render_layers(self):
         # Draw picture
@@ -689,73 +687,73 @@ class Ppu(BgRendererMixin, ObjRendererMixin, ColorMathMixin):
             # Back → front painter order.
             # Each layer writes only where pixels are non-transparent, so the
             # last write at a pixel wins (= "in front").
-            self.draw_scanline_backdrop()
-            self.draw_background_scanline(self.bg4, 2, False)     # BG4 pri 0
-            self.draw_objects(priority=0)                         # OBJ pri 0
-            self.draw_background_scanline(self.bg3, 2, False)     # BG3 pri 0
-            self.draw_objects(priority=1)                         # OBJ pri 1
-            self.draw_background_scanline(self.bg4, 2, True)      # BG4 pri 1
-            self.draw_background_scanline(self.bg3, 2, True)      # BG3 pri 1
-            self.draw_objects(priority=2)                         # OBJ pri 2
-            self.draw_background_scanline(self.bg2, 2, False)     # BG2 pri 0
-            self.draw_background_scanline(self.bg1, 2, False)     # BG1 pri 0
-            self.draw_objects(priority=3)                         # OBJ pri 3
-            self.draw_background_scanline(self.bg2, 2, True)      # BG2 pri 1
-            self.draw_background_scanline(self.bg1, 2, True)      # BG1 pri 1
+            bg_renderer.draw_scanline_backdrop(self)
+            bg_renderer.draw_background_scanline(self, self.bg4, 2, False)     # BG4 pri 0
+            obj_renderer.draw_objects(self, priority=0)                        # OBJ pri 0
+            bg_renderer.draw_background_scanline(self, self.bg3, 2, False)     # BG3 pri 0
+            obj_renderer.draw_objects(self, priority=1)                        # OBJ pri 1
+            bg_renderer.draw_background_scanline(self, self.bg4, 2, True)      # BG4 pri 1
+            bg_renderer.draw_background_scanline(self, self.bg3, 2, True)      # BG3 pri 1
+            obj_renderer.draw_objects(self, priority=2)                        # OBJ pri 2
+            bg_renderer.draw_background_scanline(self, self.bg2, 2, False)     # BG2 pri 0
+            bg_renderer.draw_background_scanline(self, self.bg1, 2, False)     # BG1 pri 0
+            obj_renderer.draw_objects(self, priority=3)                        # OBJ pri 3
+            bg_renderer.draw_background_scanline(self, self.bg2, 2, True)      # BG2 pri 1
+            bg_renderer.draw_background_scanline(self, self.bg1, 2, True)      # BG1 pri 1
         elif self._bgmode == 1:
             # Mode 1: BG1+BG2 (4bpp), BG3 (2bpp); $2105 bit 3 moves BG3 pri-1
             # BG3 pri-1 either to the very top or behind OBJ pri-0/1.
-            self.draw_scanline_backdrop()
-            self.draw_background_scanline(self.bg3, 2, False)     # BG3 pri 0
-            self.draw_objects(priority=0)                         # OBJ pri 0
+            bg_renderer.draw_scanline_backdrop(self)
+            bg_renderer.draw_background_scanline(self, self.bg3, 2, False)     # BG3 pri 0
+            obj_renderer.draw_objects(self, priority=0)                        # OBJ pri 0
             if self._bgpriority == 0:
-                self.draw_background_scanline(self.bg3, 2, True)  # BG3 pri 1 (low)
-            self.draw_objects(priority=1)                         # OBJ pri 1
-            self.draw_background_scanline(self.bg2, 4, False)     # BG2 pri 0
-            self.draw_background_scanline(self.bg1, 4, False)     # BG1 pri 0
-            self.draw_objects(priority=2)                         # OBJ pri 2
-            self.draw_background_scanline(self.bg2, 4, True)      # BG2 pri 1
-            self.draw_background_scanline(self.bg1, 4, True)      # BG1 pri 1
-            self.draw_objects(priority=3)                         # OBJ pri 3
+                bg_renderer.draw_background_scanline(self, self.bg3, 2, True)  # BG3 pri 1 (low)
+            obj_renderer.draw_objects(self, priority=1)                        # OBJ pri 1
+            bg_renderer.draw_background_scanline(self, self.bg2, 4, False)     # BG2 pri 0
+            bg_renderer.draw_background_scanline(self, self.bg1, 4, False)     # BG1 pri 0
+            obj_renderer.draw_objects(self, priority=2)                        # OBJ pri 2
+            bg_renderer.draw_background_scanline(self, self.bg2, 4, True)      # BG2 pri 1
+            bg_renderer.draw_background_scanline(self, self.bg1, 4, True)      # BG1 pri 1
+            obj_renderer.draw_objects(self, priority=3)                        # OBJ pri 3
             if self._bgpriority == 1:
-                self.draw_background_scanline(self.bg3, 2, True)  # BG3 pri 1 (high)
+                bg_renderer.draw_background_scanline(self, self.bg3, 2, True)  # BG3 pri 1 (high)
         elif self._bgmode == 2:
             # Mode 2: BG1 (4bpp) + BG2 (4bpp) with offset-per-tile via BG3.
             # OPT is not implemented; we render without per-column offsets,
             # which gets the layout approximately right (enough to boot games
             # that probe their own title/menu screens).
-            self.draw_scanline_backdrop()
-            self.draw_background_scanline(self.bg2, 4, False)   # BG2 pri 0
-            self.draw_objects(priority=0)                       # OBJ pri 0
-            self.draw_background_scanline(self.bg1, 4, False)   # BG1 pri 0
-            self.draw_objects(priority=1)                       # OBJ pri 1
-            self.draw_background_scanline(self.bg2, 4, True)    # BG2 pri 1
-            self.draw_objects(priority=2)                       # OBJ pri 2
-            self.draw_background_scanline(self.bg1, 4, True)    # BG1 pri 1
-            self.draw_objects(priority=3)                       # OBJ pri 3
+            bg_renderer.draw_scanline_backdrop(self)
+            bg_renderer.draw_background_scanline(self, self.bg2, 4, False)   # BG2 pri 0
+            obj_renderer.draw_objects(self, priority=0)                      # OBJ pri 0
+            bg_renderer.draw_background_scanline(self, self.bg1, 4, False)   # BG1 pri 0
+            obj_renderer.draw_objects(self, priority=1)                      # OBJ pri 1
+            bg_renderer.draw_background_scanline(self, self.bg2, 4, True)    # BG2 pri 1
+            obj_renderer.draw_objects(self, priority=2)                      # OBJ pri 2
+            bg_renderer.draw_background_scanline(self, self.bg1, 4, True)    # BG1 pri 1
+            obj_renderer.draw_objects(self, priority=3)                      # OBJ pri 3
         elif self._bgmode == 3:
             # Mode 3: BG1 (8bpp/256-color), BG2 (4bpp); $2130 may enable Direct Color on BG1.
-            self.draw_scanline_backdrop()
-            self.draw_background_scanline(self.bg2, 4, False)   # BG2 pri 0
-            self.draw_objects(priority=0)                       # OBJ pri 0
-            self.draw_background_scanline(self.bg1, 8, False)   # BG1 pri 0
-            self.draw_objects(priority=1)                       # OBJ pri 1
-            self.draw_background_scanline(self.bg2, 4, True)    # BG2 pri 1
-            self.draw_objects(priority=2)                       # OBJ pri 2
-            self.draw_background_scanline(self.bg1, 8, True)    # BG1 pri 1
-            self.draw_objects(priority=3)                       # OBJ pri 3
+            bg_renderer.draw_scanline_backdrop(self)
+            bg_renderer.draw_background_scanline(self, self.bg2, 4, False)   # BG2 pri 0
+            obj_renderer.draw_objects(self, priority=0)                      # OBJ pri 0
+            bg_renderer.draw_background_scanline(self, self.bg1, 8, False)   # BG1 pri 0
+            obj_renderer.draw_objects(self, priority=1)                      # OBJ pri 1
+            bg_renderer.draw_background_scanline(self, self.bg2, 4, True)    # BG2 pri 1
+            obj_renderer.draw_objects(self, priority=2)                      # OBJ pri 2
+            bg_renderer.draw_background_scanline(self, self.bg1, 8, True)    # BG1 pri 1
+            obj_renderer.draw_objects(self, priority=3)                      # OBJ pri 3
         elif self._bgmode == 4:
             # Mode 4: BG1 (4bpp) + BG2 (2bpp) with OPT (offset-per-tile, not
             # implemented — same simplification as Mode 2).
-            self.draw_scanline_backdrop()
-            self.draw_background_scanline(self.bg2, 2, False)   # BG2 pri 0
-            self.draw_objects(priority=0)                       # OBJ pri 0
-            self.draw_background_scanline(self.bg1, 4, False)   # BG1 pri 0
-            self.draw_objects(priority=1)                       # OBJ pri 1
-            self.draw_background_scanline(self.bg2, 2, True)    # BG2 pri 1
-            self.draw_objects(priority=2)                       # OBJ pri 2
-            self.draw_background_scanline(self.bg1, 4, True)    # BG1 pri 1
-            self.draw_objects(priority=3)                       # OBJ pri 3
+            bg_renderer.draw_scanline_backdrop(self)
+            bg_renderer.draw_background_scanline(self, self.bg2, 2, False)   # BG2 pri 0
+            obj_renderer.draw_objects(self, priority=0)                      # OBJ pri 0
+            bg_renderer.draw_background_scanline(self, self.bg1, 4, False)   # BG1 pri 0
+            obj_renderer.draw_objects(self, priority=1)                      # OBJ pri 1
+            bg_renderer.draw_background_scanline(self, self.bg2, 2, True)    # BG2 pri 1
+            obj_renderer.draw_objects(self, priority=2)                      # OBJ pri 2
+            bg_renderer.draw_background_scanline(self, self.bg1, 4, True)    # BG1 pri 1
+            obj_renderer.draw_objects(self, priority=3)                      # OBJ pri 3
         elif self._bgmode == 5:
             # Mode 5: BG1 (4bpp) + BG2 (2bpp).
             # APPROXIMATION: Mode 5 is natively hi-res — the SNES PPU outputs
@@ -768,15 +766,15 @@ class Ppu(BgRendererMixin, ObjRendererMixin, ColorMathMixin):
             orig_hoff2 = self.bg2.hoffset
             self.bg1.hoffset = self.bg1.hoffset >> 1
             self.bg2.hoffset = self.bg2.hoffset >> 1
-            self.draw_scanline_backdrop()
-            self.draw_background_scanline(self.bg2, 2, False)   # BG2 pri 0
-            self.draw_objects(priority=0)                       # OBJ pri 0
-            self.draw_background_scanline(self.bg1, 4, False)   # BG1 pri 0
-            self.draw_objects(priority=1)                       # OBJ pri 1
-            self.draw_background_scanline(self.bg2, 2, True)    # BG2 pri 1
-            self.draw_objects(priority=2)                       # OBJ pri 2
-            self.draw_background_scanline(self.bg1, 4, True)    # BG1 pri 1
-            self.draw_objects(priority=3)                       # OBJ pri 3
+            bg_renderer.draw_scanline_backdrop(self)
+            bg_renderer.draw_background_scanline(self, self.bg2, 2, False)   # BG2 pri 0
+            obj_renderer.draw_objects(self, priority=0)                      # OBJ pri 0
+            bg_renderer.draw_background_scanline(self, self.bg1, 4, False)   # BG1 pri 0
+            obj_renderer.draw_objects(self, priority=1)                      # OBJ pri 1
+            bg_renderer.draw_background_scanline(self, self.bg2, 2, True)    # BG2 pri 1
+            obj_renderer.draw_objects(self, priority=2)                      # OBJ pri 2
+            bg_renderer.draw_background_scanline(self, self.bg1, 4, True)    # BG1 pri 1
+            obj_renderer.draw_objects(self, priority=3)                      # OBJ pri 3
             self.bg1.hoffset = orig_hoff1
             self.bg2.hoffset = orig_hoff2
         elif self._bgmode == 6:
@@ -785,23 +783,23 @@ class Ppu(BgRendererMixin, ObjRendererMixin, ColorMathMixin):
             # 256px (main screen only); hoffset halved from hi-res coordinates.
             orig_hoff1 = self.bg1.hoffset
             self.bg1.hoffset = self.bg1.hoffset >> 1
-            self.draw_scanline_backdrop()
-            self.draw_objects(priority=0)                       # OBJ pri 0
-            self.draw_background_scanline(self.bg1, 4, False)   # BG1 pri 0
-            self.draw_objects(priority=1)                       # OBJ pri 1
-            self.draw_objects(priority=2)                       # OBJ pri 2
-            self.draw_background_scanline(self.bg1, 4, True)    # BG1 pri 1
-            self.draw_objects(priority=3)                       # OBJ pri 3
+            bg_renderer.draw_scanline_backdrop(self)
+            obj_renderer.draw_objects(self, priority=0)                      # OBJ pri 0
+            bg_renderer.draw_background_scanline(self, self.bg1, 4, False)   # BG1 pri 0
+            obj_renderer.draw_objects(self, priority=1)                      # OBJ pri 1
+            obj_renderer.draw_objects(self, priority=2)                      # OBJ pri 2
+            bg_renderer.draw_background_scanline(self, self.bg1, 4, True)    # BG1 pri 1
+            obj_renderer.draw_objects(self, priority=3)                      # OBJ pri 3
             self.bg1.hoffset = orig_hoff1
         else:
             # Mode 7: affine-transformed BG1 (8bpp). EXTBG BG2 written by same pass.
             # Priority (back→front): backdrop, OBJ0, OBJ1, BG1, BG2(EXTBG), OBJ2, OBJ3
-            self.draw_scanline_backdrop()
-            self.draw_objects(priority=0)
-            self.draw_objects(priority=1)
-            self.draw_mode7_scanline()
-            self.draw_objects(priority=2)
-            self.draw_objects(priority=3)
+            bg_renderer.draw_scanline_backdrop(self)
+            obj_renderer.draw_objects(self, priority=0)
+            obj_renderer.draw_objects(self, priority=1)
+            bg_renderer.draw_mode7_scanline(self)
+            obj_renderer.draw_objects(self, priority=2)
+            obj_renderer.draw_objects(self, priority=3)
 
     def _build_window_mask(
         self,

@@ -18,6 +18,7 @@ Run:
 
 import pytest
 
+from pysnes.ppu import bg_renderer, obj_renderer
 from pysnes.ppu.ppu import Ppu
 
 SCREEN_W = 256
@@ -128,10 +129,10 @@ class TestSpriteRendering:
 
         # Fill scanline 6 with backdrop first (painter's algorithm baseline)
         ppu.v_counter = 6
-        ppu.draw_scanline_backdrop()
+        bg_renderer.draw_scanline_backdrop(ppu)
 
         # Draw objects for this scanline
-        ppu.draw_objects()
+        obj_renderer.draw_objects(ppu)
 
         # Sprite tile row 1 (y=6 in tile coords) should be at main_bgs row 5
         for x in range(10, 18):
@@ -143,8 +144,8 @@ class TestSpriteRendering:
         _setup_sprite(ppu)
 
         ppu.v_counter = 6
-        ppu.draw_scanline_backdrop()
-        ppu.draw_objects()
+        bg_renderer.draw_scanline_backdrop(ppu)
+        obj_renderer.draw_objects(ppu)
 
         # Columns 9 and 18 are adjacent to the sprite — must be backdrop (black)
         assert _pixel(ppu, 9,  5) == BLACK, "Left neighbor should be backdrop"
@@ -162,8 +163,8 @@ class TestSpriteRendering:
         _write_4bpp_solid_tile(ppu, 0x200, color_index=0)
 
         ppu.v_counter = 6
-        ppu.draw_scanline_backdrop()
-        ppu.draw_objects()
+        bg_renderer.draw_scanline_backdrop(ppu)
+        obj_renderer.draw_objects(ppu)
 
         # All pixels on the sprite scanline should remain backdrop (black)
         for x in range(10, 18):
@@ -179,8 +180,8 @@ class TestSpriteRendering:
         ppu.oam.objects[0].x = -3  # 3 pixels off-screen left
 
         ppu.v_counter = 6
-        ppu.draw_scanline_backdrop()
-        ppu.draw_objects()  # must not raise IndexError
+        bg_renderer.draw_scanline_backdrop(ppu)
+        obj_renderer.draw_objects(ppu)  # must not raise IndexError
 
         # Only the visible part (x=0..4) should be green
         for x in range(0, 5):
@@ -199,8 +200,8 @@ class TestSpriteRendering:
         ppu.oam.objects[0].x = 509  # 9-bit raw; signed = -3
 
         ppu.v_counter = 6
-        ppu.draw_scanline_backdrop()
-        ppu.draw_objects()
+        bg_renderer.draw_scanline_backdrop(ppu)
+        obj_renderer.draw_objects(ppu)
 
         for x in range(0, 5):
             assert _pixel(ppu, x, 5) == GREEN, f"Expected GREEN at ({x}, 5)"
@@ -217,8 +218,8 @@ class TestSpriteRendering:
 
         # Render scanline above the sprite
         ppu.v_counter = 4
-        ppu.draw_scanline_backdrop()
-        ppu.draw_objects()
+        bg_renderer.draw_scanline_backdrop(ppu)
+        obj_renderer.draw_objects(ppu)
 
         for x in range(10, 18):
             assert _pixel(ppu, x, 3) == BLACK, (
@@ -230,7 +231,7 @@ class TestSpriteRendering:
         ppu = _make_ppu()
         # No sprites — just verify backdrop fills the row
         ppu.v_counter = 10
-        ppu.draw_scanline_backdrop()
+        bg_renderer.draw_scanline_backdrop(ppu)
 
         for x in range(SCREEN_W):
             assert _pixel(ppu, x, 9) == BLACK, f"Expected backdrop at ({x}, 9)"
@@ -301,8 +302,8 @@ class TestMultiTileSprite:
         _setup_16x16_sprite(ppu)
 
         ppu.v_counter = 11  # output row = 10
-        ppu.draw_scanline_backdrop()
-        ppu.draw_objects()
+        bg_renderer.draw_scanline_backdrop(ppu)
+        obj_renderer.draw_objects(ppu)
 
         for x in range(20, 28):
             assert _pixel(ppu, x, 10) == GREEN, f"top-left at ({x},10)"
@@ -313,8 +314,8 @@ class TestMultiTileSprite:
         _setup_16x16_sprite(ppu)
 
         ppu.v_counter = 11
-        ppu.draw_scanline_backdrop()
-        ppu.draw_objects()
+        bg_renderer.draw_scanline_backdrop(ppu)
+        obj_renderer.draw_objects(ppu)
 
         for x in range(28, 36):
             assert _pixel(ppu, x, 10) == RED, f"top-right at ({x},10)"
@@ -325,8 +326,8 @@ class TestMultiTileSprite:
         _setup_16x16_sprite(ppu)
 
         ppu.v_counter = 19  # output row = 18
-        ppu.draw_scanline_backdrop()
-        ppu.draw_objects()
+        bg_renderer.draw_scanline_backdrop(ppu)
+        obj_renderer.draw_objects(ppu)
 
         for x in range(20, 28):
             assert _pixel(ppu, x, 18) == BLUE, f"bottom-left at ({x},18)"
@@ -337,8 +338,8 @@ class TestMultiTileSprite:
         _setup_16x16_sprite(ppu)
 
         ppu.v_counter = 19
-        ppu.draw_scanline_backdrop()
-        ppu.draw_objects()
+        bg_renderer.draw_scanline_backdrop(ppu)
+        obj_renderer.draw_objects(ppu)
 
         for x in range(28, 36):
             assert _pixel(ppu, x, 18) == GREEN, f"bottom-right at ({x},18)"
@@ -349,8 +350,8 @@ class TestMultiTileSprite:
         _setup_16x16_sprite(ppu)
 
         ppu.v_counter = 11
-        ppu.draw_scanline_backdrop()
-        ppu.draw_objects()
+        bg_renderer.draw_scanline_backdrop(ppu)
+        obj_renderer.draw_objects(ppu)
 
         assert _pixel(ppu, 36, 10) == BLACK, "right of 16x16 sprite"
 
@@ -360,8 +361,8 @@ class TestMultiTileSprite:
         _setup_16x16_sprite(ppu)
 
         ppu.v_counter = 27  # output row = 26
-        ppu.draw_scanline_backdrop()
-        ppu.draw_objects()
+        bg_renderer.draw_scanline_backdrop(ppu)
+        obj_renderer.draw_objects(ppu)
 
         for x in range(20, 36):
             assert _pixel(ppu, x, 26) == BLACK, f"below sprite at ({x},26)"

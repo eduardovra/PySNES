@@ -11,6 +11,7 @@ BG mode dispatch + VRAM-wrap unit tests.
 
 import pytest
 
+from pysnes.ppu import bg_renderer, obj_renderer
 from pysnes.ppu.ppu import Ppu
 
 SCREEN_W = 256
@@ -178,7 +179,7 @@ class TestVramWrap:
 
         # Scanline 2 → v_shift=1 → fetches row 1 = bytes at wrapped 0x0000/0x0001.
         ppu.v_counter = 2
-        ppu.draw_background_scanline(ppu.bg1, bpp=2, priority_selector=0)
+        bg_renderer.draw_background_scanline(ppu, ppu.bg1, bpp=2, priority_selector=0)
         assert _pixel(ppu, 0, 1) == RED
 
     def test_4bpp_tile_fetch_wraps_at_0xffff(self):
@@ -201,7 +202,7 @@ class TestVramWrap:
         ppu.bg1.main_screen_enable = True
 
         ppu.v_counter = 1
-        ppu.draw_background_scanline(ppu.bg1, bpp=4, priority_selector=0)
+        bg_renderer.draw_background_scanline(ppu, ppu.bg1, bpp=4, priority_selector=0)
         assert _pixel(ppu, 0, 0) == GREEN
 
     def test_8bpp_tile_fetch_wraps_at_0xffff(self):
@@ -223,7 +224,7 @@ class TestVramWrap:
         ppu.bg1.main_screen_enable = True
 
         ppu.v_counter = 1
-        ppu.draw_background_scanline(ppu.bg1, bpp=8, priority_selector=0)
+        bg_renderer.draw_background_scanline(ppu, ppu.bg1, bpp=8, priority_selector=0)
         assert _pixel(ppu, 0, 0) == BLUE
 
 
@@ -249,7 +250,8 @@ class TestSpriteDrawPointWrap:
         tile_data = bytes(ppu.vram)
 
         ppu.v_counter = 1
-        ppu.draw_point(
+        obj_renderer.draw_point(
+            ppu,
             i=1,
             tile_data=tile_data,
             tile_data_index=0xFFFE,

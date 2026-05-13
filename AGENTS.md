@@ -1,4 +1,4 @@
-# PySNES - Claude Code Context
+# PySNES - Agents Context
 
 ## Project Goal
 

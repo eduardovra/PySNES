@@ -155,7 +155,6 @@ class Ppu:
         self._obj_tile_cache = bytearray(_N_OBJ_TILE_SLOTS * 64)
         self._obj_tile_dirty = bytearray([1] * _N_OBJ_TILE_SLOTS)
 
-
     _SCALAR_STATE = (
         "vmain", "vmaddl", "vmaddh", "_vmdatal", "_vmdatah", "_vram_prefetch",
         "display_brightness", "display_disable",
@@ -850,4 +849,3 @@ class Ppu:
             b8 = (b5 << 3) | (b5 >> 2)
             cache[i] = (r8 << 24) | (g8 << 16) | (b8 << 8) | 0xFF
         self._cgram_dirty = False
-

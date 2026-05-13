@@ -232,10 +232,6 @@ def draw_background_scanline(ppu: Ppu, bg: Background, bpp: cython.uchar, priori
     orgy: cython.uint = ppu.v_counter - 1
     scry_base: cython.uint = ppu.v_counter
     row_base: cython.uint = orgy * SCREEN_WIDTH
-    wh0: cython.uint = ppu.wh0
-    wh1: cython.uint = ppu.wh1
-    wh2: cython.uint = ppu.wh2
-    wh3: cython.uint = ppu.wh3
     vram = ppu.vram
     main_bgs = ppu.main_bgs
     main_layer = ppu.main_layer

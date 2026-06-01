@@ -1,60 +1,83 @@
 # PySNES
 
-## Virtualenv (3.10)
+A Super Nintendo Entertainment System (SNES) emulator written in Python.
 
+![Super Mario World](docs/screenshot.png)
+
+## Features
+
+- **CPU**: WDC 65816 implementation
+- **PPU**: Background and sprite rendering with color math, windowing, and mosaic effects
+- **APU**: SPC700 processor and DSP for audio playback
+- **DMA / HDMA**: General-purpose and H-blank DMA transfers
+- **Controllers**: Standard joypad input via SDL2
+- **Debugger**: Built-in debugger with breakpoint support
+- **Save states**: Save and restore game state
+
+## Requirements
+
+- [uv](https://docs.astral.sh/uv/) (Python package manager)
+- PyPy 3.10 (installed automatically by uv)
+- SDL2 runtime library
+
+Install SDL2 on Debian/Ubuntu:
+
+```sh
+sudo apt install libsdl2-2.0-0
 ```
-snap install pypy3 --classic
-/snap/bin/pypy3 -m venv venv
-. venv/bin/activate
-pip install -r requirements.txt
-```
 
-## Pypy setup
+## Running
 
-I tried using pypy from snap but it wasn't opening the window.
-Then I switched to using the pre-compiled version from tarball.
-
-https://doc.pypy.org/en/latest/install.html
-
-## Running the emulator
-
-```
+```sh
 uv run pysnes roms/game.sfc
 ```
 
-### Running tests with uv
+## Controls
 
-```
+### Gamepad
+
+| Key | Button |
+|-----|--------|
+| Arrow keys | D-pad |
+| Z | B |
+| X | A |
+| A | Y |
+| S | X |
+| Enter | Start |
+| ' (apostrophe) | Select |
+| D | L |
+| C | R |
+
+### Emulator
+
+| Key | Action |
+|-----|--------|
+| Space | Pause / resume |
+| F5 | Save state |
+| F6 | Load state |
+| F11 | Screenshot |
+| F12 | Open debugger |
+
+## Development
+
+### Running tests
+
+```sh
 uv run pytest
 ```
 
-
-## Building
-
-### Inplace
+### Project structure
 
 ```
-uv run --python pypy@3.10 setup.py build_ext --inplace
+pysnes/
+  cpu/        WDC 65816 CPU and DMA
+  ppu/        Picture processing unit (rendering)
+  apu/        Audio processing unit (SPC700 + DSP)
+  bus/        Memory bus and address decoding
+  rom/        ROM loading and header parsing
+  controller/ Joypad input
+  debugger/   Built-in debugger
+  savestate/  Save/load state
+  video/      SDL2 display output
+  audio/      SDL2 audio output
 ```
-
-### Release
-
-```
-uv build
-```
-
-## Overall architecture
-
-The main loop would be something like:
-  - CPU runs a bunch of instructions until N clock cycles is reached
-  - Each N cycles a scanline is rendered to a buffer
-    - Perhaps we can use H-COUNTER/V-COUNTER to control this. Still have to figure out the Clock cycles/H-COUNTER ratio
-  - When all scanlines are drawn, update the screen and go back to scanline 0
-
-I suppose this should work for both the CPU and APU, except the APU will be dealing with outputing audio instead.
-The APU also needs to update the timers counters after every instruction.
-
-
-## Processor tests
-
-https://github.com/TomHarte/ProcessorTests

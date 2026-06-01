@@ -157,6 +157,10 @@ class Apu:
     debug_symbols = cython.declare(object, visibility="public")
     # Memory access tracing (None = disabled; set to [] in tests to capture accesses)
     _mem_log = cython.declare(object, visibility="public")
+    # Flat I/O mode: when True, reads/writes to $F0-$FC bypass I/O routing and
+    # use page_0 directly.  Set by the single-step test harness so that CPU unit
+    # tests see a simple flat-RAM model instead of DSP/port indirection.
+    _io_flat = cython.declare(cython.bint, visibility="public")
     # Instruction trace
     trace_enabled = cython.declare(cython.bint, visibility="public")
     trace_log = cython.declare(object, visibility="public")
@@ -255,6 +259,7 @@ class Apu:
         self.breakpoint = None
         self.print_debug = False
         self._mem_log = None
+        self._io_flat = False
         self.trace_enabled = False
         self.trace_log = []
 
@@ -275,7 +280,7 @@ class Apu:
         ))
         # fmt: on
 
-        self.page_0 = bytearray(0x00F0) # dont think this makes sense... needs checking
+        self.page_0 = bytearray(0x0100)  # 0x00–0xFF; upper 16 bytes used by _io_flat mode
         self.page_1 = bytearray(0x0100)
 
         # The IO Port0-4 registers have separete memory for R/W
@@ -306,7 +311,7 @@ class Apu:
 
     def load_state(self, d: dict) -> None:
         self.memory[:] = d["memory"]
-        self.page_0[:] = d["page_0"]
+        self.page_0[:len(d["page_0"])] = d["page_0"]
         self.page_1[:] = d["page_1"]
         self.ports_r[:] = d["ports_r"]
         self.ports_w[:] = d["ports_w"]
@@ -360,7 +365,7 @@ class Apu:
         ram = spc.ram
 
         # Page 0 ($0000-$00EF) — general RAM
-        self.page_0[:] = ram[0x0000:0x00F0]
+        self.page_0[:0x00F0] = ram[0x0000:0x00F0]
         # I/O register range $00F0-$00FF is not stored in RAM; skip it.
         # Page 1 ($0100-$01FF)
         self.page_1[:] = ram[0x0100:0x0200]
@@ -405,6 +410,8 @@ class Apu:
         result: cython.uint
         if addr <= 0x00EF:
             result = self.page_0[addr]
+        elif addr <= 0x00FC and self._io_flat:
+            result = self.page_0[addr]
         elif addr == 0x00F0:
             result = self.test_register
         elif addr == 0x00F1:
@@ -443,6 +450,8 @@ class Apu:
         if self._mem_log is not None:
             self._mem_log.append((addr, value, "write"))
         if addr <= 0x00EF:
+            self.page_0[addr] = value
+        elif addr <= 0x00FC and self._io_flat:
             self.page_0[addr] = value
         elif addr == 0x00F0:
             self.test_register = value
@@ -585,9 +594,10 @@ class Apu:
 
     @cython.ccall
     def read_external(self, addr: cython.uint) -> cython.uint:
-        # $F4-$F7: external read returns the SPC output latch (ports_w),
-        # since that is the value the SPC last wrote there.
-        if 0xF4 <= addr <= 0xF7:
+        # $F4-$F7: external read returns the SPC output latch (ports_w).
+        # In flat-IO mode the whole $F0-$FC range uses page_0, so fall
+        # through to _read() which already handles that.
+        if 0xF4 <= addr <= 0xF7 and not self._io_flat:
             return self.ports_w[addr - 0xF4]
         return self._read(addr)
 

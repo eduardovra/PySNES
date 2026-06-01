@@ -39,9 +39,13 @@ def _write_mem(apu: Apu, addr: int, value: int) -> None:
     """Write directly to APU backing memory, bypassing I/O side-effects."""
     if addr <= 0x00EF:
         apu.page_0[addr] = value
+    elif addr <= 0x00FC:
+        # $F0-$FC: enable flat-RAM mode so reads return the initialised value
+        # regardless of DSP address-register routing or F2-latch changes.
+        apu._io_flat = True
+        apu.page_0[addr] = value
     elif addr <= 0x00FF:
-        # I/O register range — use __setitem__ (which mirrors port writes to
-        # ports_r so the APU can read back what was initialised here).
+        # $FD-$FF: timer output counters — keep real I/O so stage3/shadow work.
         apu.write_external(addr, value)
     elif addr <= 0x01FF:
         apu.page_1[addr - 0x0100] = value

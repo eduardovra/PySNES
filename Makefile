@@ -26,7 +26,6 @@ clean:
 	find pysnes/ -type f -name "*.exp" -delete
 	find pysnes/ -type f -name "*.html" -delete
 	find pysnes/ -type d -name "__pycache__" -delete
-	find . -maxdepth 1 -type f -name "*.so" -delete
 
 run: build
 	@echo "Running PySNES..."

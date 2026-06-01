@@ -1,6 +1,6 @@
 # PySNES
 
-A Super Nintendo Entertainment System (SNES) emulator written in Python.
+A Super Nintendo Entertainment System (SNES) emulator written in Python. Work in progress.
 
 ![Super Mario World](docs/screenshot.png)
 

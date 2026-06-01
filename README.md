@@ -20,11 +20,27 @@ An experimental Super Nintendo Entertainment System (SNES) emulator written in P
 - PyPy 3.10 (installed automatically by uv)
 - SDL2 runtime library
 
-Install SDL2 on Debian/Ubuntu:
+## Installation (Ubuntu)
+
+### 1. Install SDL2
 
 ```sh
 sudo apt install libsdl2-2.0-0
 ```
+
+### 2. Install uv
+
+```sh
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+
+### 3. Install PyPy and dependencies
+
+```sh
+uv sync
+```
+
+This automatically downloads PyPy 3.10 and installs all dependencies.
 
 ## Running
 

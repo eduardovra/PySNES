@@ -6,17 +6,17 @@ class Background:
 
     def __init__(
         self,
-        number = 0,
-        screen_size = 0,
-        screen_addr = 0,
-        tiledata_addr = 0,
-        tile_size = 0,
-        main_screen_enable = True,
-        subscreen_enable = True,
-        hoffset = 0,
-        voffset = 0,
-        color_offset_mode_0 = 0,
-    ):
+        number: int = 0,
+        screen_size: int = 0,
+        screen_addr: int = 0,
+        tiledata_addr: int = 0,
+        tile_size: int = 0,
+        main_screen_enable: bool = True,
+        subscreen_enable: bool = True,
+        hoffset: int = 0,
+        voffset: int = 0,
+        color_offset_mode_0: int = 0,
+    ) -> None:
         """Background number 1-4"""
         self.number = number
 

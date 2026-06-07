@@ -159,7 +159,7 @@ def draw_mode7_scanline(ppu: Ppu) -> None:
                 ppu.sub_bgs[idx] = color
 
 
-def draw_background_scanline(ppu: Ppu, bg: Background, bpp, priority_selector) -> None:
+def draw_background_scanline(ppu: Ppu, bg: Background, bpp: int, priority_selector: bool) -> None:
     # If neither main nor sub is enabled, nothing to do at all.
     if not bg.main_screen_enable and not bg.sub_screen_enable:
         return

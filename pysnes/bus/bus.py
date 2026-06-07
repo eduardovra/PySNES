@@ -138,7 +138,7 @@ class Bus:
             if self.controller_port1.data() & 1:
                 self.controller_port1.joy_l |= 1 << bit
 
-    def read(self, abs_addr):
+    def read(self, abs_addr: int) -> int:
         bank = abs_addr >> 16 & 0xFF
         addr = abs_addr & 0xFFFF
 
@@ -296,7 +296,7 @@ class Bus:
 
         raise NotImplementedError(f"Reading unmapped memory region: 0x{abs_addr:06X}")
 
-    def peek(self, abs_addr):
+    def peek(self, abs_addr: int) -> int:
         """Read without side effects — safe for debugger/disassembler use.
 
         ROM, RAM, and SRAM are read normally. Hardware register ranges
@@ -312,7 +312,7 @@ class Bus:
             return 0
         return self.read(abs_addr)
 
-    def write(self, abs_addr, data):
+    def write(self, abs_addr: int, data: int) -> None:
         bank = abs_addr >> 16 & 0xFF
         addr = abs_addr & 0xFFFF
 

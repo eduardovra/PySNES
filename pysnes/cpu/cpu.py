@@ -10,61 +10,61 @@ if TYPE_CHECKING:
 
 class Reg:
 
-    def __init__(self, bits, value):
+    def __init__(self, bits: int, value: int) -> None:
         self.bits = bits
         self.value = value
 
     @property
-    def l(self):
+    def l(self) -> int:
         """Low byte getter"""
         return self.value & 0xFF
 
     @l.setter
-    def l(self, value):
+    def l(self, value: int) -> None:
         """Low byte setter"""
         self.value &= 0xFFFF00
         self.value |= value & 0xFF
 
     @property
-    def h(self):
+    def h(self) -> int:
         """High byte getter"""
         return self.value >> 8 & 0xFF
 
     @h.setter
-    def h(self, value):
+    def h(self, value: int) -> None:
         """High byte setter"""
         self.value &= 0xFF00FF
         self.value |= value << 8 & 0xFF00
 
     @property
-    def b(self):
+    def b(self) -> int:
         """Bank byte getter"""
         return self.value >> 16 & 0xFF
 
     @b.setter
-    def b(self, value):
+    def b(self, value: int) -> None:
         """Bank byte setter"""
         self.value &= 0xFFFF
         self.value |= value << 16 & 0xFF0000
 
     @property
-    def w(self):
+    def w(self) -> int:
         """Low word getter"""
         return self.value & 0xFFFF
 
     @w.setter
-    def w(self, value):
+    def w(self, value: int) -> None:
         """Low word setter"""
         self.value &= 0xFF0000
         self.value |= value & 0xFFFF
 
     @property
-    def d(self):
+    def d(self) -> int:
         """24 bit getter"""
         return self.value & 0xFFFFFF
 
     @d.setter
-    def d(self, value):
+    def d(self, value: int) -> None:
         """24 bit setter"""
         self.value = value & 0xFFFFFF
 
@@ -121,7 +121,7 @@ class InstructionSlot:
     Stores the addressing-mode function and up to two pre-bound arguments.
     """
 
-    def __init__(self, func, arg1=None, arg2=None, nargs = 0):
+    def __init__(self, func, arg1=None, arg2=None, nargs: int = 0) -> None:
         self._func = func
         self._arg1 = arg1
         self._arg2 = arg2
@@ -352,12 +352,12 @@ class Cpu:
         if (self.D.l):
             self.idle()
 
-    def idle4(self, x, y):
+    def idle4(self, x: int, y: int) -> None:
         """if(!XF || x >> 8 != y >> 8) idle();"""
         if not self.XFlag or (x >> 8) != (y >> 8):
             self.idle()
 
-    def idle6(self, address):
+    def idle6(self, address: int) -> None:
         """if(EF && PC.h != address >> 8) idle();"""
         if self.EF and (self.PC.w >> 8) != (address >> 8):
             self.idle()
@@ -374,18 +374,18 @@ class Cpu:
         # I changed to True to make test for opcode 0xCB (WAI) pass
         return True
 
-    def write(self, addr, data):
+    def write(self, addr: int, data: int) -> None:
         self.cycles += self.get_clock_cycles(addr)
         self.bus.write(addr, data)
         self.icycles += 1
 
-    def read(self, addr):
+    def read(self, addr: int) -> int:
         self.cycles += self.get_clock_cycles(addr)
         data = self.bus.read(addr)
         self.icycles += 1
         return data
 
-    def readDirect(self, address):
+    def readDirect(self, address: int) -> int:
         # this is not part of bsnes implementation but it seems
         # tests expect the page to wrap around when in emulation mode
         # even if self.D.l is not zero
@@ -397,61 +397,61 @@ class Cpu:
             return self.read(self.D.w | address & 0xff)
         return self.read(self.D.w + address & 0xffff)
 
-    def writeDirect(self, address, data):
+    def writeDirect(self, address: int, data: int) -> None:
         if self.EF and self.D.l == 0:
             self.write(self.D.w | address & 0xff, data)
         else:
             self.write(self.D.w + address & 0xffff, data)
 
-    def readDirectN(self, address):
+    def readDirectN(self, address: int) -> int:
         return self.read(self.D.w + address & 0xffff)
 
-    def readBank(self, address):
+    def readBank(self, address: int) -> int:
         return self.read((self.DB.l << 16) + address & 0xffffff)
 
-    def writeBank(self, address, data):
+    def writeBank(self, address: int, data: int) -> None:
         self.write((self.DB.l << 16) + address & 0xffffff, data)
 
-    def readLong(self, address):
+    def readLong(self, address: int) -> int:
         return self.read(address & 0xffffff)
 
-    def writeLong(self, address, data):
+    def writeLong(self, address: int, data: int) -> None:
         self.write(address & 0xffffff, data)
 
-    def readStack(self, address):
+    def readStack(self, address: int) -> int:
         return self.read(self.S.w + address & 0xffff)
 
-    def writeStack(self, address, data):
+    def writeStack(self, address: int, data: int) -> None:
         self.write(self.S.w + address & 0xffff, data)
 
-    def fetch(self):
+    def fetch(self) -> int:
         data = self.read(self.PC.d)
         self.PC.w += 1
         return data
 
-    def pull(self):
+    def pull(self) -> int:
         if self.EF:
             self.S.l += 1
         else:
             self.S.w += 1
         return self.read(self.S.w)
 
-    def push(self, data):
+    def push(self, data: int) -> None:
         self.write(self.S.w, data)
         if self.EF:
             self.S.l -= 1
         else:
             self.S.w -= 1
 
-    def pullN(self):
+    def pullN(self) -> int:
         self.S.w += 1
         return self.read(self.S.w)
 
-    def pushN(self, data):
+    def pushN(self, data: int) -> None:
         self.write(self.S.w, data)
         self.S.w -= 1
 
-    def fetch_and_execute(self):
+    def fetch_and_execute(self) -> int:
         self.icycles = 0
 
         if self.trace_enabled:
@@ -487,7 +487,7 @@ class Cpu:
 
         return self.cycles - self.prev_cycles
 
-    def get_clock_cycles(self, addr):
+    def get_clock_cycles(self, addr: int) -> int:
         """Returns the number of clock cycles to perform IO on a given address
 
         The 'Speed' column indicates the memory access speed for that area of memory.
@@ -571,11 +571,11 @@ class Cpu:
         return fast
 
     @property
-    def P(self):
+    def P(self) -> int:
         return self.CFlag << 0 | self.ZFlag << 1 | self.IFlag << 2 | self.DFlag << 3 | self.XFlag << 4 | self.MFlag << 5 | self.VFlag << 6 | self.NFlag << 7
 
     @P.setter
-    def P(self, data):
+    def P(self, data: int) -> None:
         # assert 0 <= data <= 0xFF, f"Invalid value for P register: {hex(data)}"
         self.CFlag = data & 0x01 > 0
         self.ZFlag = data & 0x02 > 0

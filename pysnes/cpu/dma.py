@@ -123,7 +123,7 @@ class DMA:
         for ch, cs in zip(self.channels, d["channels"]):
             ch.load_state(cs)
 
-    def write(self, abs_addr, data):
+    def write(self, abs_addr: int, data: int) -> None:
         channel = self.channels[abs_addr >> 4 & 7]
         addr = abs_addr & 0xFF8F
 
@@ -173,7 +173,7 @@ class DMA:
             return
         return
 
-    def read(self, abs_addr):
+    def read(self, abs_addr: int) -> int:
         channel = self.channels[abs_addr >> 4 & 7]
         addr = abs_addr & 0xFF8F
 

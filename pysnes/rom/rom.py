@@ -122,7 +122,7 @@ class Rom:
         self.rom_file_name = pathlib.Path(rom_file_path).name
         self.load_rom_file()
 
-    def read(self, addr):
+    def read(self, addr: int) -> int:
         return self.rom[addr]
 
     def load_rom_file(self):

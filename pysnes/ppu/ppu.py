@@ -253,7 +253,7 @@ class Ppu:
         """
 
     @property
-    def vmdatal(self):
+    def vmdatal(self) -> int:
         return self._vmdatal
 
     @vmdatal.setter
@@ -271,7 +271,7 @@ class Ppu:
             self.increment_vmadd()
 
     @property
-    def vmdatah(self):
+    def vmdatah(self) -> int:
         return self._vmdatah
 
     @vmdatah.setter
@@ -317,14 +317,14 @@ class Ppu:
         base_addr = self._remap_vram_addr(word_addr) * 2
         self._vram_prefetch = self.vram[base_addr] | (self.vram[base_addr + 1] << 8)
 
-    def rdvraml(self):
+    def rdvraml(self) -> int:
         data = self._vram_prefetch & 0xFF
         if not self.vmain_addr_increment_mode:
             self.refill_vram_prefetch()
             self.increment_vmadd()
         return data
 
-    def rdvramh(self):
+    def rdvramh(self) -> int:
         data = (self._vram_prefetch >> 8) & 0xFF
         if self.vmain_addr_increment_mode:
             self.refill_vram_prefetch()
@@ -801,11 +801,11 @@ class Ppu:
     def _build_window_mask(
         self,
         buf: bytearray,
-        w1_enable,
-        w1_invert,
-        w2_enable,
-        w2_invert,
-        combine_logic,
+        w1_enable: bool,
+        w1_invert: bool,
+        w2_enable: bool,
+        w2_invert: bool,
+        combine_logic: int,
     ) -> None:
         """Fill buf[0..255] with 1 where the pixel is inside the combined window, 0 elsewhere."""
         wh0 = self.wh0

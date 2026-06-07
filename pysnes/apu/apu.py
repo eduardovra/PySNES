@@ -64,7 +64,7 @@ class Timer:
         for f in self._STATE_FIELDS:
             setattr(self, f, d[f])
 
-    def step(self, clocks):
+    def step(self, clocks: int) -> None:
         self.stage0 = (self.stage0 + clocks) & 0xFF
         if self.stage0 < self.frequency:
             return
@@ -334,7 +334,7 @@ class Apu:
             self.ports_r[i] = ram[0x00F4 + i]
             self.ports_w[i] = ram[0x00F4 + i]
 
-    def _read(self, addr):
+    def _read(self, addr: int) -> int:
         self.cycles += 1
         if addr <= 0x00EF:
             result = self.page_0[addr]
@@ -372,7 +372,7 @@ class Apu:
             self._mem_log.append((addr, result, "read"))
         return result
 
-    def _write(self, addr, value):
+    def _write(self, addr: int, value: int) -> None:
         self.cycles += 1
         if self._mem_log is not None:
             self._mem_log.append((addr, value, "write"))
@@ -415,27 +415,27 @@ class Apu:
         else:
             raise NotImplementedError(f"Write to unmapped APU address 0x{addr:04X}")
 
-    def write(self, addr, data):
+    def write(self, addr: int, data: int) -> None:
         self._write(addr, data)
 
-    def read(self, addr):
+    def read(self, addr: int) -> int:
         return self._read(addr)
 
-    def store(self, addr, data):
+    def store(self, addr: int, data: int) -> None:
         self._write((self.PF << 8) | (addr & 0xFF), data)
 
-    def load(self, addr):
+    def load(self, addr: int) -> int:
         return self._read((self.PF << 8) | (addr & 0xFF))
 
-    def pull(self):
+    def pull(self) -> int:
         self.S = (self.S + 1) & 0xFF
         return self._read(0x100 | self.S)
 
-    def push(self, data):
+    def push(self, data: int) -> None:
         self._write(0x100 | self.S, data & 0xFF)
         self.S = (self.S - 1) & 0xFF
 
-    def fetch(self):
+    def fetch(self) -> int:
         data = self._read(self.PC)
         self.PC = (self.PC + 1) & 0xFFFF
         return data
@@ -505,12 +505,12 @@ class Apu:
             if self._ports_w_dirty:
                 return
 
-    def step_timers(self, clocks):
+    def step_timers(self, clocks: int) -> None:
         self.timers[0].step(clocks)
         self.timers[1].step(clocks)
         self.timers[2].step(clocks)
 
-    def read_external(self, addr):
+    def read_external(self, addr: int) -> int:
         # $F4-$F7: external read returns the SPC output latch (ports_w).
         # In flat-IO mode the whole $F0-$FC range uses page_0, so fall
         # through to _read() which already handles that.
@@ -518,7 +518,7 @@ class Apu:
             return self.ports_w[addr - 0xF4]
         return self._read(addr)
 
-    def write_external(self, addr, value):
+    def write_external(self, addr: int, value: int) -> None:
         # $F4-$F7: external write sets both latches so that the SPC reads the
         # initialized value back (ports_r) and the verify check also passes
         # (ports_w).  In actual emulation _write/_read keep them split; this

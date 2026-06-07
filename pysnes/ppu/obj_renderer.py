@@ -176,7 +176,7 @@ def draw_objects(ppu: Ppu, priority: int = -1) -> None:
         )
 
 
-def get_obj_dimensions(ppu: Ppu, obj_size) -> Tuple[int, int]:
+def get_obj_dimensions(ppu: Ppu, obj_size: bool) -> Tuple[int, int]:
     """
     000 =  8x8  and 16x16 sprites
     001 =  8x8  and 32x32 sprites

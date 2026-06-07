@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from typing import Tuple, TYPE_CHECKING
 
-import cython
 
 from .constants import SCREEN_WIDTH, _PIXEL_SEQUENCE
 from .data_structures import Object, Tilemap
@@ -15,16 +14,16 @@ def _decode_obj_tile(ppu: Ppu, slot: int, vram_addr: int) -> None:
     """Decode one 4bpp 8×8 tile from VRAM into the object tile cache."""
     vram = ppu.vram
     cache = ppu._obj_tile_cache
-    base: cython.uint = slot * 64
+    base = slot * 64
     for row in range(8):
-        row_addr: cython.uint = (vram_addr + row * 2) & 0xFFFF
-        b0: cython.uint = vram[row_addr]
-        b1: cython.uint = vram[(row_addr + 1) & 0xFFFF]
-        b2: cython.uint = vram[(row_addr + 16) & 0xFFFF]
-        b3: cython.uint = vram[(row_addr + 17) & 0xFFFF]
-        dst: cython.uint = base + row * 8
+        row_addr = (vram_addr + row * 2) & 0xFFFF
+        b0 = vram[row_addr]
+        b1 = vram[(row_addr + 1) & 0xFFFF]
+        b2 = vram[(row_addr + 16) & 0xFFFF]
+        b3 = vram[(row_addr + 17) & 0xFFFF]
+        dst = base + row * 8
         for col in range(8):
-            shift: cython.uint = 7 - col
+            shift = 7 - col
             cache[dst + col] = (
                 ((b0 >> shift) & 1) |
                 (((b1 >> shift) & 1) << 1) |
@@ -86,19 +85,19 @@ def draw_tiles(
 
             if bpp == 4:
                 # Fast path: use pre-decoded tile cache to avoid per-pixel VRAM reads.
-                tile_vram_start: cython.uint = (tile_base_addr + tile_addr * tile_size) & 0xFFFF
-                cache_slot: cython.uint = tile_vram_start >> 5
+                tile_vram_start = (tile_base_addr + tile_addr * tile_size) & 0xFFFF
+                cache_slot = tile_vram_start >> 5
                 if ppu._obj_tile_dirty[cache_slot]:
                     _decode_obj_tile(ppu, cache_slot, tile_vram_start)
                 obj_cache = ppu._obj_tile_cache
                 # i_base = vram_row * 2, so vram_row = i_base >> 1 (v_flip already folded in)
-                cache_base: cython.uint = cache_slot * 64 + (i_base >> 1) * 8
+                cache_base = cache_slot * 64 + (i_base >> 1) * 8
                 for col in range(8):
-                    color: cython.uint = obj_cache[cache_base + col]
-                    px: cython.uint = x + (7 - col if h_flip else col)
+                    color = obj_cache[cache_base + col]
+                    px = x + (7 - col if h_flip else col)
                     if color and 0 <= px < SCREEN_WIDTH:
-                        u32_color: cython.uint = cgram_cache[palette_base + color]
-                        idx: cython.uint = y_idx + px
+                        u32_color = cgram_cache[palette_base + color]
+                        idx = y_idx + px
                         main_bgs[idx] = u32_color
                         # OBJ palettes 4-7 (12-15 in global space) use color math (layer 5).
                         # Palettes 0-3 are immune (layer 6).
@@ -124,7 +123,7 @@ def draw_tiles(
                         color |= (h & mask) >> pixel << 3 | (l & mask) >> pixel << 2
                     if color and 0 <= px < SCREEN_WIDTH:
                         u32_color = cgram_cache[palette_base + color]
-                        idx: cython.uint = y_idx + px
+                        idx = y_idx + px
                         main_bgs[idx] = u32_color
                         main_layer[idx] = 5 if palette >= 12 else 6
 
@@ -177,7 +176,7 @@ def draw_objects(ppu: Ppu, priority: int = -1) -> None:
         )
 
 
-def get_obj_dimensions(ppu: Ppu, obj_size: cython.bint) -> Tuple[int, int]:
+def get_obj_dimensions(ppu: Ppu, obj_size) -> Tuple[int, int]:
     """
     000 =  8x8  and 16x16 sprites
     001 =  8x8  and 32x32 sprites

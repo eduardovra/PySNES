@@ -1,5 +1,4 @@
 from ctypes import c_uint8, c_int8, c_uint16, c_int16
-import cython  # https://cython.readthedocs.io/en/latest/src/quickstart/cythonize.html
 from ..cpu import Cpu
 
 

@@ -1,9 +1,7 @@
 import heapq
 
-import cython
 
 
-@cython.cclass
 class Scheduler:
     """
     Discrete Event Scheduler (DES) — the single source of time for all components.
@@ -20,7 +18,6 @@ class Scheduler:
         - 1 APU clock                 ≈ 21 master clocks  (exact: 21477272/1024000)
     """
 
-    master_clock = cython.declare(cython.ulonglong, visibility="public")
 
     def __init__(self) -> None:
         self._queue: list = []

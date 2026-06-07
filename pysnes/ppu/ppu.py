@@ -2,7 +2,6 @@ from array import array
 from ctypes import c_uint8
 from typing import Optional, TYPE_CHECKING
 
-import cython
 
 from . import bg_renderer, color_math, obj_renderer
 from .constants import (
@@ -17,7 +16,6 @@ if TYPE_CHECKING:
     from ..bus import Bus
 
 
-@cython.cclass
 class Ppu:
     """Picture Processor Unit: 15-Bit"""
 
@@ -49,14 +47,14 @@ class Ppu:
         else:
             self.vram = bytearray(vram_dump)
         self.vmain = 0x00
-        self.vmaddl: cython.uchar = 0
-        self.vmaddh: cython.uchar = 0
-        self._vmdatal: cython.uchar = 0
-        self._vmdatah: cython.uchar = 0
+        self.vmaddl = 0
+        self.vmaddh = 0
+        self._vmdatal = 0
+        self._vmdatah = 0
         # VRAM read port has a 16-bit prefetch buffer; $2116/$2117 writes
         # refill it (no increment), $2139/$213A reads return the buffered byte
         # and refill + increment depending on VMAIN bit 7.
-        self._vram_prefetch: cython.uint = 0
+        self._vram_prefetch = 0
 
         self.inidisp_set(0)
 
@@ -89,40 +87,40 @@ class Ppu:
         self.latch_bgofs_ppu2 = 0
 
         # Mode 7 matrix registers (0x211B-0x2120), 2-write latched
-        self._m7_latch: cython.uchar = 0
-        self.m7a: cython.int = 0
-        self.m7b: cython.int = 0
-        self.m7c: cython.int = 0
-        self.m7d: cython.int = 0
-        self.m7x: cython.int = 0
-        self.m7y: cython.int = 0
-        self.m7sel: cython.uchar = 0
-        self.m7_extbg: cython.bint = False   # SETINI ($2133) bit 6
+        self._m7_latch = 0
+        self.m7a = 0
+        self.m7b = 0
+        self.m7c = 0
+        self.m7d = 0
+        self.m7x = 0
+        self.m7y = 0
+        self.m7sel = 0
+        self.m7_extbg = False   # SETINI ($2133) bit 6
         # Hardware multiplier: product of signed16(m7a) × signed8(m7b_lo).
         # Updated on every write to $211C (M7B). Read via $2134-$2136.
-        self._mpy_result: cython.int = 0
+        self._mpy_result = 0
 
         # Window registers (0x2123-0x212B)
-        self.w12sel: cython.uchar = 0
-        self.w34sel: cython.uchar = 0
-        self.wobjsel: cython.uchar = 0
-        self.wh0: cython.uchar = 0   # Window 1 left
-        self.wh1: cython.uchar = 0   # Window 1 right
-        self.wh2: cython.uchar = 0   # Window 2 left
-        self.wh3: cython.uchar = 0   # Window 2 right
-        self.wbglog: cython.uchar = 0
-        self.wobjlog: cython.uchar = 0
+        self.w12sel = 0
+        self.w34sel = 0
+        self.wobjsel = 0
+        self.wh0 = 0   # Window 1 left
+        self.wh1 = 0   # Window 1 right
+        self.wh2 = 0   # Window 2 left
+        self.wh3 = 0   # Window 2 right
+        self.wbglog = 0
+        self.wobjlog = 0
 
         # Window screen disable (0x212E-0x212F)
-        self.tmw: cython.uchar = 0
-        self.tsw: cython.uchar = 0
+        self.tmw = 0
+        self.tsw = 0
 
         # Color math registers (0x2130-0x2132)
-        self.cgwsel: cython.uchar = 0
-        self.cgadsub: cython.uchar = 0
-        self.coldata_r: cython.uchar = 0
-        self.coldata_g: cython.uchar = 0
-        self.coldata_b: cython.uchar = 0
+        self.cgwsel = 0
+        self.cgadsub = 0
+        self.coldata_r = 0
+        self.coldata_g = 0
+        self.coldata_b = 0
 
         # Mosaic
         self.mosaic_enabled = [False, False, False, False]
@@ -255,11 +253,11 @@ class Ppu:
         """
 
     @property
-    def vmdatal(self) -> cython.uchar:
+    def vmdatal(self):
         return self._vmdatal
 
     @vmdatal.setter
-    def vmdatal(self, data: cython.uchar) -> None:
+    def vmdatal(self, data) -> None:
         self._vmdatal = data
         # $2118 writes ONLY the low byte at vram[addr*2+0]. The high byte
         # is preserved (this is the whole point of having separate L/H
@@ -273,11 +271,11 @@ class Ppu:
             self.increment_vmadd()
 
     @property
-    def vmdatah(self) -> cython.uchar:
+    def vmdatah(self):
         return self._vmdatah
 
     @vmdatah.setter
-    def vmdatah(self, data: cython.uchar) -> None:
+    def vmdatah(self, data) -> None:
         self._vmdatah = data
         word_addr = (self.vmaddl | self.vmaddh << 8) & 0x7FFF
         base_addr = self._remap_vram_addr(word_addr) * 2
@@ -319,14 +317,14 @@ class Ppu:
         base_addr = self._remap_vram_addr(word_addr) * 2
         self._vram_prefetch = self.vram[base_addr] | (self.vram[base_addr + 1] << 8)
 
-    def rdvraml(self) -> cython.uchar:
+    def rdvraml(self):
         data = self._vram_prefetch & 0xFF
         if not self.vmain_addr_increment_mode:
             self.refill_vram_prefetch()
             self.increment_vmadd()
         return data
 
-    def rdvramh(self) -> cython.uchar:
+    def rdvramh(self):
         data = (self._vram_prefetch >> 8) & 0xFF
         if self.vmain_addr_increment_mode:
             self.refill_vram_prefetch()
@@ -478,14 +476,14 @@ class Ppu:
 
     def m7_write(self, reg: int, data: int) -> None:
         """Handle 2-write Mode 7 matrix registers (M7A-M7Y, 0x211B-0x2120)."""
-        value: cython.int = (data << 8) | self._m7_latch
+        value = (data << 8) | self._m7_latch
         self._m7_latch = data
         if reg == 0x211B:
             self.m7a = value
         elif reg == 0x211C:
             self.m7b = value
-            m7a_s: cython.int = self.m7a if self.m7a < 0x8000 else self.m7a - 0x10000
-            data_s: cython.int = data if data < 128 else data - 256
+            m7a_s = self.m7a if self.m7a < 0x8000 else self.m7a - 0x10000
+            data_s = data if data < 128 else data - 256
             self._mpy_result = m7a_s * data_s
         elif reg == 0x211D:
             self.m7c = value
@@ -502,7 +500,7 @@ class Ppu:
 
     def coldata_set(self, data: int) -> None:
         """COLDATA (0x2132) - Fixed color for color math."""
-        intensity: cython.uchar = data & 0x1F
+        intensity = data & 0x1F
         if data & 0x20:
             self.coldata_r = intensity
         if data & 0x40:
@@ -623,8 +621,8 @@ class Ppu:
         re-raise the line if the CPU has already cleared it.
         """
         st = self.bus.cpu.status
-        h_en: cython.bint = st.hirq_enable
-        v_en: cython.bint = st.virq_enable
+        h_en = st.hirq_enable
+        v_en = st.virq_enable
         if not (h_en or v_en):
             return
         if v_en and self.v_counter != st.vtime:
@@ -803,22 +801,22 @@ class Ppu:
     def _build_window_mask(
         self,
         buf: bytearray,
-        w1_enable: cython.bint,
-        w1_invert: cython.bint,
-        w2_enable: cython.bint,
-        w2_invert: cython.bint,
-        combine_logic: cython.uint,
+        w1_enable,
+        w1_invert,
+        w2_enable,
+        w2_invert,
+        combine_logic,
     ) -> None:
         """Fill buf[0..255] with 1 where the pixel is inside the combined window, 0 elsewhere."""
-        wh0: cython.uint = self.wh0
-        wh1: cython.uint = self.wh1
-        wh2: cython.uint = self.wh2
-        wh3: cython.uint = self.wh3
+        wh0 = self.wh0
+        wh1 = self.wh1
+        wh2 = self.wh2
+        wh3 = self.wh3
         for _x in range(SCREEN_WIDTH):
-            _w1: cython.bint = False
+            _w1 = False
             if w1_enable:
                 _w1 = bool((wh0 <= _x <= wh1) ^ w1_invert)
-            _w2: cython.bint = False
+            _w2 = False
             if w2_enable:
                 _w2 = bool((wh2 <= _x <= wh3) ^ w2_invert)
             if w1_enable and w2_enable:

@@ -257,7 +257,7 @@ class Ppu:
         return self._vmdatal
 
     @vmdatal.setter
-    def vmdatal(self, data) -> None:
+    def vmdatal(self, data: int) -> None:
         self._vmdatal = data
         # $2118 writes ONLY the low byte at vram[addr*2+0]. The high byte
         # is preserved (this is the whole point of having separate L/H
@@ -275,7 +275,7 @@ class Ppu:
         return self._vmdatah
 
     @vmdatah.setter
-    def vmdatah(self, data) -> None:
+    def vmdatah(self, data: int) -> None:
         self._vmdatah = data
         word_addr = (self.vmaddl | self.vmaddh << 8) & 0x7FFF
         base_addr = self._remap_vram_addr(word_addr) * 2

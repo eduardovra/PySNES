@@ -38,18 +38,26 @@ def apply_brightness_scanline(ppu: Ppu) -> None:
     brightness = ppu.display_brightness
     y = ppu.v_counter - 1
     row = y * SCREEN_WIDTH
+    main_bgs = ppu.main_bgs
     if brightness == 0:
         black = 0x000000FF
         for x in range(SCREEN_WIDTH):
-            ppu.main_bgs[row + x] = black
+            main_bgs[row + x] = black
         return
+    # Per-channel scaling is the same `v * brightness // 15` for all pixels, so
+    # build a 256-entry lookup once per brightness level (cached, since a fade
+    # holds each level for many scanlines/frames) and index it instead of doing
+    # a multiply+divide per channel per pixel.
+    luts = getattr(ppu, "_brightness_luts", None)
+    if luts is None:
+        luts = ppu._brightness_luts = {}
+    lut = luts.get(brightness)
+    if lut is None:
+        lut = luts[brightness] = bytes(v * brightness // 15 for v in range(256))
     for x in range(SCREEN_WIDTH):
         idx = row + x
-        p = ppu.main_bgs[idx]
-        r = ((p >> 24) & 0xFF) * brightness // 15
-        g = ((p >> 16) & 0xFF) * brightness // 15
-        b = ((p >> 8) & 0xFF) * brightness // 15
-        ppu.main_bgs[idx] = (r << 24) | (g << 16) | (b << 8) | (p & 0xFF)
+        p = main_bgs[idx]
+        main_bgs[idx] = (lut[(p >> 24) & 0xFF] << 24) | (lut[(p >> 16) & 0xFF] << 16) | (lut[(p >> 8) & 0xFF] << 8) | (p & 0xFF)
 
 
 def composite_scanline(ppu: Ppu) -> None:
@@ -105,25 +113,19 @@ def composite_scanline(ppu: Ppu) -> None:
             math_logic,
         )
 
+    # Per-pixel participation indexed by main_layer tag: 0=backdrop, 1-4=BG1-4,
+    # 5=OBJ (palettes 4-7), 6=OBJ immune (never participates). Table lookup
+    # replaces a per-pixel if/elif chain.
+    participates = (
+        enable_back, enable_bg1, enable_bg2, enable_bg3, enable_bg4, enable_obj, 0,
+    )
+
     y = ppu.v_counter - 1
     row = y * SCREEN_WIDTH
+    main_layer = ppu.main_layer
     for x in range(SCREEN_WIDTH):
         idx = row + x
-        layer = ppu.main_layer[idx]
-        participate = False
-        if layer == 0:
-            participate = enable_back
-        elif layer == 1:
-            participate = enable_bg1
-        elif layer == 2:
-            participate = enable_bg2
-        elif layer == 3:
-            participate = enable_bg3
-        elif layer == 4:
-            participate = enable_bg4
-        elif layer == 5:
-            participate = enable_obj
-        if not participate:
+        if not participates[main_layer[idx]]:
             continue
 
         # Color-window gating (CGWSEL bits 5-4).

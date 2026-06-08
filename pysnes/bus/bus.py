@@ -49,7 +49,7 @@ class Bus:
 
         # Math hardware registers ($4202-$4206 write, $4214-$4217 read)
         self._wrmpya = 0   # $4202 multiplicand
-        self._wrdiv = 0     # $4204-$4205 dividend (16-bit)
+        self._wrdiv = 0    # $4204-$4205 dividend (16-bit)
 
     def dump_state(self) -> dict:
         return {

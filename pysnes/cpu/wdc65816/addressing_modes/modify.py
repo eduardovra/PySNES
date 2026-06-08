@@ -5,7 +5,13 @@ from .decorator import decorator_mode_8bit
 
 @decorator_mode_8bit
 def ImpliedModify(cpu: Cpu, mode_8bit: bool, func, m: str):
-    M = getattr(cpu, m)
+    # m is the target register, only ever "A" / "X" / "Y".
+    if m == "A":
+        M = cpu.A
+    elif m == "X":
+        M = cpu.X
+    else:
+        M = cpu.Y
 
     if mode_8bit:
         cpu.idleIRQ()

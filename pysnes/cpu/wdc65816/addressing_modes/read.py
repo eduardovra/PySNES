@@ -1,4 +1,4 @@
-from ...cpu import Cpu, Reg
+from ...cpu import Cpu
 
 from .decorator import decorator_mode_8bit
 
@@ -28,7 +28,15 @@ def ImmediateRead(cpu: Cpu, mode_8bit: bool, func):
 
 @decorator_mode_8bit
 def BankRead(cpu: Cpu, mode_8bit: bool, func, i: str = ""):
-    I = getattr(cpu, i, None)
+    # i is the (optional) index register name, only ever "" / "X" / "Y".
+    # Branch directly instead of getattr(cpu, i, None) — a per-instruction
+    # dynamic string attribute lookup PyPy can't specialize.
+    if i == "X":
+        I = cpu.X
+    elif i == "Y":
+        I = cpu.Y
+    else:
+        I = None
 
     if mode_8bit:
         if I is None:
@@ -60,26 +68,38 @@ def BankRead(cpu: Cpu, mode_8bit: bool, func, i: str = ""):
 
 @decorator_mode_8bit
 def LongRead(cpu: Cpu, mode_8bit: bool, func, i: str = ""):
-    I = getattr(cpu, i, Reg(16, 0))
+    # Resolve the index offset directly. The old getattr(cpu, i, Reg(16, 0))
+    # allocated a throwaway Reg on every call (the default is always evaluated).
+    if i == "X":
+        iw = cpu.X.w
+    elif i == "Y":
+        iw = cpu.Y.w
+    else:
+        iw = 0
 
     if mode_8bit:
         cpu.V.l = cpu.fetch()
         cpu.V.h = cpu.fetch()
         cpu.V.b = cpu.fetch()
-        cpu.W.l = cpu.readLong(cpu.V.d + I.w + 0)
+        cpu.W.l = cpu.readLong(cpu.V.d + iw + 0)
         func(cpu, mode_8bit, cpu.W.l)
     else:
         cpu.V.l = cpu.fetch()
         cpu.V.h = cpu.fetch()
         cpu.V.b = cpu.fetch()
-        cpu.W.l = cpu.readLong(cpu.V.d + I.w + 0)
-        cpu.W.h = cpu.readLong(cpu.V.d + I.w + 1)
+        cpu.W.l = cpu.readLong(cpu.V.d + iw + 0)
+        cpu.W.h = cpu.readLong(cpu.V.d + iw + 1)
         func(cpu, mode_8bit, cpu.W.w)
 
 
 @decorator_mode_8bit
 def DirectRead(cpu: Cpu, mode_8bit: bool, func, i: str = ""):
-    I = getattr(cpu, i, None)
+    if i == "X":
+        I = cpu.X
+    elif i == "Y":
+        I = cpu.Y
+    else:
+        I = None
 
     if mode_8bit:
         if I is None:
@@ -172,7 +192,12 @@ def IndirectIndexedRead(cpu: Cpu, mode_8bit: bool, func):
 
 @decorator_mode_8bit
 def IndirectLongRead(cpu: Cpu, mode_8bit: bool, func, i: str = ""):
-    I = getattr(cpu, i, Reg(16, 0))
+    if i == "X":
+        iw = cpu.X.w
+    elif i == "Y":
+        iw = cpu.Y.w
+    else:
+        iw = 0
 
     if mode_8bit:
         cpu.U.l = cpu.fetch()
@@ -180,7 +205,7 @@ def IndirectLongRead(cpu: Cpu, mode_8bit: bool, func, i: str = ""):
         cpu.V.l = cpu.readDirectN(cpu.U.l + 0)
         cpu.V.h = cpu.readDirectN(cpu.U.l + 1)
         cpu.V.b = cpu.readDirectN(cpu.U.l + 2)
-        cpu.W.l = cpu.readLong(cpu.V.d + I.w + 0)
+        cpu.W.l = cpu.readLong(cpu.V.d + iw + 0)
         func(cpu, mode_8bit, cpu.W.l)
     else:
         cpu.U.l = cpu.fetch()
@@ -188,8 +213,8 @@ def IndirectLongRead(cpu: Cpu, mode_8bit: bool, func, i: str = ""):
         cpu.V.l = cpu.readDirectN(cpu.U.l + 0)
         cpu.V.h = cpu.readDirectN(cpu.U.l + 1)
         cpu.V.b = cpu.readDirectN(cpu.U.l + 2)
-        cpu.W.l = cpu.readLong(cpu.V.d + I.w + 0)
-        cpu.W.h = cpu.readLong(cpu.V.d + I.w + 1)
+        cpu.W.l = cpu.readLong(cpu.V.d + iw + 0)
+        cpu.W.h = cpu.readLong(cpu.V.d + iw + 1)
         func(cpu, mode_8bit, cpu.W.w)
 
 

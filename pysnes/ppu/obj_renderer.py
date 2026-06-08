@@ -59,6 +59,9 @@ def draw_tiles(
     tile_size = 8 * bpp
     palette_base = palette * (1 << bpp)
     y_idx = (vc - 1) * SCREEN_WIDTH
+    # Layer tag is constant for the whole tile (palette is fixed). OBJ palettes
+    # 4-7 (12-15 global) take part in color math (layer 5); 0-3 are immune (6).
+    layer_tag = 5 if palette >= 12 else 6
 
     for tile_pos_v in range(v_tiles):
         # Compute the screen-Y of the top of this tile row (before flip).
@@ -94,14 +97,13 @@ def draw_tiles(
                 cache_base = cache_slot * 64 + (i_base >> 1) * 8
                 for col in range(8):
                     color = obj_cache[cache_base + col]
+                    if not color:
+                        continue  # transparent — skip before computing px
                     px = x + (7 - col if h_flip else col)
-                    if color and 0 <= px < SCREEN_WIDTH:
-                        u32_color = cgram_cache[palette_base + color]
+                    if 0 <= px < SCREEN_WIDTH:
                         idx = y_idx + px
-                        main_bgs[idx] = u32_color
-                        # OBJ palettes 4-7 (12-15 in global space) use color math (layer 5).
-                        # Palettes 0-3 are immune (layer 6).
-                        main_layer[idx] = 5 if palette >= 12 else 6
+                        main_bgs[idx] = cgram_cache[palette_base + color]
+                        main_layer[idx] = layer_tag
             else:
                 # General path for bpp != 4.
                 # VRAM is 64KB; mask to 16 bits to wrap correctly.
@@ -122,10 +124,9 @@ def draw_tiles(
                         h = vram[(i + 17) & 0xFFFF]
                         color |= (h & mask) >> pixel << 3 | (l & mask) >> pixel << 2
                     if color and 0 <= px < SCREEN_WIDTH:
-                        u32_color = cgram_cache[palette_base + color]
                         idx = y_idx + px
-                        main_bgs[idx] = u32_color
-                        main_layer[idx] = 5 if palette >= 12 else 6
+                        main_bgs[idx] = cgram_cache[palette_base + color]
+                        main_layer[idx] = layer_tag
 
 
 def draw_objects(ppu: Ppu, priority: int = -1) -> None:
@@ -142,16 +143,33 @@ def draw_objects(ppu: Ppu, priority: int = -1) -> None:
         return
 
     vc = ppu.v_counter
-    for obj in ppu.oam.objects:
-        if priority >= 0 and obj.priority != priority:
-            continue
-        if obj.y == 240:  # TODO: replace with proper Y-bounds check; y=240 is the common hide convention but not the hardware rule
-            continue
 
-        tile_width, tile_height = get_obj_dimensions(ppu, obj.size)
-        # Skip sprites whose Y range doesn't include the current scanline,
-        # avoiding draw_tiles call overhead for the majority of objects.
-        if not (obj.y <= vc < obj.y + tile_height):
+    # draw_objects runs once per priority level (0-3) for every scanline, so a
+    # naive loop re-scans all 128 OAM entries up to 4× per line. Instead build
+    # the list of sprites intersecting this scanline once and reuse it across
+    # the priority passes. OAM and v_counter are stable within a scanline's
+    # render (the CPU doesn't run between the passes), so the cache is keyed on
+    # (frame, scanline) — a new frame or scanline rebuilds it. The attributes
+    # are transient render state, created lazily so we don't touch Ppu.__init__.
+    visible = getattr(ppu, "_obj_line_cache", None)
+    if visible is None:
+        visible = ppu._obj_line_cache = []
+        ppu._obj_line_frame = -1
+        ppu._obj_line_vc = -1
+    if ppu._obj_line_frame != ppu.frames or ppu._obj_line_vc != vc:
+        visible.clear()
+        for obj in ppu.oam.objects:
+            if obj.y == 240:  # TODO: replace with proper Y-bounds check; y=240 is the common hide convention but not the hardware rule
+                continue
+            tw, th = get_obj_dimensions(ppu, obj.size)
+            # Keep only sprites whose Y range includes this scanline.
+            if obj.y <= vc < obj.y + th:
+                visible.append((obj, tw, th))
+        ppu._obj_line_frame = ppu.frames
+        ppu._obj_line_vc = vc
+
+    for obj, tile_width, tile_height in visible:
+        if priority >= 0 and obj.priority != priority:
             continue
 
         # OBJ X is 9-bit signed (Anomie/fullsnes): values 256..511 represent

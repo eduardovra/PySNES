@@ -161,9 +161,6 @@ class Apu:
         # Fixed-point remainder for the APU cycle budget (in units of MC_DEN).
         # Avoids lossy MC↔APU-cycle round-trips in sync_to.
         self._apu_mc_frac: int = 0
-        # Set when APU writes to ports_w; causes sync_to to yield so the CPU
-        # can observe each intermediate port value before the APU runs further.
-        self._ports_w_dirty: bool = False
 
         # Per-instruction cycle counter.  Reset at the top of fetch_and_execute;
         # incremented by every read_external, write_external, and idle() call so tests
@@ -221,7 +218,7 @@ class Apu:
     _SCALAR_STATE = (
         "PC", "A", "X", "Y", "S",
         "NF", "VF", "PF", "BF", "HF", "IF", "ZF", "CF",
-        "_last_synced_mc", "_apu_mc_frac", "_ports_w_dirty", "cycles",
+        "_last_synced_mc", "_apu_mc_frac", "cycles",
         "_control_register_raw",
         "dsp_register_address", "dsp_register_data",
         "auxio4", "auxio5",
@@ -394,7 +391,6 @@ class Apu:
             # The CPU→SPC latch (ports_r) is separate hardware; do NOT mirror — the
             # SPC reads back whatever the main CPU last wrote, not its own writes.
             self.ports_w[addr - 0x00F4] = value
-            self._ports_w_dirty = True
         elif addr == 0x00F8:
             self.auxio4 = value
         elif addr == 0x00F9:
@@ -485,9 +481,8 @@ class Apu:
         Called lazily whenever the CPU reads or writes an APU I/O port, ensuring
         the APU has run up to that point in time before the port value is sampled.
 
-        Stops early when the APU writes to ports_w so the CPU always observes
-        each intermediate value rather than only seeing the final state after a
-        large batch of ticks.  The remaining time is picked up on the next call.
+        Each call drains the full budget up to master_clock so the CPU observes
+        the port value as of its access time (the last write at or before now).
         """
         elapsed = master_clock - self._last_synced_mc
         if elapsed <= 0:
@@ -497,13 +492,10 @@ class Apu:
         # Fixed-point accumulator: add elapsed MC scaled by MC_DEN so we never
         # lose fractional cycles across calls.  One APU cycle costs MC_NUM units.
         self._apu_mc_frac += elapsed * self._APU_MC_DEN
-        self._ports_w_dirty = False
         while self._apu_mc_frac >= self._APU_MC_NUM:
             self.fetch_and_execute()
             self.step_timers(self.cycles)
             self._apu_mc_frac -= self.cycles * self._APU_MC_NUM
-            if self._ports_w_dirty:
-                return
 
     def step_timers(self, clocks: int) -> None:
         self.timers[0].step(clocks)

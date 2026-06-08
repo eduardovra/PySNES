@@ -2,96 +2,79 @@ from __future__ import annotations
 from typing import Any, TYPE_CHECKING
 
 from rich import print
-import cython
 
 if TYPE_CHECKING:
     from ..bus import Bus
 
-if cython.compiled:
-    print(f"[blue]{__name__} compiled with Cython[/blue]")
 
 
-@cython.cclass
 class Reg:
-    bits = cython.declare(cython.uchar, visibility="public")
-    value = cython.declare(cython.uint, visibility="public")
 
-    def __init__(self, bits: cython.uchar, value: cython.uint):
+    def __init__(self, bits: int, value: int) -> None:
         self.bits = bits
         self.value = value
 
     @property
-    def l(self) -> cython.uchar:
+    def l(self) -> int:
         """Low byte getter"""
         return self.value & 0xFF
 
     @l.setter
-    def l(self, value: cython.uint):
+    def l(self, value: int) -> None:
         """Low byte setter"""
         self.value &= 0xFFFF00
         self.value |= value & 0xFF
 
     @property
-    def h(self) -> cython.uchar:
+    def h(self) -> int:
         """High byte getter"""
         return self.value >> 8 & 0xFF
 
     @h.setter
-    def h(self, value: cython.uint):
+    def h(self, value: int) -> None:
         """High byte setter"""
         self.value &= 0xFF00FF
         self.value |= value << 8 & 0xFF00
 
     @property
-    def b(self) -> cython.uchar:
+    def b(self) -> int:
         """Bank byte getter"""
         return self.value >> 16 & 0xFF
 
     @b.setter
-    def b(self, value: cython.uint):
+    def b(self, value: int) -> None:
         """Bank byte setter"""
         self.value &= 0xFFFF
         self.value |= value << 16 & 0xFF0000
 
     @property
-    def w(self) -> cython.ushort:
+    def w(self) -> int:
         """Low word getter"""
         return self.value & 0xFFFF
 
     @w.setter
-    def w(self, value: cython.uint):
+    def w(self, value: int) -> None:
         """Low word setter"""
         self.value &= 0xFF0000
         self.value |= value & 0xFFFF
 
     @property
-    def d(self) -> cython.uint:
+    def d(self) -> int:
         """24 bit getter"""
         return self.value & 0xFFFFFF
 
     @d.setter
-    def d(self, value: cython.uint):
+    def d(self, value: int) -> None:
         """24 bit setter"""
         self.value = value & 0xFFFFFF
 
 
-@cython.cclass
 class CpuStatus:
-    hirq_enable = cython.declare(cython.bint, visibility="public")
-    virq_enable = cython.declare(cython.bint, visibility="public")
-    irq_enable = cython.declare(cython.bint, visibility="public")
     # nmi_line: set to True at V-Blank start by bus.raise_nmi(); read by bus at $4210
-    nmi_line = cython.declare(cython.bint, visibility="public")
-    nmi_enable = cython.declare(cython.bint, visibility="public")
     # irq_line: set by PPU when H/V match condition is satisfied; cleared by
     # reading $4211 (TIMEUP) or by disabling both H-IRQ and V-IRQ via $4200.
-    irq_line = cython.declare(cython.bint, visibility="public")
     # H/V IRQ target registers ($4207-$420A). 9-bit each.
-    htime = cython.declare(cython.ushort, visibility="public")
-    vtime = cython.declare(cython.ushort, visibility="public")
-    auto_joypad_read_enable = cython.declare(cython.bint, visibility="public")
     # MEMSEL ($420D) bit 0: 1 = FastROM (banks $80-$BF and $C0-$FF use 6 MC instead of 8)
-    fast_rom = cython.declare(cython.bint, visibility="public")
 
     def __init__(self):
         self.hirq_enable = False
@@ -132,27 +115,18 @@ class CpuStatus:
         self.fast_rom = d["fast_rom"]
 
 
-@cython.cclass
 class InstructionSlot:
     """Replaces functools.partial for instruction dispatch.
 
     Stores the addressing-mode function and up to two pre-bound arguments.
-    The call() method is a @cython.cfunc so that fetch_and_execute() can
-    reach it via a direct C vtable call (using cython.cast) instead of
-    going through partial.__call__ and its Python-level arg-tuple building.
     """
-    _func = cython.declare(object)
-    _arg1 = cython.declare(object)
-    _arg2 = cython.declare(object)
-    _nargs = cython.declare(cython.uchar)
 
-    def __init__(self, func, arg1=None, arg2=None, nargs: cython.uchar = 0):
+    def __init__(self, func, arg1=None, arg2=None, nargs: int = 0) -> None:
         self._func = func
         self._arg1 = arg1
         self._arg2 = arg2
         self._nargs = nargs
 
-    @cython.cfunc
     def call(self, cpu: Cpu):
         if self._nargs == 0:
             self._func(cpu)
@@ -162,20 +136,8 @@ class InstructionSlot:
             self._func(cpu, self._arg1, self._arg2)
 
 
-@cython.cclass
 class Cpu:
-    CFlag = cython.declare(cython.bint, visibility="public")
-    ZFlag = cython.declare(cython.bint, visibility="public")
-    IFlag = cython.declare(cython.bint, visibility="public")
-    DFlag = cython.declare(cython.bint, visibility="public")
-    XFlag = cython.declare(cython.bint, visibility="public")
-    MFlag = cython.declare(cython.bint, visibility="public")
-    VFlag = cython.declare(cython.bint, visibility="public")
-    NFlag = cython.declare(cython.bint, visibility="public")
 
-    cycles = cython.declare(cython.uint, visibility="public")
-    prev_cycles = cython.declare(cython.uint, visibility="public")
-    status = cython.declare(CpuStatus, visibility="public")
 
     def __init__(self, hardware_vectors: "HardwareVectors") -> None:
         self.reset_registers()
@@ -348,10 +310,10 @@ class Cpu:
         per 300 frames and lets PyPy trace through the loop body without the
         scheduler call breaking the JIT trace.
         """
-        peeked: cython.ulonglong = self.scheduler.peek()
+        peeked = self.scheduler.peek()
         # When no other events are scheduled (e.g. unit tests without a PPU),
         # set next_event = master_clock so the loop exits after one instruction.
-        next_event: cython.ulonglong = peeked if peeked != 0xFFFFFFFFFFFFFFFF else self.scheduler.master_clock
+        next_event = peeked if peeked != 0xFFFFFFFFFFFFFFFF else self.scheduler.master_clock
         while True:
             if self._nmi_pending:
                 self._nmi_pending = False
@@ -378,29 +340,24 @@ class Cpu:
         if self.status.nmi_enable:
             self._nmi_pending = True
 
-    @cython.ccall
     def idleIRQ(self):
         self.cycles += 6
         self.icycles += 1
 
-    @cython.ccall
     def idle(self):
         self.cycles += 6
         self.icycles += 1
 
-    @cython.ccall
     def idle2(self):
         if (self.D.l):
             self.idle()
 
-    @cython.ccall
-    def idle4(self, x: cython.uint, y: cython.uint):
+    def idle4(self, x: int, y: int) -> None:
         """if(!XF || x >> 8 != y >> 8) idle();"""
         if not self.XFlag or (x >> 8) != (y >> 8):
             self.idle()
 
-    @cython.ccall
-    def idle6(self, address: cython.uint):
+    def idle6(self, address: int) -> None:
         """if(EF && PC.h != address >> 8) idle();"""
         if self.EF and (self.PC.w >> 8) != (address >> 8):
             self.idle()
@@ -417,21 +374,18 @@ class Cpu:
         # I changed to True to make test for opcode 0xCB (WAI) pass
         return True
 
-    @cython.ccall
-    def write(self, addr: cython.uint, data: cython.uchar):
+    def write(self, addr: int, data: int) -> None:
         self.cycles += self.get_clock_cycles(addr)
         self.bus.write(addr, data)
         self.icycles += 1
 
-    @cython.ccall
-    def read(self, addr: cython.uint) -> cython.uchar:
+    def read(self, addr: int) -> int:
         self.cycles += self.get_clock_cycles(addr)
         data = self.bus.read(addr)
         self.icycles += 1
         return data
 
-    @cython.ccall
-    def readDirect(self, address: cython.uint) -> cython.uchar:
+    def readDirect(self, address: int) -> int:
         # this is not part of bsnes implementation but it seems
         # tests expect the page to wrap around when in emulation mode
         # even if self.D.l is not zero
@@ -443,75 +397,61 @@ class Cpu:
             return self.read(self.D.w | address & 0xff)
         return self.read(self.D.w + address & 0xffff)
 
-    @cython.ccall
-    def writeDirect(self, address: cython.uint, data: cython.uchar):
+    def writeDirect(self, address: int, data: int) -> None:
         if self.EF and self.D.l == 0:
             self.write(self.D.w | address & 0xff, data)
         else:
             self.write(self.D.w + address & 0xffff, data)
 
-    @cython.ccall
-    def readDirectN(self, address: cython.uint) -> cython.uchar:
+    def readDirectN(self, address: int) -> int:
         return self.read(self.D.w + address & 0xffff)
 
-    @cython.ccall
-    def readBank(self, address: cython.uint) -> cython.uchar:
+    def readBank(self, address: int) -> int:
         return self.read((self.DB.l << 16) + address & 0xffffff)
 
-    @cython.ccall
-    def writeBank(self, address: cython.uint, data: cython.uchar):
+    def writeBank(self, address: int, data: int) -> None:
         self.write((self.DB.l << 16) + address & 0xffffff, data)
 
-    @cython.ccall
-    def readLong(self, address: cython.uint) -> cython.uchar:
+    def readLong(self, address: int) -> int:
         return self.read(address & 0xffffff)
 
-    @cython.ccall
-    def writeLong(self, address: cython.uint, data: cython.uchar):
+    def writeLong(self, address: int, data: int) -> None:
         self.write(address & 0xffffff, data)
 
-    @cython.ccall
-    def readStack(self, address: cython.uint) -> cython.uchar:
+    def readStack(self, address: int) -> int:
         return self.read(self.S.w + address & 0xffff)
 
-    @cython.ccall
-    def writeStack(self, address: cython.uint, data: cython.uchar):
+    def writeStack(self, address: int, data: int) -> None:
         self.write(self.S.w + address & 0xffff, data)
 
-    @cython.ccall
-    def fetch(self) -> cython.uchar:
+    def fetch(self) -> int:
         data = self.read(self.PC.d)
         self.PC.w += 1
         return data
 
-    @cython.ccall
-    def pull(self) -> cython.uchar:
+    def pull(self) -> int:
         if self.EF:
             self.S.l += 1
         else:
             self.S.w += 1
         return self.read(self.S.w)
 
-    @cython.ccall
-    def push(self, data: cython.uchar):
+    def push(self, data: int) -> None:
         self.write(self.S.w, data)
         if self.EF:
             self.S.l -= 1
         else:
             self.S.w -= 1
 
-    @cython.ccall
-    def pullN(self) -> cython.uchar:
+    def pullN(self) -> int:
         self.S.w += 1
         return self.read(self.S.w)
 
-    @cython.ccall
-    def pushN(self, data: cython.uchar):
+    def pushN(self, data: int) -> None:
         self.write(self.S.w, data)
         self.S.w -= 1
 
-    @cython.ccall
-    def fetch_and_execute(self) -> cython.uint:
+    def fetch_and_execute(self) -> int:
         self.icycles = 0
 
         if self.trace_enabled:
@@ -522,7 +462,7 @@ class Cpu:
         self.prev_cycles = self.cycles
 
         opcode = self.fetch()
-        slot: InstructionSlot = cython.cast(InstructionSlot, self.instructions[opcode])
+        slot: InstructionSlot = self.instructions[opcode]
         slot.call(self)
 
         # To determine the exact length of any CPU instruction,
@@ -547,9 +487,7 @@ class Cpu:
 
         return self.cycles - self.prev_cycles
 
-    @cython.cfunc
-    @cython.inline
-    def get_clock_cycles(self, addr: cython.uint) -> cython.uint:
+    def get_clock_cycles(self, addr: int) -> int:
         """Returns the number of clock cycles to perform IO on a given address
 
         The 'Speed' column indicates the memory access speed for that area of memory.
@@ -633,11 +571,11 @@ class Cpu:
         return fast
 
     @property
-    def P(self) -> cython.uchar:
+    def P(self) -> int:
         return self.CFlag << 0 | self.ZFlag << 1 | self.IFlag << 2 | self.DFlag << 3 | self.XFlag << 4 | self.MFlag << 5 | self.VFlag << 6 | self.NFlag << 7
 
     @P.setter
-    def P(self, data: cython.uchar):
+    def P(self, data: int) -> None:
         # assert 0 <= data <= 0xFF, f"Invalid value for P register: {hex(data)}"
         self.CFlag = data & 0x01 > 0
         self.ZFlag = data & 0x02 > 0

@@ -1,7 +1,6 @@
 import os
 from typing import List
 
-import cython
 
 from ..rom import MappingMode, Rom
 from ..cpu import Cpu
@@ -11,24 +10,7 @@ from ..controller import Controller
 from ..scheduler import Scheduler
 
 
-@cython.cclass
 class Bus:
-    cpu = cython.declare(object, visibility="public")
-    ppu = cython.declare(object, visibility="public")
-    apu = cython.declare(object, visibility="public")
-    scheduler = cython.declare(object, visibility="public")
-    rom = cython.declare(object, visibility="public")
-    low_ram = cython.declare(cython.uchar[:])
-    high_ram = cython.declare(cython.uchar[:])
-    extended_ram = cython.declare(cython.uchar[:])
-    sram = cython.declare(cython.uchar[:])
-    sram_size = cython.declare(cython.uint)
-    sram_mask = cython.declare(cython.uint)
-    sram_dirty = cython.declare(cython.bint)
-    dma_ppu2_hw_registers = cython.declare(cython.uchar[:])
-    hblank = cython.declare(cython.bint)
-    vblank = cython.declare(cython.bint)
-    is_hirom = cython.declare(cython.bint)
 
     def __init__(
         self,
@@ -66,8 +48,8 @@ class Bus:
         self._wmadd = 0
 
         # Math hardware registers ($4202-$4206 write, $4214-$4217 read)
-        self._wrmpya: cython.uchar = 0   # $4202 multiplicand
-        self._wrdiv: cython.uint = 0     # $4204-$4205 dividend (16-bit)
+        self._wrmpya = 0   # $4202 multiplicand
+        self._wrdiv = 0    # $4204-$4205 dividend (16-bit)
 
     def dump_state(self) -> dict:
         return {
@@ -103,8 +85,6 @@ class Bus:
 
     def load_sram(self, path: str) -> int:
         """Load SRAM bytes from `path`. Returns the number of bytes loaded (0 if no SRAM or file missing)."""
-        i: cython.uint
-        n: cython.uint
         if self.sram_size == 0 or not os.path.exists(path):
             return 0
         with open(path, "rb") as f:
@@ -158,11 +138,9 @@ class Bus:
             if self.controller_port1.data() & 1:
                 self.controller_port1.joy_l |= 1 << bit
 
-    @cython.cfunc
-    @cython.inline
-    def read(self, abs_addr: cython.uint) -> cython.uchar:
-        bank: cython.uint = abs_addr >> 16 & 0xFF
-        addr: cython.uint = abs_addr & 0xFFFF
+    def read(self, abs_addr: int) -> int:
+        bank = abs_addr >> 16 & 0xFF
+        addr = abs_addr & 0xFFFF
 
         # Mirror: banks $80-$FF shadow $00-$7F.
         # $80-$FD → $00-$7D maps the LoROM program area; $FE-$FF mirror the
@@ -177,26 +155,26 @@ class Bus:
             # rom_addr = (bank & 0x3F) << 16 | addr works for both regions.
             if ((0x00 <= bank <= 0x3F) and addr >= 0x8000) or \
                (0x40 <= bank <= 0x7D):
-                rom_addr: cython.uint = ((bank & 0x3F) << 16) | addr
+                rom_addr = ((bank & 0x3F) << 16) | addr
                 return self.rom.read(rom_addr)
 
             # HiROM SRAM: banks $20-$3F at $6000-$7FFF, 8KB window per bank.
             if 0x20 <= bank <= 0x3F and 0x6000 <= addr <= 0x7FFF:
                 if self.sram_size:
-                    sram_addr: cython.uint = (((bank - 0x20) << 13) | (addr - 0x6000)) & self.sram_mask
+                    sram_addr = (((bank - 0x20) << 13) | (addr - 0x6000)) & self.sram_mask
                     return self.sram[sram_addr]
                 return 0xFF
         else:
             if ((0x00 <= bank <= 0x6F) and 0x8000 <= addr <= 0xFFFF) or \
                 ((0x40 <= bank <= 0x6F) and (0x0000 <= addr <= 0xFFFF)) or \
                 ((0x70 <= bank <= 0x7D) and (0x8000 <= addr <= 0xFFFF)):
-                rom_addr: cython.uint = (bank * 0x8000) + (addr - (0x8000 if addr >= 0x8000 else 0))
+                rom_addr = (bank * 0x8000) + (addr - (0x8000 if addr >= 0x8000 else 0))
                 return self.rom.read(rom_addr)
 
             # SRAM: LoROM banks $70-$7D, addr $0000-$7FFF (mirrored from $F0-$FD)
             if 0x70 <= bank <= 0x7D and addr < 0x8000:
                 if self.sram_size:
-                    sram_addr: cython.uint = (((bank - 0x70) << 15) | addr) & self.sram_mask
+                    sram_addr = (((bank - 0x70) << 15) | addr) & self.sram_mask
                     return self.sram[sram_addr]
                 return 0xFF
 
@@ -318,17 +296,15 @@ class Bus:
 
         raise NotImplementedError(f"Reading unmapped memory region: 0x{abs_addr:06X}")
 
-    @cython.cfunc
-    @cython.inline
-    def peek(self, abs_addr: cython.uint) -> cython.uchar:
+    def peek(self, abs_addr: int) -> int:
         """Read without side effects — safe for debugger/disassembler use.
 
         ROM, RAM, and SRAM are read normally. Hardware register ranges
         ($2000-$5FFF in system-area banks) return 0 to avoid flag clears,
         VRAM-prefetch advances, or other I/O side effects.
         """
-        bank: cython.uint = abs_addr >> 16 & 0xFF
-        addr: cython.uint = abs_addr & 0xFFFF
+        bank = abs_addr >> 16 & 0xFF
+        addr = abs_addr & 0xFFFF
         if 0x80 <= bank <= 0xFF:
             bank = bank - 0x80
             abs_addr = abs_addr - 0x800000
@@ -336,11 +312,9 @@ class Bus:
             return 0
         return self.read(abs_addr)
 
-    @cython.cfunc
-    @cython.inline
-    def write(self, abs_addr: cython.uint, data: cython.uchar):
-        bank: cython.uint = abs_addr >> 16 & 0xFF
-        addr: cython.uint = abs_addr & 0xFFFF
+    def write(self, abs_addr: int, data: int) -> None:
+        bank = abs_addr >> 16 & 0xFF
+        addr = abs_addr & 0xFFFF
 
         # See read(): mirror $80-$FF to $00-$7F (covers WRAM mirror at $FE-$FF).
         if 0x80 <= bank <= 0xFF:
@@ -358,7 +332,7 @@ class Bus:
 
             if 0x20 <= bank <= 0x3F and 0x6000 <= addr <= 0x7FFF:
                 if self.sram_size:
-                    sram_addr: cython.uint = (((bank - 0x20) << 13) | (addr - 0x6000)) & self.sram_mask
+                    sram_addr = (((bank - 0x20) << 13) | (addr - 0x6000)) & self.sram_mask
                     self.sram[sram_addr] = data
                     self.sram_dirty = True
                 return
@@ -371,7 +345,7 @@ class Bus:
             # SRAM: LoROM banks $70-$7D, addr $0000-$7FFF (mirrored from $F0-$FD)
             if 0x70 <= bank <= 0x7D and addr < 0x8000:
                 if self.sram_size:
-                    sram_addr: cython.uint = (((bank - 0x70) << 15) | addr) & self.sram_mask
+                    sram_addr = (((bank - 0x70) << 15) | addr) & self.sram_mask
                     self.sram[sram_addr] = data
                     self.sram_dirty = True
                 return
@@ -624,7 +598,7 @@ class Bus:
                 return
 
             elif addr == 0x4203:  # WRMPYB - multiplier (triggers multiply)
-                product: cython.uint = self._wrmpya * data
+                product = self._wrmpya * data
                 self.dma_ppu2_hw_registers[0x4203 - 0x4200] = data
                 self.dma_ppu2_hw_registers[0x4214 - 0x4200] = 0
                 self.dma_ppu2_hw_registers[0x4215 - 0x4200] = 0
@@ -645,8 +619,8 @@ class Bus:
             elif addr == 0x4206:  # WRDIVB - divisor (triggers divide)
                 self.dma_ppu2_hw_registers[addr - 0x4200] = data
                 if data == 0:
-                    quotient: cython.uint = 0xFFFF
-                    remainder: cython.uint = self._wrdiv
+                    quotient = 0xFFFF
+                    remainder = self._wrdiv
                 else:
                     quotient = self._wrdiv // data
                     remainder = self._wrdiv % data

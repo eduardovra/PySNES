@@ -3,7 +3,6 @@ from dataclasses import dataclass
 from enum import IntEnum
 from typing import Union
 
-import cython
 from rich import print
 
 
@@ -76,7 +75,6 @@ def _enum_or_int(cls: type[IntEnum], value: int) -> Union[IntEnum, int]:
 
 
 @dataclass
-@cython.cclass
 class InterruptVectors:
     cop: int
     brk: int      # native-only; 0 in emulation
@@ -87,14 +85,12 @@ class InterruptVectors:
 
 
 @dataclass
-@cython.cclass
 class HardwareVectors:
     native: InterruptVectors
     emulation: InterruptVectors
 
 
 @dataclass
-@cython.cclass
 class SnesHeader:
     game_title: str
     mapping_mode: Union[MappingMode, int]
@@ -119,17 +115,14 @@ def _looks_like_map_mode(byte: int, want_hirom: bool) -> bool:
     return bool(byte & 0x01) == want_hirom
 
 
-@cython.cclass
 class Rom:
-    rom = cython.declare(cython.uchar[:], visibility="public")
 
     def __init__(self, rom_file_path: str) -> None:
         self.rom_file_path = rom_file_path
         self.rom_file_name = pathlib.Path(rom_file_path).name
         self.load_rom_file()
 
-    @cython.ccall
-    def read(self, addr: cython.uint) -> cython.uchar:
+    def read(self, addr: int) -> int:
         return self.rom[addr]
 
     def load_rom_file(self):

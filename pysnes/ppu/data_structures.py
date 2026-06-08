@@ -1,25 +1,22 @@
 from dataclasses import dataclass
 
-import cython
 
 
-@cython.cclass
 class Background:
-    screen_size = cython.declare(cython.uint, visibility="public")
 
     def __init__(
         self,
-        number: cython.uint = 0,
-        screen_size: cython.uint = 0,
-        screen_addr: cython.uint = 0,
-        tiledata_addr: cython.uint = 0,
-        tile_size: cython.uint = 0,
-        main_screen_enable: cython.bint = True,
-        subscreen_enable: cython.bint = True,
-        hoffset: cython.uint = 0,
-        voffset: cython.uint = 0,
-        color_offset_mode_0: cython.uint = 0,
-    ):
+        number: int = 0,
+        screen_size: int = 0,
+        screen_addr: int = 0,
+        tiledata_addr: int = 0,
+        tile_size: int = 0,
+        main_screen_enable: bool = True,
+        subscreen_enable: bool = True,
+        hoffset: int = 0,
+        voffset: int = 0,
+        color_offset_mode_0: int = 0,
+    ) -> None:
         """Background number 1-4"""
         self.number = number
 
@@ -45,59 +42,8 @@ class Background:
         for f in self._STATE_FIELDS:
             setattr(self, f, d[f])
 
-    # number: cython.uint = 0
-
-    # screen_size: cython.uint = 0
-    """
-    All tilemaps are 32x32 tiles. This controls the number of tilemaps in memory
-    * 00=32x32
-    * 01=64x32
-    * 10=32x64
-    * 11=64x64
-
-    If the map has a dimension greater than 32 (e.g. 64x32), array doesn't have 64 tile indexes per row,
-    instead it will store two 32x32 maps right after each other in VRAM.
-    The first map (32x32 tiles = 2*32*32 bytes) will represent the
-    left part of the map and the second one (same size as the first one) will represent the right side of the map.
-    """
-
-    # screen_addr: cython.uint = 0
-    # tiledata_addr: cython.uint = 0
-    # tile_size: cython.uint = 0
-    """
-    If the BG character size for BG1/BG2/BG3/BG4 bit is set,
-    then the BG is made of 16x16 tiles. Otherwise, 8x8 tiles are used.
-    """
-
-    #main_screen_enable: cython.bint = True
-    #sub_screen_enable: cython.bint = True
-    #hoffset: cython.uint = 0
-    #voffset: cython.uint = 0
-
-    #color_offset_mode_0: cython.uint = 0
-    """
-    CGRAM Palette Entries
-        15    Not used (should be zero) (read: PPU2 Open Bus)
-        14-10 Blue
-        9-5   Green
-        4-0   Red
-
-    CGRAM Palette Indices
-        00h      Main Backdrop color (used when all BG/OBJ pixels are transparent)
-        01h-FFh  256-color BG palette (when not using direct-color mode)
-        01h-7Fh  128-color BG palette (BG2 in Mode 7)
-        01h-7Fh  Eight 16-color BG palettes
-        01h-1Fh  Eight 4-color BG palettes (except BG2-4 in Mode 0)
-        21h-3Fh  Eight 4-color BG palettes (BG2 in Mode 0 only)
-        41h-5Fh  Eight 4-color BG palettes (BG3 in Mode 0 only)
-        61h-7Fh  Eight 4-color BG palettes (BG4 in Mode 0 only)
-        81h-FFh  Eight 16-color OBJ palettes (half of them with color-math disabled)
-        N/A      Sub Backdrop color (not in CGRAM, set via COLDATA, Port 2132h)
-    """
-
 
 @dataclass
-@cython.cclass
 class Object:
     x = 0
     y = 0
@@ -111,7 +57,6 @@ class Object:
 
 
 @dataclass
-@cython.cclass
 class Tilemap:
     addr: int
     palette: int
@@ -133,7 +78,6 @@ class Tilemap:
 
 
 @dataclass
-@cython.cclass
 class Tile:
     tile_map: Tilemap
     map_num: int  # map number 0-3

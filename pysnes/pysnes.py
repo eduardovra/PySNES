@@ -9,7 +9,6 @@ import sys
 import platform
 
 import sdl2 as sdl
-import cython
 
 from .rom import Rom
 from .scheduler import Scheduler
@@ -23,11 +22,6 @@ from .debugger import Debugger, BreakpointHit
 from .audio import AudioSDL2
 from .spc_player import SpcPlayer
 from . import settings as settings_module
-
-if cython.compiled:
-    print("Cython is enabled, using compiled modules.")
-else:
-    print("Cython is not enabled, using pure Python modules.")
 
 
 class PySNES:

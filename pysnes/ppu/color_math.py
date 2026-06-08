@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-import cython
 
 from .constants import SCREEN_WIDTH
 
@@ -36,20 +35,20 @@ def apply_brightness_scanline(ppu: Ppu) -> None:
     Brightness 15 = full; brightness 0 = black.  Called only when
     display_brightness < 15 to avoid the overhead on the common case.
     """
-    brightness: cython.uint = ppu.display_brightness
-    y: cython.int = ppu.v_counter - 1
-    row: cython.uint = y * SCREEN_WIDTH
+    brightness = ppu.display_brightness
+    y = ppu.v_counter - 1
+    row = y * SCREEN_WIDTH
     if brightness == 0:
-        black: cython.uint = 0x000000FF
+        black = 0x000000FF
         for x in range(SCREEN_WIDTH):
             ppu.main_bgs[row + x] = black
         return
     for x in range(SCREEN_WIDTH):
-        idx: cython.uint = row + x
-        p: cython.uint = ppu.main_bgs[idx]
-        r: cython.uint = ((p >> 24) & 0xFF) * brightness // 15
-        g: cython.uint = ((p >> 16) & 0xFF) * brightness // 15
-        b: cython.uint = ((p >> 8) & 0xFF) * brightness // 15
+        idx = row + x
+        p = ppu.main_bgs[idx]
+        r = ((p >> 24) & 0xFF) * brightness // 15
+        g = ((p >> 16) & 0xFF) * brightness // 15
+        b = ((p >> 8) & 0xFF) * brightness // 15
         ppu.main_bgs[idx] = (r << 24) | (g << 16) | (b << 8) | (p & 0xFF)
 
 
@@ -72,28 +71,28 @@ def composite_scanline(ppu: Ppu) -> None:
     select (we always use sub_bgs, which already holds COLDATA where no
     sub layer covered the pixel).
     """
-    cgadsub: cython.uint = ppu.cgadsub
-    cgwsel: cython.uint = ppu.cgwsel
-    cmath_mode: cython.uint = (cgwsel >> 4) & 0x3  # 00..11
+    cgadsub = ppu.cgadsub
+    cgwsel = ppu.cgwsel
+    cmath_mode = (cgwsel >> 4) & 0x3  # 00..11
     if cgadsub == 0 or cmath_mode == 0x3:
         return
-    subtract: cython.bint = cgadsub & _CGADSUB_SUBTRACT
-    half: cython.bint = cgadsub & _CGADSUB_HALF
-    enable_bg1: cython.bint = cgadsub & _CGADSUB_BG1
-    enable_bg2: cython.bint = cgadsub & _CGADSUB_BG2
-    enable_bg3: cython.bint = cgadsub & _CGADSUB_BG3
-    enable_bg4: cython.bint = cgadsub & _CGADSUB_BG4
-    enable_obj: cython.bint = cgadsub & _CGADSUB_OBJ
-    enable_back: cython.bint = cgadsub & _CGADSUB_BACK
+    subtract = cgadsub & _CGADSUB_SUBTRACT
+    half = cgadsub & _CGADSUB_HALF
+    enable_bg1 = cgadsub & _CGADSUB_BG1
+    enable_bg2 = cgadsub & _CGADSUB_BG2
+    enable_bg3 = cgadsub & _CGADSUB_BG3
+    enable_bg4 = cgadsub & _CGADSUB_BG4
+    enable_obj = cgadsub & _CGADSUB_OBJ
+    enable_back = cgadsub & _CGADSUB_BACK
 
     # Color-window (math window) setup: WOBJSEL bits 4-7, WOBJLOG bits 2-3.
     # Per $2125 spec (matching $2123 W12SEL convention): bit 0=invert, bit 1=enable.
     # Pairs: bits 0-1 OBJ W1, 2-3 OBJ W2, 4-5 MATH W1, 6-7 MATH W2.
-    math_w1_invert: cython.bint = (ppu.wobjsel >> 4) & 1
-    math_w1_enable: cython.bint = (ppu.wobjsel >> 5) & 1
-    math_w2_invert: cython.bint = (ppu.wobjsel >> 6) & 1
-    math_w2_enable: cython.bint = (ppu.wobjsel >> 7) & 1
-    math_logic: cython.uint = (ppu.wobjlog >> 2) & 0x3  # 0=OR,1=AND,2=XOR,3=XNOR
+    math_w1_invert = (ppu.wobjsel >> 4) & 1
+    math_w1_enable = (ppu.wobjsel >> 5) & 1
+    math_w2_invert = (ppu.wobjsel >> 6) & 1
+    math_w2_enable = (ppu.wobjsel >> 7) & 1
+    math_logic = (ppu.wobjlog >> 2) & 0x3  # 0=OR,1=AND,2=XOR,3=XNOR
 
     # Pre-compute color-math window mask for the scanline before the pixel loop.
     cmath_mask = None
@@ -106,12 +105,12 @@ def composite_scanline(ppu: Ppu) -> None:
             math_logic,
         )
 
-    y: cython.int = ppu.v_counter - 1
-    row: cython.uint = y * SCREEN_WIDTH
+    y = ppu.v_counter - 1
+    row = y * SCREEN_WIDTH
     for x in range(SCREEN_WIDTH):
-        idx: cython.uint = row + x
-        layer: cython.uchar = ppu.main_layer[idx]
-        participate: cython.bint = False
+        idx = row + x
+        layer = ppu.main_layer[idx]
+        participate = False
         if layer == 0:
             participate = enable_back
         elif layer == 1:
@@ -130,7 +129,7 @@ def composite_scanline(ppu: Ppu) -> None:
         # Color-window gating (CGWSEL bits 5-4).
         if cmath_mode != 0:
             if cmath_mask is not None:
-                in_window: cython.bint = cmath_mask[x]
+                in_window = cmath_mask[x]
             else:
                 # No windows enabled → treat as always inside. Matches Mesen
                 # semantic where a disabled window acts as full-screen inside.
@@ -139,17 +138,14 @@ def composite_scanline(ppu: Ppu) -> None:
                 continue  # inside only → skip outside
             if cmath_mode == 2 and in_window:
                 continue  # outside only → skip inside
-        m: cython.uint = ppu.main_bgs[idx]
-        s: cython.uint = ppu.sub_bgs[idx]
-        mr: cython.int = (m >> 24) & 0xFF
-        mg: cython.int = (m >> 16) & 0xFF
-        mb: cython.int = (m >> 8) & 0xFF
-        sr: cython.int = (s >> 24) & 0xFF
-        sg: cython.int = (s >> 16) & 0xFF
-        sb: cython.int = (s >> 8) & 0xFF
-        r: cython.int
-        g: cython.int
-        b: cython.int
+        m = ppu.main_bgs[idx]
+        s = ppu.sub_bgs[idx]
+        mr = (m >> 24) & 0xFF
+        mg = (m >> 16) & 0xFF
+        mb = (m >> 8) & 0xFF
+        sr = (s >> 24) & 0xFF
+        sg = (s >> 16) & 0xFF
+        sb = (s >> 8) & 0xFF
         if subtract:
             r = mr - sr
             g = mg - sg

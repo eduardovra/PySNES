@@ -23,8 +23,6 @@ from .audio import AudioSDL2
 from .spc_player import SpcPlayer
 from . import settings as settings_module
 
-print("Cython is not enabled, using pure Python modules.")
-
 
 class PySNES:
     def __init__(self, rom_file_path: str, settings: dict | None = None) -> None:

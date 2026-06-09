@@ -1,7 +1,6 @@
 from .decorator import decorator_mode_8bit
-from .read import *
-from .write import *
-from .modify import *
+# read/write/modify families are now code-generated (see opcodes_generated.py);
+# only the irregular ops in other.py / pc.py are still called as functions.
 from .other import *
 from .pc import *
 

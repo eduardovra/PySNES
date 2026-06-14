@@ -2,16 +2,16 @@ from ...cpu import Cpu, Reg
 
 from .decorator import decorator_mode_8bit
 
-# Shared read-only zero register used as the "no index" offset (I.w == 0).
-# The source `F` and index `I` register args are pre-resolved to Reg objects (or
+# Shared read-only zero register used as the "no index" offset (i.w == 0).
+# The source `F` and index `i` register args are pre-resolved to Reg objects (or
 # None for an absent index) at table-build time, avoiding per-call getattr.
 _ZERO = Reg(16, 0)
 
 
 @decorator_mode_8bit
-def BankWrite(cpu: Cpu, mode_8bit: bool, F: Reg, I: Reg | None = None):
+def BankWrite(cpu: Cpu, mode_8bit: bool, F: Reg, i: Reg | None = None):
     if mode_8bit:
-        if I is None:
+        if i is None:
             cpu.V.l = cpu.fetch()
             cpu.V.h = cpu.fetch()
             cpu.writeBank(cpu.V.w + 0, F.l)
@@ -19,9 +19,9 @@ def BankWrite(cpu: Cpu, mode_8bit: bool, F: Reg, I: Reg | None = None):
             cpu.V.l = cpu.fetch()
             cpu.V.h = cpu.fetch()
             cpu.idle()
-            cpu.writeBank(cpu.V.w + I.w + 0, F.l)
+            cpu.writeBank(cpu.V.w + i.w + 0, F.l)
     else:
-        if I is None:
+        if i is None:
             cpu.V.l = cpu.fetch()
             cpu.V.h = cpu.fetch()
             cpu.writeBank(cpu.V.w + 0, F.l)
@@ -30,8 +30,8 @@ def BankWrite(cpu: Cpu, mode_8bit: bool, F: Reg, I: Reg | None = None):
             cpu.V.l = cpu.fetch()
             cpu.V.h = cpu.fetch()
             cpu.idle()
-            cpu.writeBank(cpu.V.w + I.w + 0, F.l)
-            cpu.writeBank(cpu.V.w + I.w + 1, F.h)
+            cpu.writeBank(cpu.V.w + i.w + 0, F.l)
+            cpu.writeBank(cpu.V.w + i.w + 1, F.h)
 
 
 @decorator_mode_8bit
@@ -51,21 +51,21 @@ def LongWrite(cpu: Cpu, mode_8bit: bool, i: Reg = _ZERO):
 
 @decorator_mode_8bit
 def DirectWrite(cpu: Cpu, mode_8bit: bool, F: Reg, i: Reg | None = None):
-    I = i if i is not None else _ZERO
+    off = i.w if i is not None else 0
 
     if mode_8bit:
         cpu.U.l = cpu.fetch()
         cpu.idle2()
         if i is not None:
             cpu.idle()
-        cpu.writeDirect(cpu.U.l + I.w + 0, F.l)
+        cpu.writeDirect(cpu.U.l + off + 0, F.l)
     else:
         cpu.U.l = cpu.fetch()
         cpu.idle2()
         if i is not None:
             cpu.idle()
-        cpu.writeDirect(cpu.U.l + I.w + 0, F.l)
-        cpu.writeDirect(cpu.U.l + I.w + 1, F.h)
+        cpu.writeDirect(cpu.U.l + off + 0, F.l)
+        cpu.writeDirect(cpu.U.l + off + 1, F.h)
 
 
 @decorator_mode_8bit

@@ -4,7 +4,7 @@ from ...cpu import Cpu, Reg
 
 from .decorator import decorator_mode_8bit
 
-# Shared read-only zero register used as the "no index" offset (I.w == 0).
+# Shared read-only zero register used as the "no index" offset (i.w == 0).
 # The index arg `i` is pre-resolved to a Reg (or None) at table-build time, so
 # the addressing modes below never do a per-call getattr(cpu, name).
 _ZERO = Reg(16, 0)
@@ -34,9 +34,9 @@ def ImmediateRead(cpu: Cpu, mode_8bit: bool, func: Callable):
 
 
 @decorator_mode_8bit
-def BankRead(cpu: Cpu, mode_8bit: bool, func: Callable, I: Reg | None = None):
+def BankRead(cpu: Cpu, mode_8bit: bool, func: Callable, i: Reg | None = None):
     if mode_8bit:
-        if I is None:
+        if i is None:
             cpu.V.l = cpu.fetch()
             cpu.V.h = cpu.fetch()
             cpu.W.l = cpu.readBank(cpu.V.w + 0)
@@ -44,11 +44,11 @@ def BankRead(cpu: Cpu, mode_8bit: bool, func: Callable, I: Reg | None = None):
         else:
             cpu.V.l = cpu.fetch()
             cpu.V.h = cpu.fetch()
-            cpu.idle4(cpu.V.w, cpu.V.w + I.w)
-            cpu.W.l = cpu.readBank(cpu.V.w + I.w + 0)
+            cpu.idle4(cpu.V.w, cpu.V.w + i.w)
+            cpu.W.l = cpu.readBank(cpu.V.w + i.w + 0)
             func(cpu, mode_8bit, cpu.W.l)
     else:
-        if I is None:
+        if i is None:
             cpu.V.l = cpu.fetch()
             cpu.V.h = cpu.fetch()
             cpu.W.l = cpu.readBank(cpu.V.w + 0)
@@ -57,9 +57,9 @@ def BankRead(cpu: Cpu, mode_8bit: bool, func: Callable, I: Reg | None = None):
         else:
             cpu.V.l = cpu.fetch()
             cpu.V.h = cpu.fetch()
-            cpu.idle4(cpu.V.w, cpu.V.w + I.w)
-            cpu.W.l = cpu.readBank(cpu.V.w + I.w + 0)
-            cpu.W.h = cpu.readBank(cpu.V.w + I.w + 1)
+            cpu.idle4(cpu.V.w, cpu.V.w + i.w)
+            cpu.W.l = cpu.readBank(cpu.V.w + i.w + 0)
+            cpu.W.h = cpu.readBank(cpu.V.w + i.w + 1)
             func(cpu, mode_8bit, cpu.W.w)
 
 
@@ -81,9 +81,9 @@ def LongRead(cpu: Cpu, mode_8bit: bool, func: Callable, i: Reg = _ZERO):
 
 
 @decorator_mode_8bit
-def DirectRead(cpu: Cpu, mode_8bit: bool, func: Callable, I: Reg | None = None):
+def DirectRead(cpu: Cpu, mode_8bit: bool, func: Callable, i: Reg | None = None):
     if mode_8bit:
-        if I is None:
+        if i is None:
             cpu.U.l = cpu.fetch()
             cpu.idle2()
             cpu.W.l = cpu.readDirect(cpu.U.l + 0)
@@ -92,10 +92,10 @@ def DirectRead(cpu: Cpu, mode_8bit: bool, func: Callable, I: Reg | None = None):
             cpu.U.l = cpu.fetch()
             cpu.idle2()
             cpu.idle()
-            cpu.W.l = cpu.readDirect(cpu.U.l + I.w + 0)
+            cpu.W.l = cpu.readDirect(cpu.U.l + i.w + 0)
             func(cpu, mode_8bit, cpu.W.l)
     else:
-        if I is None:
+        if i is None:
             cpu.U.l = cpu.fetch()
             cpu.idle2()
             cpu.W.l = cpu.readDirect(cpu.U.l + 0)
@@ -105,8 +105,8 @@ def DirectRead(cpu: Cpu, mode_8bit: bool, func: Callable, I: Reg | None = None):
             cpu.U.l = cpu.fetch()
             cpu.idle2()
             cpu.idle()
-            cpu.W.l = cpu.readDirect(cpu.U.l + I.w + 0)
-            cpu.W.h = cpu.readDirect(cpu.U.l + I.w + 1)
+            cpu.W.l = cpu.readDirect(cpu.U.l + i.w + 0)
+            cpu.W.h = cpu.readDirect(cpu.U.l + i.w + 1)
             func(cpu, mode_8bit, cpu.W.w)
 
 

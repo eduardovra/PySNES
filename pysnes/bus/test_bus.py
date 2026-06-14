@@ -629,22 +629,22 @@ def test_rdvramh_routes_to_ppu():
 # ---------------------------------------------------------------------------
 
 def test_open_bus_unmapped_2000_range():
-    """Reads in $2000-$20FF use the temporary open-bus fallback."""
+    """Reads in $2000-$20FF return open bus, approximated by the address high byte."""
     bus, *_ = make_bus()
-    assert bus.read(0x0020F1) == 0
+    assert bus.read(0x0020F1) == 0x20
 
 
 def test_open_bus_unmapped_2200_range():
-    """Reads in $2200-$3FFF use the temporary open-bus fallback."""
+    """Reads in $2200-$3FFF return open bus, approximated by the address high byte."""
     bus, *_ = make_bus()
-    assert bus.read(0x0027A8) == 0
+    assert bus.read(0x0027A8) == 0x27
 
 
 def test_open_bus_unmapped_mirrored_bank():
     """The same open-bus fallback applies through the $80-$BF mirror."""
     bus, *_ = make_bus()
-    assert bus.read(0x8020F1) == 0
-    assert bus.read(0x8027A8) == 0
+    assert bus.read(0x8020F1) == 0x20
+    assert bus.read(0x8027A8) == 0x27
 
 
 # ---------------------------------------------------------------------------

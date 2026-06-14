@@ -280,15 +280,19 @@ class Bus:
 
                 return self.dma_ppu2_hw_registers[addr - 0x4200]
 
-            # TODO: Implement true open-bus/MDR behavior instead of returning 0
-            # in these known system-area holes.
+            # Unmapped system-area holes return the open-bus (MDR) value rather
+            # than 0. We approximate the MDR with the high byte of the address,
+            # which is the value the CPU last drove on the bus for an absolute
+            # read (`lda $21C2` → 0x21). This is what the SuperNES Test Program
+            # relies on: it gates its Character Test animation on bit 5 of a read
+            # from $21C2 (expects 0x21, bit 5 set); returning 0 froze the demo.
             if (
                 0x2000 <= addr <= 0x21FF  # 0x2100-0x21FF: mapped regs handled above
                 or 0x2200 <= addr <= 0x3FFF
                 or 0x4000 <= addr <= 0x41FF  # 0x4016/0x4017 already handled above
                 or 0x4500 <= addr <= 0x7FFF
             ):
-                return 0
+                return (addr >> 8) & 0xFF
 
             raise NotImplementedError(
                 f"Reading unmapped memory region: 0x{abs_addr:06X}"

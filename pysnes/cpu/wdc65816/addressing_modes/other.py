@@ -110,14 +110,39 @@ def ExchangeCE(cpu: Cpu):
         cpu.S.h = 0x01
 
 
-def SetFlag(cpu: Cpu, flag: str):
+def CLC(cpu: Cpu):
     cpu.idleIRQ()
-    setattr(cpu, flag, True)
+    cpu.CFlag = False
 
 
-def ClearFlag(cpu: Cpu, flag: str):
+def SEC(cpu: Cpu):
     cpu.idleIRQ()
-    setattr(cpu, flag, False)
+    cpu.CFlag = True
+
+
+def CLI(cpu: Cpu):
+    cpu.idleIRQ()
+    cpu.IFlag = False
+
+
+def SEI(cpu: Cpu):
+    cpu.idleIRQ()
+    cpu.IFlag = True
+
+
+def CLV(cpu: Cpu):
+    cpu.idleIRQ()
+    cpu.VFlag = False
+
+
+def CLD(cpu: Cpu):
+    cpu.idleIRQ()
+    cpu.DFlag = False
+
+
+def SED(cpu: Cpu):
+    cpu.idleIRQ()
+    cpu.DFlag = True
 
 
 def ResetP(cpu: Cpu):
@@ -191,21 +216,19 @@ def TransferXS(cpu: Cpu):
         cpu.S.w = cpu.X.w
 
 
-def Push8(cpu: Cpu, f: "Reg | str"):
-    if isinstance(f, Reg):
-        # Already pre-resolved at table-build time (e.g. "DB").
-        F = f
-    else:
-        f_split = f.split(".")  # to suport 'PC.b'
-        F = getattr(cpu, f_split[0])
-        if len(f_split) > 1:
-            F = getattr(F, f_split[1])
-
-        # workaround for the fact that F can be an int (status reg) or a Reg
-        F = F if isinstance(F, Reg) else Reg(8, F)
-
+def PHP(cpu: Cpu):
     cpu.idle()
-    cpu.push(F.l)
+    cpu.push(cpu.P)
+
+
+def PHK(cpu: Cpu):
+    cpu.idle()
+    cpu.push(cpu.PC.b)
+
+
+def PHB(cpu: Cpu):
+    cpu.idle()
+    cpu.push(cpu.DB.l)
 
 
 @decorator_mode_8bit

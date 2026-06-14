@@ -10,9 +10,9 @@ def build_instructions(cpu: "Cpu") -> tuple:
     """Opcode table bound to this CPU's live Reg objects.
 
     Register operands are the actual Reg instances (cpu.X, cpu.A, ...) so the
-    addressing-mode functions need no per-call getattr(cpu, name). A few
-    non-register operands stay as strings: the flag names for Set/ClearFlag and
-    "P"/"PC.b" for Push8.
+    addressing-mode functions need no per-call getattr(cpu, name). Operands that
+    aren't registers (flag set/clear, single-byte pushes) have dedicated handlers
+    (CLC/SEC/.../PHP/PHK/PHB) and take no operand at all.
     """
     return (
     (0x00, AM.Interrupt, lambda cpu: 0xfffe if cpu.EF else 0xffe6),
@@ -23,7 +23,7 @@ def build_instructions(cpu: "Cpu") -> tuple:
     (0x05, AM.DirectRead.MF, OP.ORA),
     (0x06, AM.DirectModify.MF, OP.ASL),
     (0x07, AM.IndirectLongRead.MF, OP.ORA),
-    (0x08, AM.Push8, "P"),
+    (0x08, AM.PHP),
     (0x09, AM.ImmediateRead.MF, OP.ORA),
     (0x0a, AM.ImpliedModify.MF, OP.ASL, cpu.A),
     (0x0b, AM.PushD),
@@ -39,7 +39,7 @@ def build_instructions(cpu: "Cpu") -> tuple:
     (0x15, AM.DirectRead.MF, OP.ORA, cpu.X),
     (0x16, AM.DirectIndexedModify.MF, OP.ASL),
     (0x17, AM.IndirectLongRead.MF, OP.ORA, cpu.Y),
-    (0x18, AM.ClearFlag, "CFlag"),
+    (0x18, AM.CLC),
     (0x19, AM.BankRead.MF, OP.ORA, cpu.Y),
     (0x1a, AM.ImpliedModify.MF, OP.INC, cpu.A),
     (0x1b, AM.TransferCS),
@@ -71,7 +71,7 @@ def build_instructions(cpu: "Cpu") -> tuple:
     (0x35, AM.DirectRead.MF, OP.AND, cpu.X),
     (0x36, AM.DirectIndexedModify.MF, OP.ROL),
     (0x37, AM.IndirectLongRead.MF, OP.AND, cpu.Y),
-    (0x38, AM.SetFlag, "CFlag"),
+    (0x38, AM.SEC),
     (0x39, AM.BankRead.MF, OP.AND, cpu.Y),
     (0x3a, AM.ImpliedModify.MF, OP.DEC, cpu.A),
     (0x3b, AM.Transfer16, cpu.S, cpu.A),
@@ -90,7 +90,7 @@ def build_instructions(cpu: "Cpu") -> tuple:
     (0x48, AM.Push.MF, cpu.A),
     (0x49, AM.ImmediateRead.MF, OP.EOR),
     (0x4a, AM.ImpliedModify.MF, OP.LSR, cpu.A),
-    (0x4b, AM.Push8, "PC.b"),
+    (0x4b, AM.PHK),
     (0x4c, AM.JumpShort),
     (0x4d, AM.BankRead.MF, OP.EOR),
     (0x4e, AM.BankModify.MF, OP.LSR),
@@ -103,7 +103,7 @@ def build_instructions(cpu: "Cpu") -> tuple:
     (0x55, AM.DirectRead.MF, OP.EOR, cpu.X),
     (0x56, AM.DirectIndexedModify.MF, OP.LSR),
     (0x57, AM.IndirectLongRead.MF, OP.EOR, cpu.Y),
-    (0x58, AM.ClearFlag, "IFlag"),
+    (0x58, AM.CLI),
     (0x59, AM.BankRead.MF, OP.EOR, cpu.Y),
     (0x5a, AM.Push.XF, cpu.Y),
     (0x5b, AM.Transfer16, cpu.A, cpu.D),
@@ -135,7 +135,7 @@ def build_instructions(cpu: "Cpu") -> tuple:
     (0x75, AM.DirectRead.MF, OP.ADC, cpu.X),
     (0x76, AM.DirectIndexedModify.MF, OP.ROR),
     (0x77, AM.IndirectLongRead.MF, OP.ADC, cpu.Y),
-    (0x78, AM.SetFlag, "IFlag"),
+    (0x78, AM.SEI),
     (0x79, AM.BankRead.MF, OP.ADC, cpu.Y),
     (0x7a, AM.Pull.XF, cpu.Y),
     (0x7b, AM.Transfer16, cpu.D, cpu.A),
@@ -154,7 +154,7 @@ def build_instructions(cpu: "Cpu") -> tuple:
     (0x88, AM.ImpliedModify.XF, OP.DEC, cpu.Y),
     (0x89, AM.BitImmediate.MF),
     (0x8a, AM.Transfer.MF, cpu.X, cpu.A),
-    (0x8b, AM.Push8, cpu.DB),
+    (0x8b, AM.PHB),
     (0x8c, AM.BankWrite.XF, cpu.Y),
     (0x8d, AM.BankWrite.MF, cpu.A),
     (0x8e, AM.BankWrite.XF, cpu.X),
@@ -199,7 +199,7 @@ def build_instructions(cpu: "Cpu") -> tuple:
     (0xb5, AM.DirectRead.MF, OP.LDA, cpu.X),
     (0xb6, AM.DirectRead.XF, OP.LDX, cpu.Y),
     (0xb7, AM.IndirectLongRead.MF, OP.LDA, cpu.Y),
-    (0xb8, AM.ClearFlag, "VFlag"),
+    (0xb8, AM.CLV),
     (0xb9, AM.BankRead.MF, OP.LDA, cpu.Y),
     (0xba, AM.TransferSX.XF),
     (0xbb, AM.Transfer.XF, cpu.Y, cpu.X),
@@ -231,7 +231,7 @@ def build_instructions(cpu: "Cpu") -> tuple:
     (0xd5, AM.DirectRead.MF, OP.CMP, cpu.X),
     (0xd6, AM.DirectIndexedModify.MF, OP.DEC),
     (0xd7, AM.IndirectLongRead.MF, OP.CMP, cpu.Y),
-    (0xd8, AM.ClearFlag, "DFlag"),
+    (0xd8, AM.CLD),
     (0xd9, AM.BankRead.MF, OP.CMP, cpu.Y),
     (0xda, AM.Push.XF, cpu.X),
     (0xdb, AM.Stop),
@@ -263,7 +263,7 @@ def build_instructions(cpu: "Cpu") -> tuple:
     (0xf5, AM.DirectRead.MF, OP.SBC, cpu.X),
     (0xf6, AM.DirectIndexedModify.MF, OP.INC),
     (0xf7, AM.IndirectLongRead.MF, OP.SBC, cpu.Y),
-    (0xf8, AM.SetFlag, "DFlag"),
+    (0xf8, AM.SED),
     (0xf9, AM.BankRead.MF, OP.SBC, cpu.Y),
     (0xfa, AM.Pull.XF, cpu.X),
     (0xfb, AM.ExchangeCE),

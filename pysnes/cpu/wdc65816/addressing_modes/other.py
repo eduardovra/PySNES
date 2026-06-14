@@ -145,9 +145,7 @@ def SetP(cpu: Cpu):
 
 
 @decorator_mode_8bit
-def Transfer(cpu: Cpu, mode_8bit: bool, f: str, t: str):
-    F = getattr(cpu, f)
-    T = getattr(cpu, t)
+def Transfer(cpu: Cpu, mode_8bit: bool, F: Reg, T: Reg):
     if mode_8bit:
         cpu.idleIRQ()
         T.l = F.l
@@ -160,7 +158,7 @@ def Transfer(cpu: Cpu, mode_8bit: bool, f: str, t: str):
         cpu.NFlag = bool(T.w & 0x8000)
 
 
-def Transfer16(cpu: Cpu, f: str, t: str):
+def Transfer16(cpu: Cpu, f: Reg, t: Reg):
     Transfer(cpu, False, f, t)
 
 
@@ -193,22 +191,25 @@ def TransferXS(cpu: Cpu):
         cpu.S.w = cpu.X.w
 
 
-def Push8(cpu: Cpu, f: str):
-    f_split = f.split(".")  # to suport 'PC.b'
-    F = getattr(cpu, f_split[0])
-    if len(f_split) > 1:
-        F = getattr(F, f_split[1])
+def Push8(cpu: Cpu, f: "Reg | str"):
+    if isinstance(f, Reg):
+        # Already pre-resolved at table-build time (e.g. "DB").
+        F = f
+    else:
+        f_split = f.split(".")  # to suport 'PC.b'
+        F = getattr(cpu, f_split[0])
+        if len(f_split) > 1:
+            F = getattr(F, f_split[1])
 
-    # workaround for the fact that F can be an int (status reg) or a Reg
-    F = F if isinstance(F, Reg) else Reg(8, F)
+        # workaround for the fact that F can be an int (status reg) or a Reg
+        F = F if isinstance(F, Reg) else Reg(8, F)
 
     cpu.idle()
     cpu.push(F.l)
 
 
 @decorator_mode_8bit
-def Push(cpu: Cpu, mode_8bit: bool, f: str):
-    F = getattr(cpu, f)
+def Push(cpu: Cpu, mode_8bit: bool, F: Reg):
     if mode_8bit:
         cpu.idle()
         cpu.push(F.l)
@@ -227,8 +228,7 @@ def PushD(cpu: Cpu):
 
 
 @decorator_mode_8bit
-def Pull(cpu: Cpu, mode_8bit: bool, t: str):
-    T = getattr(cpu, t)
+def Pull(cpu: Cpu, mode_8bit: bool, T: Reg):
     if mode_8bit:
         cpu.idle()
         cpu.idle()

@@ -164,6 +164,9 @@ class PySNES:
         q[:] = [e for e in q if not (e[-1] == orig or e[-1] == cur)]
         heapq.heapify(q)
         self.cpu.reset_registers()
+        # reset_registers() makes new Reg objects; rebuild the instruction table so
+        # its pre-resolved register references point at the live Reg instances.
+        self.cpu.load_instructions()
         self.cpu.PC.w = self._reset_vector
         self.apu.reset_registers()
         self.ppu.reset_registers()

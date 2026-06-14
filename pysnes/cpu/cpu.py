@@ -262,13 +262,15 @@ class Cpu:
         self.status.load_state(d["status"])
 
     def load_instructions(self):
-        from .wdc65816.instructions import INSTRUCTIONS
+        from .wdc65816.instructions import build_instructions
 
         self.instructions: Any = [None] * 256
-        self.debug_symbols: Any = [""] * 256
 
-        # load instructions into main table and setup up debugging symbols
-        for opcode, addr_mode, *args in INSTRUCTIONS:
+        # build_instructions binds the opcode table to this CPU's live Reg objects
+        # (cpu.X, cpu.A, ...) so the hot addressing-mode functions need no per-call
+        # getattr(cpu, name). The reset path rebuilds the table after
+        # reset_registers() makes new Reg objects.
+        for opcode, addr_mode, *args in build_instructions(self):
             # InstructionSlot stores addr_mode + extra args; cpu is passed at call time.
             # This replaces functools.partial — see InstructionSlot.call().
             if len(args) == 0:
@@ -278,13 +280,6 @@ class Cpu:
             else:
                 slot = InstructionSlot(addr_mode, args[0], args[1], nargs=2)
             self.instructions[opcode] = slot
-            self.debug_symbols[opcode] = "{:02X} {}".format(opcode, addr_mode.__name__)
-            if args:
-                if callable(args[0]):
-                    args[0] = args[0].__name__
-                args = " ".join(str(a) for a in args)
-                self.debug_symbols[opcode] += f" {args}"
-            self.debug_symbols[opcode] = self.debug_symbols[opcode].ljust(30)
 
     def attach(self, bus: Bus) -> None:
         from .dma import DMA

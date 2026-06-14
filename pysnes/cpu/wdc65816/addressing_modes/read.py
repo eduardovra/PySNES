@@ -1,6 +1,13 @@
+from typing import Callable
+
 from ...cpu import Cpu, Reg
 
 from .decorator import decorator_mode_8bit
+
+# Shared read-only zero register used as the "no index" offset (I.w == 0).
+# The index arg `i` is pre-resolved to a Reg (or None) at table-build time, so
+# the addressing modes below never do a per-call getattr(cpu, name).
+_ZERO = Reg(16, 0)
 
 
 """
@@ -16,7 +23,7 @@ auto WDC65816::instruction() -> void {
 
 
 @decorator_mode_8bit
-def ImmediateRead(cpu: Cpu, mode_8bit: bool, func):
+def ImmediateRead(cpu: Cpu, mode_8bit: bool, func: Callable):
     if mode_8bit:
         cpu.W.l = cpu.fetch()
         func(cpu, mode_8bit, cpu.W.l)
@@ -27,9 +34,7 @@ def ImmediateRead(cpu: Cpu, mode_8bit: bool, func):
 
 
 @decorator_mode_8bit
-def BankRead(cpu: Cpu, mode_8bit: bool, func, i: str = ""):
-    I = getattr(cpu, i, None)
-
+def BankRead(cpu: Cpu, mode_8bit: bool, func: Callable, I: Reg | None = None):
     if mode_8bit:
         if I is None:
             cpu.V.l = cpu.fetch()
@@ -59,8 +64,8 @@ def BankRead(cpu: Cpu, mode_8bit: bool, func, i: str = ""):
 
 
 @decorator_mode_8bit
-def LongRead(cpu: Cpu, mode_8bit: bool, func, i: str = ""):
-    I = getattr(cpu, i, Reg(16, 0))
+def LongRead(cpu: Cpu, mode_8bit: bool, func: Callable, i: Reg | None = None):
+    I = i if i is not None else _ZERO
 
     if mode_8bit:
         cpu.V.l = cpu.fetch()
@@ -78,9 +83,7 @@ def LongRead(cpu: Cpu, mode_8bit: bool, func, i: str = ""):
 
 
 @decorator_mode_8bit
-def DirectRead(cpu: Cpu, mode_8bit: bool, func, i: str = ""):
-    I = getattr(cpu, i, None)
-
+def DirectRead(cpu: Cpu, mode_8bit: bool, func: Callable, I: Reg | None = None):
     if mode_8bit:
         if I is None:
             cpu.U.l = cpu.fetch()
@@ -110,7 +113,7 @@ def DirectRead(cpu: Cpu, mode_8bit: bool, func, i: str = ""):
 
 
 @decorator_mode_8bit
-def IndirectRead(cpu: Cpu, mode_8bit: bool, func):
+def IndirectRead(cpu: Cpu, mode_8bit: bool, func: Callable):
     if mode_8bit:
         cpu.U.l = cpu.fetch()
         cpu.idle2()
@@ -129,7 +132,7 @@ def IndirectRead(cpu: Cpu, mode_8bit: bool, func):
 
 
 @decorator_mode_8bit
-def IndexedIndirectRead(cpu: Cpu, mode_8bit: bool, func):
+def IndexedIndirectRead(cpu: Cpu, mode_8bit: bool, func: Callable):
     if mode_8bit:
         cpu.U.l = cpu.fetch()
         cpu.idle2()
@@ -150,7 +153,7 @@ def IndexedIndirectRead(cpu: Cpu, mode_8bit: bool, func):
 
 
 @decorator_mode_8bit
-def IndirectIndexedRead(cpu: Cpu, mode_8bit: bool, func):
+def IndirectIndexedRead(cpu: Cpu, mode_8bit: bool, func: Callable):
     if mode_8bit:
         cpu.U.l = cpu.fetch()
         cpu.idle2()
@@ -171,8 +174,8 @@ def IndirectIndexedRead(cpu: Cpu, mode_8bit: bool, func):
 
 
 @decorator_mode_8bit
-def IndirectLongRead(cpu: Cpu, mode_8bit: bool, func, i: str = ""):
-    I = getattr(cpu, i, Reg(16, 0))
+def IndirectLongRead(cpu: Cpu, mode_8bit: bool, func: Callable, i: Reg | None = None):
+    I = i if i is not None else _ZERO
 
     if mode_8bit:
         cpu.U.l = cpu.fetch()
@@ -194,7 +197,7 @@ def IndirectLongRead(cpu: Cpu, mode_8bit: bool, func, i: str = ""):
 
 
 @decorator_mode_8bit
-def StackRead(cpu: Cpu, mode_8bit: bool, func):
+def StackRead(cpu: Cpu, mode_8bit: bool, func: Callable):
     if mode_8bit:
         cpu.U.l = cpu.fetch()
         cpu.idle()
@@ -209,7 +212,7 @@ def StackRead(cpu: Cpu, mode_8bit: bool, func):
 
 
 @decorator_mode_8bit
-def IndirectStackRead(cpu: Cpu, mode_8bit: bool, func):
+def IndirectStackRead(cpu: Cpu, mode_8bit: bool, func: Callable):
     if mode_8bit:
         cpu.U.l = cpu.fetch()
         cpu.idle()

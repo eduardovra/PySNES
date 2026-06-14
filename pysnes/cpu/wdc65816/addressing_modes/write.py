@@ -2,12 +2,14 @@ from ...cpu import Cpu, Reg
 
 from .decorator import decorator_mode_8bit
 
+# Shared read-only zero register used as the "no index" offset (I.w == 0).
+# The source `F` and index `I` register args are pre-resolved to Reg objects (or
+# None for an absent index) at table-build time, avoiding per-call getattr.
+_ZERO = Reg(16, 0)
+
 
 @decorator_mode_8bit
-def BankWrite(cpu: Cpu, mode_8bit: bool, f: str, i: str = ""):
-    F = getattr(cpu, f)
-    I = getattr(cpu, i, None)
-
+def BankWrite(cpu: Cpu, mode_8bit: bool, F: Reg, I: Reg | None = None):
     if mode_8bit:
         if I is None:
             cpu.V.l = cpu.fetch()
@@ -33,8 +35,8 @@ def BankWrite(cpu: Cpu, mode_8bit: bool, f: str, i: str = ""):
 
 
 @decorator_mode_8bit
-def LongWrite(cpu: Cpu, mode_8bit: bool, i: str = ""):
-    I = getattr(cpu, i, Reg(16, 0x0000))
+def LongWrite(cpu: Cpu, mode_8bit: bool, i: Reg | None = None):
+    I = i if i is not None else _ZERO
 
     if mode_8bit:
         cpu.V.l = cpu.fetch()
@@ -50,20 +52,19 @@ def LongWrite(cpu: Cpu, mode_8bit: bool, i: str = ""):
 
 
 @decorator_mode_8bit
-def DirectWrite(cpu: Cpu, mode_8bit: bool, f: str, i: str = ""):
-    F = getattr(cpu, f)
-    I = getattr(cpu, i, Reg(16, 0x0000))
+def DirectWrite(cpu: Cpu, mode_8bit: bool, F: Reg, i: Reg | None = None):
+    I = i if i is not None else _ZERO
 
     if mode_8bit:
         cpu.U.l = cpu.fetch()
         cpu.idle2()
-        if i:
+        if i is not None:
             cpu.idle()
         cpu.writeDirect(cpu.U.l + I.w + 0, F.l)
     else:
         cpu.U.l = cpu.fetch()
         cpu.idle2()
-        if i:
+        if i is not None:
             cpu.idle()
         cpu.writeDirect(cpu.U.l + I.w + 0, F.l)
         cpu.writeDirect(cpu.U.l + I.w + 1, F.h)
@@ -125,8 +126,8 @@ def IndirectIndexedWrite(cpu: Cpu, mode_8bit: bool):
 
 
 @decorator_mode_8bit
-def IndirectLongWrite(cpu: Cpu, mode_8bit: bool, i: str = ""):
-    I = getattr(cpu, i, Reg(16, 0x0000))
+def IndirectLongWrite(cpu: Cpu, mode_8bit: bool, i: Reg | None = None):
+    I = i if i is not None else _ZERO
 
     if mode_8bit:
         cpu.U.l = cpu.fetch()

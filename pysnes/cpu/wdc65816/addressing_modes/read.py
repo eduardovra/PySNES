@@ -64,21 +64,19 @@ def BankRead(cpu: Cpu, mode_8bit: bool, func: Callable, I: Reg | None = None):
 
 
 @decorator_mode_8bit
-def LongRead(cpu: Cpu, mode_8bit: bool, func: Callable, i: Reg | None = None):
-    I = i if i is not None else _ZERO
-
+def LongRead(cpu: Cpu, mode_8bit: bool, func: Callable, i: Reg = _ZERO):
     if mode_8bit:
         cpu.V.l = cpu.fetch()
         cpu.V.h = cpu.fetch()
         cpu.V.b = cpu.fetch()
-        cpu.W.l = cpu.readLong(cpu.V.d + I.w + 0)
+        cpu.W.l = cpu.readLong(cpu.V.d + i.w + 0)
         func(cpu, mode_8bit, cpu.W.l)
     else:
         cpu.V.l = cpu.fetch()
         cpu.V.h = cpu.fetch()
         cpu.V.b = cpu.fetch()
-        cpu.W.l = cpu.readLong(cpu.V.d + I.w + 0)
-        cpu.W.h = cpu.readLong(cpu.V.d + I.w + 1)
+        cpu.W.l = cpu.readLong(cpu.V.d + i.w + 0)
+        cpu.W.h = cpu.readLong(cpu.V.d + i.w + 1)
         func(cpu, mode_8bit, cpu.W.w)
 
 
@@ -174,16 +172,14 @@ def IndirectIndexedRead(cpu: Cpu, mode_8bit: bool, func: Callable):
 
 
 @decorator_mode_8bit
-def IndirectLongRead(cpu: Cpu, mode_8bit: bool, func: Callable, i: Reg | None = None):
-    I = i if i is not None else _ZERO
-
+def IndirectLongRead(cpu: Cpu, mode_8bit: bool, func: Callable, i: Reg = _ZERO):
     if mode_8bit:
         cpu.U.l = cpu.fetch()
         cpu.idle2()
         cpu.V.l = cpu.readDirectN(cpu.U.l + 0)
         cpu.V.h = cpu.readDirectN(cpu.U.l + 1)
         cpu.V.b = cpu.readDirectN(cpu.U.l + 2)
-        cpu.W.l = cpu.readLong(cpu.V.d + I.w + 0)
+        cpu.W.l = cpu.readLong(cpu.V.d + i.w + 0)
         func(cpu, mode_8bit, cpu.W.l)
     else:
         cpu.U.l = cpu.fetch()
@@ -191,8 +187,8 @@ def IndirectLongRead(cpu: Cpu, mode_8bit: bool, func: Callable, i: Reg | None = 
         cpu.V.l = cpu.readDirectN(cpu.U.l + 0)
         cpu.V.h = cpu.readDirectN(cpu.U.l + 1)
         cpu.V.b = cpu.readDirectN(cpu.U.l + 2)
-        cpu.W.l = cpu.readLong(cpu.V.d + I.w + 0)
-        cpu.W.h = cpu.readLong(cpu.V.d + I.w + 1)
+        cpu.W.l = cpu.readLong(cpu.V.d + i.w + 0)
+        cpu.W.h = cpu.readLong(cpu.V.d + i.w + 1)
         func(cpu, mode_8bit, cpu.W.w)
 
 

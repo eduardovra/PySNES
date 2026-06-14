@@ -1,12 +1,12 @@
-from ...cpu import Cpu
+from typing import Callable
+
+from ...cpu import Cpu, Reg
 
 from .decorator import decorator_mode_8bit
 
 
 @decorator_mode_8bit
-def ImpliedModify(cpu: Cpu, mode_8bit: bool, func, m: str):
-    M = getattr(cpu, m)
-
+def ImpliedModify(cpu: Cpu, mode_8bit: bool, func: Callable, M: Reg):
     if mode_8bit:
         cpu.idleIRQ()
         M.l = func(cpu, mode_8bit, M.l)
@@ -16,7 +16,7 @@ def ImpliedModify(cpu: Cpu, mode_8bit: bool, func, m: str):
 
 
 @decorator_mode_8bit
-def BankModify(cpu: Cpu, mode_8bit: bool, func):
+def BankModify(cpu: Cpu, mode_8bit: bool, func: Callable):
     if mode_8bit:
         cpu.V.l = cpu.fetch()
         cpu.V.h = cpu.fetch()
@@ -41,7 +41,7 @@ def BankModify(cpu: Cpu, mode_8bit: bool, func):
 
 
 @decorator_mode_8bit
-def BankIndexedModify(cpu: Cpu, mode_8bit: bool, func):
+def BankIndexedModify(cpu: Cpu, mode_8bit: bool, func: Callable):
     if mode_8bit:
         cpu.V.l = cpu.fetch()
         cpu.V.h = cpu.fetch()
@@ -67,7 +67,7 @@ def BankIndexedModify(cpu: Cpu, mode_8bit: bool, func):
 
 
 @decorator_mode_8bit
-def DirectModify(cpu: Cpu, mode_8bit: bool, func):
+def DirectModify(cpu: Cpu, mode_8bit: bool, func: Callable):
     if mode_8bit:
         cpu.U.l = cpu.fetch()
         cpu.idle2()
@@ -91,7 +91,7 @@ def DirectModify(cpu: Cpu, mode_8bit: bool, func):
 
 
 @decorator_mode_8bit
-def DirectIndexedModify(cpu: Cpu, mode_8bit: bool, func):
+def DirectIndexedModify(cpu: Cpu, mode_8bit: bool, func: Callable):
     if mode_8bit:
         cpu.U.l = cpu.fetch()
         cpu.idle2()

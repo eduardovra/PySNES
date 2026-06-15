@@ -434,3 +434,140 @@ def draw_background_scanline(ppu: Ppu, bg: Background, bpp: int, priority_select
             eff_scrx += n_pixels
             if eff_scrx >= scrx_wrap:
                 eff_scrx -= scrx_wrap
+
+
+def _bg_window_config(ppu: Ppu, bg_idx: int):
+    """Return (window_active, w1_en, w1_inv, w2_en, w2_inv, combine) for a BG."""
+    window_active = ppu.tmw & (1 << bg_idx)
+    if not window_active:
+        return False, False, False, False, False, 0
+    if bg_idx == 0:
+        sel = ppu.w12sel
+    elif bg_idx == 1:
+        sel = ppu.w12sel >> 4
+    elif bg_idx == 2:
+        sel = ppu.w34sel
+    else:
+        sel = ppu.w34sel >> 4
+    w1_invert = sel & 1
+    w1_enable = (sel >> 1) & 1
+    w2_invert = (sel >> 2) & 1
+    w2_enable = (sel >> 3) & 1
+    combine_logic = (ppu.wbglog >> (bg_idx * 2)) & 0x3
+    return window_active, w1_enable, w1_invert, w2_enable, w2_invert, combine_logic
+
+
+def draw_hires_background_scanline(
+    ppu: Ppu, bg: Background, bpp: int, priority_selector: bool
+) -> None:
+    """Render one BG scanline for the hi-res modes 5 and 6, downsampled to 256px.
+
+    In modes 5/6 the PPU outputs 512 dots per scanline. Each tilemap entry maps
+    to a 16-pixel-wide cell built from two horizontally-adjacent name-table tiles
+    (T for the left 8 dots, T+1 for the right 8); the on-screen 512 dots come
+    from interleaving the main screen (odd dots) with the sub screen (even dots).
+
+    Our framebuffer is 256px, so we render only the main screen's 256 dots —
+    each output pixel x samples hi-res dot (2x+1). bg.hoffset is already in
+    512-dot (hi-res) units. This is what makes hi-res graphics (e.g. the
+    Donkey Kong Country "Rare" logo) render fully instead of dropping every
+    other tile.
+    """
+    if not bg.main_screen_enable and not bg.sub_screen_enable:
+        return
+
+    write_main = bg.main_screen_enable
+    write_sub = bg.sub_screen_enable
+    layer_tag = bg.number
+    bg_idx = bg.number - 1
+
+    (window_active, w1_enable, w1_invert,
+     w2_enable, w2_invert, combine_logic) = _bg_window_config(ppu, bg_idx)
+
+    if ppu._cgram_dirty:
+        ppu._rebuild_cgram_cache()
+    cgram_cache = ppu._cgram_cache
+
+    screen_size = bg.screen_size
+    bg_size_w = 32 << (screen_size & 1)
+    bg_size_h = 32 << (screen_size >> 1)
+    scroll_x = bg.hoffset            # hi-res (512-dot) units
+    scroll_y = bg.voffset
+    tiledata_addr = bg.tiledata_addr
+    screen_addr = bg.screen_addr & 0xFFFF
+    bpp_mult = 1 << bpp
+    plane_w = 16 * bg_size_w         # plane width in hi-res dots
+
+    orgy = ppu.v_counter - 1
+    row_base = orgy * SCREEN_WIDTH
+    vram = ppu.vram
+    main_bgs = ppu.main_bgs
+    main_layer = ppu.main_layer
+    sub_bgs = ppu.sub_bgs
+
+    # Vertical fetch is normal-resolution in modes 5/6 (no interlace support).
+    eff_scry = (ppu.v_counter + scroll_y) % (8 * bg_size_h)
+    i = eff_scry & 7
+    scry_for_row = eff_scry % 256 if bg_size_w == 64 else eff_scry
+    scry_offset = (scry_for_row >> 3) * 32 + (bg_size_w >> 6) * ((eff_scry >> 8) * 0x800)
+
+    window_masked = None
+    if window_active and (w1_enable or w2_enable):
+        window_masked = ppu._window_mask_buf
+        ppu._build_window_mask(
+            window_masked,
+            w1_enable, w1_invert,
+            w2_enable, w2_invert,
+            combine_logic,
+        )
+
+    for dot in range(SCREEN_WIDTH):
+        if window_masked is not None and window_masked[dot]:
+            continue
+
+        # Main screen samples the odd hi-res dots.
+        hp = (2 * dot + 1 + scroll_x) % plane_w
+        entry = hp >> 4                  # which 16-dot tilemap cell
+        cell = hp & 15                   # position within the cell (0..15)
+
+        col_page = entry >> 5
+        col = entry & 31
+        tilemap_word_addr = (screen_addr + scry_offset + col + col_page * 0x400) * 2 & 0xFFFF
+        low = vram[tilemap_word_addr]
+        high = vram[tilemap_word_addr + 1]
+        if ((high >> 5) & 1) != priority_selector:
+            continue
+        tile_num = (high & 3) << 8 | low
+        tilemap_palette = (high >> 2) & 7
+        tilemap_h_flip = (high >> 6) & 1
+        tilemap_v_flip = (high >> 7) & 1
+
+        # h-flip mirrors the whole 16-dot cell (swaps the two sub-tiles too).
+        eff_cell = (15 - cell) if tilemap_h_flip else cell
+        sub_tile = eff_cell >> 3         # 0 -> tile T, 1 -> tile T+1
+        h_shift = 7 - (eff_cell & 7)
+        tnum = tile_num + sub_tile
+        v_shift = i if not tilemap_v_flip else (7 - i)
+
+        if bpp == 2:
+            tile_address = (tiledata_addr + tnum * 16 + v_shift * 2) & 0xFFFF
+            b_lo = vram[tile_address]
+            b_hi = vram[(tile_address + 1) & 0xFFFF]
+            v = ((b_lo >> h_shift) & 1) | (((b_hi >> h_shift) & 1) << 1)
+        else:  # bpp == 4
+            tile_address = (tiledata_addr + tnum * 32 + v_shift * 2) & 0xFFFF
+            b_1 = vram[tile_address]
+            b_2 = vram[(tile_address + 1) & 0xFFFF]
+            b_3 = vram[(tile_address + 16) & 0xFFFF]
+            b_4 = vram[(tile_address + 17) & 0xFFFF]
+            v = ((b_1 >> h_shift) & 1) | (((b_2 >> h_shift) & 1) << 1) | \
+                (((b_3 >> h_shift) & 1) << 2) | (((b_4 >> h_shift) & 1) << 3)
+
+        if v:
+            u32_color = cgram_cache[tilemap_palette * bpp_mult + v]
+            pix_idx = row_base + dot
+            if write_main:
+                main_bgs[pix_idx] = u32_color
+                main_layer[pix_idx] = layer_tag
+            if write_sub:
+                sub_bgs[pix_idx] = u32_color

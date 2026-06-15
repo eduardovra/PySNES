@@ -117,6 +117,34 @@ def test_brr_end_flag_sets_endx():
     # After looping, voice stays active; ENDX was set
 
 
+def test_brr_end_without_loop_zeroes_envelope():
+    """A sample that ends with no loop flag deactivates the voice AND zeroes its
+    envelope, so VxENVX reads 0 afterwards.
+
+    Hardware silences a voice (ENVX→0) when a BRR block has the end flag set
+    but the loop flag clear. Drivers (e.g. Super Bomberman 5) poll VxENVX to
+    detect a freed voice and hang forever if it keeps reading the stale level.
+    """
+    mem = bytearray(65536)
+    # source dir at 0, entry 0: start=0x0200 (loop addr unused)
+    mem[0] = 0x00; mem[1] = 0x02; mem[2] = 0x00; mem[3] = 0x02
+    mem[0x200] = 0x01              # BRR header: end=1, loop=0, zero data
+    d = make_dsp(mem)
+    d.write_register(0x5D, 0x00)   # DIR=0
+    d.write_register(0x04, 0x00)   # VxSRCN=0 for voice 0
+    d.write_register(0x02, 0x00); d.write_register(0x03, 0x10)  # pitch=0x1000
+    d.write_register(0x00, 0x7F); d.write_register(0x01, 0x7F)
+    d.write_register(0x0C, 0x7F); d.write_register(0x1C, 0x7F)
+    # Direct GAIN holding env high so it can't reach 0 on its own.
+    d.write_register(0x05, 0x00)   # ADSR1 bit7=0 → GAIN mode
+    d.write_register(0x07, 0x7F)   # direct GAIN, max level
+    d.write_register(0x4C, 0x01)   # KON voice 0
+    d.generate_samples(64)         # run until the sample reaches its end block
+    assert d.voices[0].active is False
+    assert d.voices[0].env_level == 0
+    assert d.read_register(0x08) == 0   # VxENVX for voice 0
+
+
 def test_key_on_activates_voice():
     """KON causes voice to become active and start at BRR start address."""
     mem = bytearray(65536)

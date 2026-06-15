@@ -517,7 +517,12 @@ class Dsp:
                             if loop_flag:
                                 v.brr_addr = loop_addr
                             else:
+                                # Sample ended without a loop flag: hardware
+                                # silences the voice and zeroes its envelope.
+                                # ENVX must read 0 afterwards or drivers that
+                                # poll VxENVX to detect a freed voice hang.
                                 active = False
+                                env_level = 0
                                 break
                         else:
                             v.brr_addr += 9

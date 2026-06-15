@@ -69,6 +69,12 @@ class Ppu:
         # OAM
         self.oam = OAM(oam_dump=oam_dump)
         self._oamadd = 0
+        # Reload latch for the internal OAM address. $2102/$2103 writes set
+        # both this latch and the live _oamadd; hardware copies the latch back
+        # into _oamadd at V-Blank entry (and when forced-blank is cleared), so
+        # games that set OAMADDR=0 once and DMA OAM every V-Blank stay aligned.
+        self._oamadd_reload = 0
+        self._oam_priority_activation = 0
         self._oamodd = 0
         self._oamdata = 0
         self.obsel_set(0)
@@ -156,7 +162,7 @@ class Ppu:
     _SCALAR_STATE = (
         "vmain", "vmaddl", "vmaddh", "_vmdatal", "_vmdatah", "_vram_prefetch",
         "display_brightness", "display_disable",
-        "_oamadd", "_oamodd", "_oamdata",
+        "_oamadd", "_oamadd_reload", "_oam_priority_activation", "_oamodd", "_oamdata",
         "oam_main_screen_enable", "oam_sub_screen_enable",
         "oam_tiledata_address", "oam_nameselect", "oam_base_size",
         "_bgmode", "_bgpriority",
@@ -202,10 +208,9 @@ class Ppu:
         self.mosaic_enabled = list(d["mosaic_enabled"])
 
     def inidisp_set(self, data: int) -> None:
-        # Missing: when clearing forced-blank (bit 7 → 0) during V-Blank, the
-        # internal OAM address must be reloaded from OAMADDL/OAMADDH. The reload
-        # also fires at V-Blank entry when forced-blank is off. Not yet wired —
-        # belongs in the V-Blank transition in _vblank_start, not here.
+        # The internal OAM address is reloaded from the OAMADDR latch at V-Blank
+        # entry (wired in _vblank_start). Still missing: the same reload when
+        # forced-blank (bit 7) is cleared *during* V-Blank — a rarer case.
         new_disable = (data >> 7) & 1
         if new_disable and not self.display_disable and 0 < self.v_counter < _VBLANK_START_LINE:
             # Forced blank just asserted during active display. Rows 0..v_counter-1
@@ -386,7 +391,8 @@ class Ppu:
 
     @oamaddl.setter
     def oamaddl(self, data: int) -> None:
-        self._oamadd = (self._oamadd & 0x100) | (data & 0xFF)
+        self._oamadd_reload = (self._oamadd_reload & 0x100) | (data & 0xFF)
+        self._oamadd = self._oamadd_reload
         self._oamodd = 0
 
     @property
@@ -396,7 +402,8 @@ class Ppu:
     @oamaddh.setter
     def oamaddh(self, data: int) -> None:
         self._oam_priority_activation = (data >> 7) & 1
-        self._oamadd = (self._oamadd & 0x0FF) | (data & 1) << 8
+        self._oamadd_reload = (self._oamadd_reload & 0x0FF) | (data & 1) << 8
+        self._oamadd = self._oamadd_reload
         self._oamodd = 0
 
     @property
@@ -527,6 +534,8 @@ class Ppu:
         self._cgdata = None
 
         self._oamadd = 0
+        self._oamadd_reload = 0
+        self._oam_priority_activation = 0
         self._oamodd = 0
         self._oamdata = 0
         self.obsel_set(0)
@@ -648,6 +657,13 @@ class Ppu:
 
     def _vblank_start(self) -> None:
         self.bus.vblank = True
+        # Reload the internal OAM address from the OAMADDR latch (unless forced
+        # blank — then sprite evaluation is off and no reload occurs). Games
+        # like DKC set OAMADDR=0 once and DMA the full OAM table every V-Blank,
+        # relying on this reload to keep the upload aligned at offset 0.
+        if not self.display_disable:
+            self._oamadd = self._oamadd_reload
+            self._oamodd = 0
         self.bus.raise_nmi()
 
     def _vblank_end(self) -> None:

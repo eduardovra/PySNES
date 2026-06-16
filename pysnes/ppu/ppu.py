@@ -154,10 +154,23 @@ class Ppu:
 
         # 4bpp sprite tile decode cache. One entry per 32-byte VRAM slot (2048 total).
         # Each entry stores 64 pre-decoded color indices: 8 rows × 8 pixels (0-15).
-        # Invalidated on VRAM writes; rebuilt lazily in draw_tiles().
+        # Invalidated on VRAM writes; rebuilt lazily while plotting objects.
         _N_OBJ_TILE_SLOTS = 2048  # 65536 VRAM bytes / 32 bytes per 4bpp tile
         self._obj_tile_cache = bytearray(_N_OBJ_TILE_SLOTS * 64)
         self._obj_tile_dirty = bytearray([1] * _N_OBJ_TILE_SLOTS)
+
+        # Resolved OBJ scanline buffers. Sprite-vs-sprite priority is decided by
+        # OAM index (lowest wins the pixel entirely); the priority field only
+        # selects where that pixel sits relative to BG layers. So the whole OBJ
+        # line is resolved once per scanline here, then the per-priority passes
+        # in _render_layers just blit the pixels whose owning sprite has that
+        # priority. _obj_line_color holds the packed RGBA (0 = transparent),
+        # _obj_line_pri the priority (0-3), _obj_line_layer the color-math layer
+        # tag (5 or 6). _obj_line_vc marks the scanline the buffers were built for.
+        self._obj_line_color = array('I', [0] * 256)
+        self._obj_line_pri = bytearray(256)
+        self._obj_line_layer = bytearray(256)
+        self._obj_line_vc = -1
 
     _SCALAR_STATE = (
         "vmain", "vmaddl", "vmaddh", "_vmdatal", "_vmdatah", "_vram_prefetch",

@@ -487,3 +487,78 @@ class TestSpritePriorityOrdering:
         assert _pixel(ppu, 20, 10) == YELLOW, (
             f"BG1 pri-0 should cover sprite pri-0, got {_pixel(ppu, 20, 10)}"
         )
+
+
+# 5-bit red: r5=31 → r8 = 255
+RED = (255, 0, 0)
+
+
+def _setup_two_overlapping_sprites(
+    ppu: Ppu, a_priority: int, b_priority: int
+) -> None:
+    """Place two 8x8 sprites at the same pixel (20, 10).
+
+    Sprite 0 (lower OAM index) uses palette 8 → GREEN.
+    Sprite 1 (higher OAM index) uses palette 9 → RED.
+    Both share the solid color-index-1 tile (character 0).
+    """
+    _setup_sprite(ppu)  # sprite 0: palette 8 (GREEN), all others hidden at y=240
+
+    # Palette 9, color 1 = RED  →  CGRAM index 9*16 + 1 = 145
+    _write_cgram(ppu, 145, 31, 0, 0)
+
+    a = ppu.oam.objects[0]
+    a.x = 20
+    a.y = 10
+    a.priority = a_priority
+
+    b = ppu.oam.objects[1]
+    b.x = 20
+    b.y = 10
+    b.character = 0
+    b.palette = 9  # +8 already applied → RED
+    b.priority = b_priority
+    b.h_flip = False
+    b.v_flip = False
+    b.size = False
+    b.name_select = False
+
+
+class TestSpriteVsSpritePriority:
+    """Sprite-vs-sprite priority is decided by OAM index — the lowest-numbered
+    object wins each pixel — regardless of the OAM priority field. The priority
+    field only chooses where that pixel sits relative to BG layers."""
+
+    def test_lower_index_wins_same_priority(self):
+        """Two overlapping sprites, equal priority: lowest OAM index on top."""
+        ppu = _make_ppu()
+        _setup_two_overlapping_sprites(ppu, a_priority=0, b_priority=0)
+        ppu.v_counter = 11
+        ppu.render_scanline()
+        assert _pixel(ppu, 20, 10) == GREEN, (
+            f"Sprite 0 (lowest index) should be on top, got {_pixel(ppu, 20, 10)}"
+        )
+
+    def test_lower_index_wins_despite_lower_priority_field(self):
+        """Regression (Super Bomberman 5 menu cursor): sprite 0 has the LOWER
+        priority field (2) than sprite 1 (3), yet still appears in front because
+        sprite-vs-sprite ordering is purely by OAM index."""
+        ppu = _make_ppu()
+        _setup_two_overlapping_sprites(ppu, a_priority=2, b_priority=3)
+        ppu.v_counter = 11
+        ppu.render_scanline()
+        assert _pixel(ppu, 20, 10) == GREEN, (
+            "Sprite 0 (index 0, priority 2) must be in front of sprite 1 "
+            f"(index 1, priority 3), got {_pixel(ppu, 20, 10)}"
+        )
+
+    def test_higher_index_higher_priority_still_loses(self):
+        """Symmetric check: sprite 1 has the HIGHER priority field (3) and a
+        higher index — it must still lose the pixel to sprite 0 (priority 0)."""
+        ppu = _make_ppu()
+        _setup_two_overlapping_sprites(ppu, a_priority=0, b_priority=3)
+        ppu.v_counter = 11
+        ppu.render_scanline()
+        assert _pixel(ppu, 20, 10) == GREEN, (
+            f"Sprite 0 (lowest index) must win the pixel, got {_pixel(ppu, 20, 10)}"
+        )

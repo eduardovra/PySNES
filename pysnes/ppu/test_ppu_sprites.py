@@ -2,7 +2,7 @@
 Synthetic PPU sprite (OAM) unit tests.
 
 These bypass ROM loading entirely — they write VRAM/CGRAM/OAM directly and
-call draw_objects() to verify that sprite pixels land in main_bgs correctly.
+call copy_obj_pixels_for_priority() to verify that sprite pixels land in main_bgs correctly.
 No Mesen, no ROM files needed.
 
 Setup:
@@ -132,7 +132,7 @@ class TestSpriteRendering:
         bg_renderer.draw_scanline_backdrop(ppu)
 
         # Draw objects for this scanline
-        obj_renderer.draw_objects(ppu)
+        obj_renderer.copy_obj_pixels_for_priority(ppu)
 
         # Sprite tile row 1 (y=6 in tile coords) should be at main_bgs row 5
         for x in range(10, 18):
@@ -145,7 +145,7 @@ class TestSpriteRendering:
 
         ppu.v_counter = 6
         bg_renderer.draw_scanline_backdrop(ppu)
-        obj_renderer.draw_objects(ppu)
+        obj_renderer.copy_obj_pixels_for_priority(ppu)
 
         # Columns 9 and 18 are adjacent to the sprite — must be backdrop (black)
         assert _pixel(ppu, 9,  5) == BLACK, "Left neighbor should be backdrop"
@@ -164,7 +164,7 @@ class TestSpriteRendering:
 
         ppu.v_counter = 6
         bg_renderer.draw_scanline_backdrop(ppu)
-        obj_renderer.draw_objects(ppu)
+        obj_renderer.copy_obj_pixels_for_priority(ppu)
 
         # All pixels on the sprite scanline should remain backdrop (black)
         for x in range(10, 18):
@@ -181,7 +181,7 @@ class TestSpriteRendering:
 
         ppu.v_counter = 6
         bg_renderer.draw_scanline_backdrop(ppu)
-        obj_renderer.draw_objects(ppu)  # must not raise IndexError
+        obj_renderer.copy_obj_pixels_for_priority(ppu)  # must not raise IndexError
 
         # Only the visible part (x=0..4) should be green
         for x in range(0, 5):
@@ -201,7 +201,7 @@ class TestSpriteRendering:
 
         ppu.v_counter = 6
         bg_renderer.draw_scanline_backdrop(ppu)
-        obj_renderer.draw_objects(ppu)
+        obj_renderer.copy_obj_pixels_for_priority(ppu)
 
         for x in range(0, 5):
             assert _pixel(ppu, x, 5) == GREEN, f"Expected GREEN at ({x}, 5)"
@@ -219,7 +219,7 @@ class TestSpriteRendering:
         # Render scanline above the sprite
         ppu.v_counter = 4
         bg_renderer.draw_scanline_backdrop(ppu)
-        obj_renderer.draw_objects(ppu)
+        obj_renderer.copy_obj_pixels_for_priority(ppu)
 
         for x in range(10, 18):
             assert _pixel(ppu, x, 3) == BLACK, (
@@ -303,7 +303,7 @@ class TestMultiTileSprite:
 
         ppu.v_counter = 11  # output row = 10
         bg_renderer.draw_scanline_backdrop(ppu)
-        obj_renderer.draw_objects(ppu)
+        obj_renderer.copy_obj_pixels_for_priority(ppu)
 
         for x in range(20, 28):
             assert _pixel(ppu, x, 10) == GREEN, f"top-left at ({x},10)"
@@ -315,7 +315,7 @@ class TestMultiTileSprite:
 
         ppu.v_counter = 11
         bg_renderer.draw_scanline_backdrop(ppu)
-        obj_renderer.draw_objects(ppu)
+        obj_renderer.copy_obj_pixels_for_priority(ppu)
 
         for x in range(28, 36):
             assert _pixel(ppu, x, 10) == RED, f"top-right at ({x},10)"
@@ -327,7 +327,7 @@ class TestMultiTileSprite:
 
         ppu.v_counter = 19  # output row = 18
         bg_renderer.draw_scanline_backdrop(ppu)
-        obj_renderer.draw_objects(ppu)
+        obj_renderer.copy_obj_pixels_for_priority(ppu)
 
         for x in range(20, 28):
             assert _pixel(ppu, x, 18) == BLUE, f"bottom-left at ({x},18)"
@@ -339,7 +339,7 @@ class TestMultiTileSprite:
 
         ppu.v_counter = 19
         bg_renderer.draw_scanline_backdrop(ppu)
-        obj_renderer.draw_objects(ppu)
+        obj_renderer.copy_obj_pixels_for_priority(ppu)
 
         for x in range(28, 36):
             assert _pixel(ppu, x, 18) == GREEN, f"bottom-right at ({x},18)"
@@ -351,7 +351,7 @@ class TestMultiTileSprite:
 
         ppu.v_counter = 11
         bg_renderer.draw_scanline_backdrop(ppu)
-        obj_renderer.draw_objects(ppu)
+        obj_renderer.copy_obj_pixels_for_priority(ppu)
 
         assert _pixel(ppu, 36, 10) == BLACK, "right of 16x16 sprite"
 
@@ -362,7 +362,7 @@ class TestMultiTileSprite:
 
         ppu.v_counter = 27  # output row = 26
         bg_renderer.draw_scanline_backdrop(ppu)
-        obj_renderer.draw_objects(ppu)
+        obj_renderer.copy_obj_pixels_for_priority(ppu)
 
         for x in range(20, 36):
             assert _pixel(ppu, x, 26) == BLACK, f"below sprite at ({x},26)"

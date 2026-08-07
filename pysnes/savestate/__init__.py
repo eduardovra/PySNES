@@ -181,7 +181,7 @@ def load(pysnes, path) -> None:
     try:
         header = json.loads(header_bytes.decode("utf-8"))
     except (UnicodeDecodeError, json.JSONDecodeError) as e:
-        raise IncompatibleStateError(f"{path}: corrupt header — {e}")
+        raise IncompatibleStateError(f"{path}: corrupt header — {e}") from e
 
     expected_hash = _compat_hash()
     saved_hash = header.get("compat_hash", "")
@@ -189,7 +189,8 @@ def load(pysnes, path) -> None:
         raise IncompatibleStateError(
             f"{path}: compatibility hash mismatch — refusing to load.\n"
             f"  saved on:   {header.get('python_impl', '?')} "
-            f"(commit {header.get('pysnes_commit') or '?'}, hash {saved_hash[:12]}...)\n"
+            f"(commit {header.get('pysnes_commit') or '?'}, hash "
+            f"{saved_hash[:12]}...)\n"
             f"  current:    {_python_impl()} "
             f"(commit {_git_commit() or '?'}, hash {expected_hash[:12]}...)\n"
             f"State files are tied to the exact Python build and source code "
@@ -205,7 +206,8 @@ def load(pysnes, path) -> None:
     if header.get("rom_checksum") != rom_header.checksum:
         raise RomMismatchError(
             f"{path}: state was made for "
-            f"{header.get('rom_title', '?')!r} (checksum 0x{header.get('rom_checksum', 0):04X}), "
+            f"{header.get('rom_title', '?')!r} (checksum "
+            f"0x{header.get('rom_checksum', 0):04X}), "
             f"but loaded ROM is {rom_header.game_title!r} "
             f"(checksum 0x{rom_header.checksum:04X}). Refusing to load."
         )
@@ -222,7 +224,7 @@ def load(pysnes, path) -> None:
     pysnes.apu.load_state(state["apu"])
     pysnes.cpu.load_state(state["cpu"])
     pysnes.cpu.dma.load_state(state["dma"])
-    for c, cs in zip(pysnes.controllers, state["controllers"]):
+    for c, cs in zip(pysnes.controllers, state["controllers"], strict=True):
         c.load_state(cs)
     registry = {
         "cpu": pysnes.cpu,

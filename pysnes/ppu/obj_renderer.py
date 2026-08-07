@@ -1,8 +1,7 @@
 from __future__ import annotations
 
 from array import array
-from typing import Tuple, TYPE_CHECKING
-
+from typing import TYPE_CHECKING
 
 from .constants import SCREEN_WIDTH
 from .data_structures import Object
@@ -118,7 +117,9 @@ def _render_obj_line(ppu: Ppu) -> None:
     for obj in ppu.oam.objects:
         if (
             obj.y == 240
-        ):  # TODO: replace with proper Y-bounds check; y=240 is the common hide convention but not the hardware rule
+            # TODO: replace with proper Y-bounds check; y=240 is the common hide
+            # convention but not the hardware rule
+        ):
             continue
 
         tile_width, tile_height = get_obj_dimensions(ppu, obj.size)
@@ -183,7 +184,7 @@ def copy_obj_pixels_for_priority(ppu: Ppu, priority: int = -1) -> None:
             main_layer[idx] = layer_line[px]
 
 
-def get_obj_dimensions(ppu: Ppu, obj_size: bool) -> Tuple[int, int]:
+def get_obj_dimensions(ppu: Ppu, obj_size: bool) -> tuple[int, int]:
     """
     000 =  8x8  and 16x16 sprites
     001 =  8x8  and 32x32 sprites
@@ -208,7 +209,8 @@ def draw_point(
     x: int,
     y: int,
 ) -> None:
-    """Draw a single pixel from bitplane data at tile_data_index+i, wrapping at len(tile_data).
+    """Draw a single pixel from bitplane data at tile_data_index+i, wrapping at
+    len(tile_data).
 
     Used by tests to verify VRAM-boundary wrapping in tile fetches.
     """

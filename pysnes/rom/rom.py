@@ -1,7 +1,6 @@
 import pathlib
 from dataclasses import dataclass
 from enum import IntEnum
-from typing import Union
 
 from rich import print
 
@@ -66,14 +65,15 @@ class Region(IntEnum):
     AUSTRALIA = 0x11
 
 
-def _enum_or_int(cls: type[IntEnum], value: int) -> Union[IntEnum, int]:
+def _enum_or_int(cls: type[IntEnum], value: int) -> IntEnum | int:
     try:
         return cls(value)
     except ValueError:
         return value
 
 
-# Scripts to convert SNES ROMs to SNES Classic (.sfrom) format and to read .sfrom headers
+# Scripts to convert SNES ROMs to SNES Classic (.sfrom) format and to read
+# .sfrom headers
 # https://gist.github.com/anpage/4834433944a2875ee6d4cbb5786c6bf7
 
 
@@ -96,11 +96,11 @@ class HardwareVectors:
 @dataclass
 class SnesHeader:
     game_title: str
-    mapping_mode: Union[MappingMode, int]
-    cartridge_type: Union[CartridgeType, int]
+    mapping_mode: MappingMode | int
+    cartridge_type: CartridgeType | int
     rom_size: int  # bytes; 0 if header byte is 0
     sram_size: int  # bytes; 0 if header byte is 0
-    destination_code: Union[Region, int]  # $FFD9 — region, NOT developer ID
+    destination_code: Region | int  # $FFD9 — region, NOT developer ID
     version: int
     checksum_complement: int  # 16-bit LE
     checksum: int  # 16-bit LE
@@ -129,9 +129,10 @@ class Rom:
 
     def load_rom_file(self):
         """
-        SFC and SMC files are usually identical. It's just a different choice in file extension.
-        “SMC” comes from Super MagiCom, a floppy-based cart copying device for backup/piracy.
-        The original .smc files produced by the device contained a 512 byte header.
+        SFC and SMC files are usually identical. It's just a different choice in
+        file extension. “SMC” comes from Super MagiCom, a floppy-based cart
+        copying device for backup/piracy. The original .smc files produced by
+        the device contained a 512 byte header.
         """
         self.rom = bytearray(
             0x400000
@@ -153,7 +154,8 @@ class Rom:
 
         assert self.snes_header.mapping_mode in SUPPORTED_MAPPING_MODES, (
             f"unsupported mapping mode {self.snes_header.mapping_mode:#04x} — "
-            f"supported: LoROM ({MappingMode.LOROM:#04x} / {MappingMode.LOROM_FAST:#04x}), "
+            f"supported: LoROM ({MappingMode.LOROM:#04x} / "
+            f"{MappingMode.LOROM_FAST:#04x}), "
             f"HiROM ({MappingMode.HIROM:#04x} / {MappingMode.HIROM_FAST:#04x})"
         )
 
@@ -223,9 +225,10 @@ class Rom:
             IRQ   $FFEE-$FFEF     IRQ/BRK $FFFE-$FFFF
         """
         rom = self.rom
-        word = lambda lo: (
-            rom[page_offset | lo] | rom[page_offset | (lo + 1)] << 8
-        )
+
+        def word(lo: int) -> int:
+            return rom[page_offset | lo] | rom[page_offset | (lo + 1)] << 8
+
         return HardwareVectors(
             native=InterruptVectors(
                 cop=word(0xE4),

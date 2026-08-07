@@ -1,6 +1,6 @@
 import numpy as np
-import pytest
-from .dsp import Dsp, ENV_ATTACK, ENV_DECAY, ENV_SUSTAIN, ENV_RELEASE
+
+from .dsp import ENV_ATTACK, ENV_RELEASE, Dsp
 
 
 def make_dsp(ram=None):

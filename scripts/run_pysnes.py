@@ -5,15 +5,15 @@ Run this from the root directory: python run_pysnes.py
 """
 
 import argparse
-import sys
 import os
+import sys
 
 # Add the project root to Python path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from pysnes.pysnes import main, PySNES
 import sdl2 as sdl
 
+from pysnes.pysnes import PySNES, main
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Python SNES emulator.")
@@ -40,8 +40,8 @@ if __name__ == "__main__":
 
         # cProfile.run("main()", sort="cumulative")
 
-        import pstats
         import cProfile
+        import pstats
 
         import pyximport
 
@@ -55,7 +55,6 @@ if __name__ == "__main__":
         s = pstats.Stats("Profile.prof")
         s.sort_stats("time").print_stats(50)
 
-        pass
     elif args.load:
         rom = args.rom or "roms/Super Mario World (U) [!].smc"
         pysnes = PySNES(rom)

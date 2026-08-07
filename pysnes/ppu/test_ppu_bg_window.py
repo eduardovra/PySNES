@@ -2,8 +2,8 @@
 Synthetic BG window-masking unit tests for $2123 W12SEL + $2126-$2129 WH0-3 +
 $212A WBGLOG + $212E TMW.
 
-These bypass ROM loading — write VRAM/CGRAM directly, call draw_background_scanline(),
-and assert pixel output. No Mesen, no ROM files.
+These bypass ROM loading — write VRAM/CGRAM directly, call
+draw_background_scanline(), and assert pixel output. No Mesen, no ROM files.
 
 Setup:
   - BG1 tilemap row 0: all tile 0 (solid RED)
@@ -13,8 +13,6 @@ Setup:
 Run:
     uv run --python pypy3.10 pytest pysnes/ppu/test_ppu_bg_window.py -v
 """
-
-import pytest
 
 from pysnes.ppu import bg_renderer
 from pysnes.ppu.ppu import Ppu
@@ -105,7 +103,8 @@ class TestW1Only:
         assert _pixel(ppu, 132, 0) == RED
 
     def test_w1_invert1_masks_outside(self):
-        """W1 enabled, invert=1 → pixels OUTSIDE [wh0,wh1] are masked (BLACK)."""
+        """W1 enabled, invert=1 → pixels OUTSIDE [wh0,wh1] are masked
+        (BLACK)."""
         ppu = _make_ppu()
         _setup_bg1_solid_red(ppu)
         ppu.w12sel = 0b00000011  # BG1 W1 enable + invert
@@ -128,8 +127,8 @@ class TestW1Only:
 class TestW1W2Combine:
     """BG1 W1=[16,112] invert=1; BG1 W2=[144,240] invert=1.
 
-    With invert=1, each window's "mask value" is TRUE when X lies OUTSIDE its range.
-    WBGLOG per BG1 (bits 1:0): 0=OR, 1=AND, 2=XOR, 3=XNOR.
+    With invert=1, each window's "mask value" is TRUE when X lies OUTSIDE its
+    range. WBGLOG per BG1 (bits 1:0): 0=OR, 1=AND, 2=XOR, 3=XNOR.
 
     AND case (matches the WindowMultiHDMA ROM): pixel masked iff it's outside
     both windows — i.e. BG1 is drawn inside at least one of W1 or W2.
@@ -167,7 +166,8 @@ class TestW1W2Combine:
         assert _pixel(ppu, 240, 0) == RED
 
     def test_or_logic_masks_whole_row(self):
-        """WBGLOG=OR + invert=1 both → masked whenever outside either — entire row masked."""
+        """WBGLOG=OR + invert=1 both → masked whenever outside either — entire
+        row masked."""
         ppu = _make_ppu()
         self._setup_two_windows(ppu, logic=0)  # OR
         _draw_row_with_backdrop(ppu, scanline=1)

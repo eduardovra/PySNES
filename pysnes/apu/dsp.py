@@ -1,4 +1,5 @@
 import array
+
 import numpy as np
 
 ENV_ATTACK, ENV_DECAY, ENV_SUSTAIN, ENV_RELEASE = 0, 1, 2, 3
@@ -521,8 +522,9 @@ _GAUSS = (
     1305,
 )
 
-# DSP envelope rate table (32 entries): number of DSP ticks between envelope steps.
-# Index 0 = never update. Attack maps AR*2+1, decay maps DR*2+16, sustain maps SR directly.
+# DSP envelope rate table (32 entries): number of DSP ticks between envelope
+# steps. Index 0 = never update. Attack maps AR*2+1, decay maps DR*2+16, sustain
+# maps SR directly.
 _RATE_TABLE = [
     0,
     2048,
@@ -645,7 +647,7 @@ class Dsp:
         reg = addr & 0x0F
         if reg == 0x08:  # VxENVX: current envelope (0-127)
             return (self.voices[voice].env_level >> 4) & 0x7F
-        elif addr == 0x7C:  # ENDX: read and clear
+        if addr == 0x7C:  # ENDX: read and clear
             val = self.regs[0x7C]
             self.regs[0x7C] = 0
             return val
@@ -749,7 +751,8 @@ class Dsp:
 
                 # Clamp to 16-bit signed
                 s = max(-32768, min(32767, s))
-                # Store ×2 (hardware buffer convention; prev stays at 1× = 15-bit)
+                # Store ×2 (hardware buffer convention; prev stays at 1× =
+                # 15-bit)
                 v.brr_buf[i] = max(-32768, min(32767, s * 2))
                 prev2 = prev1
                 prev1 = s  # 15-bit value used for next filter step
@@ -858,7 +861,8 @@ class Dsp:
                 v.env_level = 0
 
     def _init_echo(self) -> None:
-        """Initialise echo ring buffer from SPC RAM (called lazily on first generate)."""
+        """Initialise echo ring buffer from SPC RAM (called lazily on first
+        generate)."""
         esa = self.regs[0x6D]
         edl = self.regs[0x7D] & 0x0F
         self._echo_buf_addr = esa << 8
@@ -868,10 +872,10 @@ class Dsp:
         self._echo_buf = np.zeros((buf_len, 2), dtype=np.int32)
         for i in range(buf_len):
             base = (self._echo_buf_addr + i * 4) & 0xFFFF
-            l = self._ram(base) | (self._ram(base + 1) << 8)
-            r = self._ram(base + 2) | (self._ram(base + 3) << 8)
-            self._echo_buf[i, 0] = l if l < 32768 else l - 65536
-            self._echo_buf[i, 1] = r if r < 32768 else r - 65536
+            left = self._ram(base) | (self._ram(base + 1) << 8)
+            right = self._ram(base + 2) | (self._ram(base + 3) << 8)
+            self._echo_buf[i, 0] = left if left < 32768 else left - 65536
+            self._echo_buf[i, 1] = right if right < 32768 else right - 65536
         self._echo_pos = 0
         self._echo_ready = True
 
@@ -896,9 +900,9 @@ class Dsp:
         echo_buf = self._echo_buf
         echo_len = len(echo_buf)
 
-        # Pass 1: voice-outer loop — process all n_samples for each voice, then mix.
-        # Register reads and voice state are cached as locals to minimise attribute
-        # and array lookups inside the hot per-sample loop.
+        # Pass 1: voice-outer loop — process all n_samples for each voice, then
+        # mix. Register reads and voice state are cached as locals to minimise
+        # attribute and array lookups inside the hot per-sample loop.
         left_arr = np.zeros(n_samples, dtype=np.int32)
         right_arr = np.zeros(n_samples, dtype=np.int32)
         echo_in = np.zeros((n_samples, 2), dtype=np.int32)
@@ -913,7 +917,8 @@ class Dsp:
             # --- cache per-voice registers once ---
             base = vi << 4
             pitch = (regs[base | 0x02] | (regs[base | 0x03] << 8)) & 0x3FFF
-            # TODO: PMON (0x2D) — if bit vi is set, modulate pitch by previous voice's output sample
+            # TODO: PMON (0x2D) — if bit vi is set, modulate pitch by previous
+            # voice's output sample
             voll = _s8(regs[base | 0x00])
             volr = _s8(regs[base | 0x01])
             adsr1 = regs[base | 0x05]
@@ -940,13 +945,11 @@ class Dsp:
             hist3 = v.hist3
             active = True
 
-            # pre-decode envelope mode so the inner loop avoids repeated branches
+            # pre-decode envelope mode so the inner loop avoids repeated
+            # branches
             adsr_on = bool(adsr1 & 0x80)
             gain_dir = (not adsr_on) and (not (gain_reg & 0x80))
-            if gain_dir:
-                fixed_env = (gain_reg & 0x7F) << 4
-            else:
-                fixed_env = 0  # unused
+            fixed_env = (gain_reg & 0x7F) << 4 if gain_dir else 0
             gain_mode = (
                 (gain_reg >> 5) & 0x3 if (not adsr_on and not gain_dir) else 0
             )
@@ -1071,8 +1074,8 @@ class Dsp:
                 if not active:
                     break
 
-                # TODO: NON (0x3D) — if bit vi is set, replace BRR sample with LFSR noise output
-                # --- Gaussian interpolation ---
+                # TODO: NON (0x3D) — if bit vi is set, replace BRR sample with
+                # LFSR noise output --- Gaussian interpolation ---
                 goff = pitch_frac >> 4
                 sample = (
                     _GAUSS[255 - goff] * hist3
@@ -1136,9 +1139,9 @@ class Dsp:
             echo_buf[write_pos] = new_echo
         self._echo_pos = int((ep + n_samples) % echo_len)
 
-        # Pass 4: master volume mix + echo volume.
-        # TODO: stereo hard-clipping — SNES clips each voice's L+R independently before summing
-        # into left_arr/right_arr; current code clips only the final master mix.
+        # Pass 4: master volume mix + echo volume. TODO: stereo hard-clipping —
+        # SNES clips each voice's L+R independently before summing into
+        # left_arr/right_arr; current code clips only the final master mix.
         if not muted:
             out_l = np.clip((left_arr * mvoll) >> 7, -32768, 32767)
             out_r = np.clip((right_arr * mvolr) >> 7, -32768, 32767)

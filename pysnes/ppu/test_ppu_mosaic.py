@@ -16,7 +16,6 @@ Run:
     uv run --python pypy3.10 pytest pysnes/ppu/test_ppu_mosaic.py -v
 """
 
-import pytest
 from pysnes.ppu.ppu import Ppu
 
 SCREEN_W = 256
@@ -56,7 +55,8 @@ def _write_4bpp_tile_horizontal_gradient(
 
 
 def _setup_gradient_bg1(ppu: Ppu) -> None:
-    """BG1 tile 0 row 0 has 8 distinct color indices (1..8), rest transparent."""
+    """BG1 tile 0 row 0 has 8 distinct color indices (1..8), rest
+    transparent."""
     # CGRAM colors 1..8: pure reds of increasing brightness
     for i in range(1, 9):
         _write_cgram(ppu, i, i * 3, 0, 0)
@@ -104,7 +104,8 @@ class TestMosaicHorizontal:
         )
 
     def test_mosaic_size_2_blocks_pairs(self):
-        """With size=2 mosaic on BG1: dot 1 matches dot 0; dot 3 matches dot 2; etc."""
+        """With size=2 mosaic on BG1: dot 1 matches dot 0; dot 3 matches dot 2;
+        etc."""
         ppu = _make_ppu()
         _setup_gradient_bg1(ppu)
         ppu.mosaic_enabled = [True, False, False, False]
@@ -117,7 +118,8 @@ class TestMosaicHorizontal:
             expected = _pixel(ppu, anchor, 0)
             got = _pixel(ppu, anchor + 1, 0)
             assert got == expected, (
-                f"dot {anchor + 1} should match anchor dot {anchor}: got {got} vs {expected}"
+                f"dot {anchor + 1} should match anchor dot {anchor}: got {got} "
+                f"vs {expected}"
             )
 
     def test_mosaic_size_4_blocks_groups_of_four(self):
@@ -135,11 +137,13 @@ class TestMosaicHorizontal:
             for offset in range(4):
                 got = _pixel(ppu, anchor + offset, 0)
                 assert got == expected, (
-                    f"dot {anchor + offset} in block@{anchor}: got {got} vs anchor {expected}"
+                    f"dot {anchor + offset} in block@{anchor}: got {got} vs "
+                    f"anchor {expected}"
                 )
 
     def test_mosaic_disable_bit_gated_per_bg(self):
-        """Size is 4 but BG1 enable bit is off → BG1 unaffected, renders full gradient."""
+        """Size is 4 but BG1 enable bit is off → BG1 unaffected, renders full
+        gradient."""
         ppu = _make_ppu()
         _setup_gradient_bg1(ppu)
         ppu.mosaic_enabled = [False, True, True, True]  # BG1 disabled

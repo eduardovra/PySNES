@@ -40,9 +40,9 @@ def get_preset_id(data, header_page):
 
     if data[header_page + 0x0FD6] == 0x03:
         return 0x10BD  # DSP-1 Games
-    elif name == "MEGAMAN X2":
+    if name == "MEGAMAN X2":
         return 0x1117
-    elif name == "MEGAMAN X3":
+    if name == "MEGAMAN X3":
         return 0x113D
 
     # Nothing special
@@ -59,8 +59,7 @@ def get_super_fx(data, header_page):
 
     if data[addr] in SFX_TYPES:
         return 0x0C
-    else:
-        return 0x0
+    return 0x0
 
 
 if __name__ == "__main__":

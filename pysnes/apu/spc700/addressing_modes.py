@@ -2,7 +2,8 @@ class SPC700AddressingModes:
     """Addressing modes implementation (alphabetical order)"""
 
     def AbsoluteBitModify(self, mode):
-        # OR1/AND1/EOR1/NOT1/MOV1 C,m.b  — 5 cycles (read-only), 6 cycles (write)
+        # OR1/AND1/EOR1/NOT1/MOV1 C,m.b  — 5 cycles (read-only), 6 cycles
+        # (write)
         self.address = self.fetch()
         self.address |= self.fetch() << 8
         bit = self.address >> 13
@@ -57,7 +58,8 @@ class SPC700AddressingModes:
         self.write(self.address, result)
 
     def AbsoluteWrite(self, reg_data):
-        # MOV !a,A/X/Y — 5 cycles: opcode + fetch_lo + fetch_hi + dummy_read + write
+        # MOV !a,A/X/Y — 5 cycles: opcode + fetch_lo + fetch_hi + dummy_read +
+        # write
         self.address = self.fetch()
         self.address |= self.fetch() << 8
         self.data = getattr(self, reg_data)
@@ -74,7 +76,8 @@ class SPC700AddressingModes:
         self.A = func(self, self.A, self.data)
 
     def AbsoluteIndexedWrite(self, index):
-        # MOV !a+X,A / MOV !a+Y,A — 6 cycles: opcode + lo + hi + idle + dummy_read + write
+        # MOV !a+X,A / MOV !a+Y,A — 6 cycles: opcode + lo + hi + idle +
+        # dummy_read + write
         index = getattr(self, index)
         assert index >= 0
         self.address = self.fetch()
@@ -115,7 +118,7 @@ class SPC700AddressingModes:
         self.data = self.load(self.address)
         displacement = self.fetch()
         self.idle()
-        if self.A != self.data:
+        if self.data != self.A:
             self.idle()
             self.idle()
             displacement = (
@@ -146,7 +149,7 @@ class SPC700AddressingModes:
         self.data = self.load(self.address + index)
         self.idle()
         displacement = self.fetch()
-        if self.A != self.data:
+        if self.data != self.A:
             self.idle()
             self.idle()
             displacement = (
@@ -155,8 +158,8 @@ class SPC700AddressingModes:
             self.PC = (displacement + self.PC) & 0xFFFF
 
     def BranchNotYDecrement(self):
-        # DBNZ Y,rel — 4 cycles not taken, 6 cycles taken
-        # Hardware reads pc+1 twice (ghost + real); model as 2 idles before fetch
+        # DBNZ Y,rel — 4 cycles not taken, 6 cycles taken Hardware reads pc+1
+        # twice (ghost + real); model as 2 idles before fetch
         self.idle()
         self.idle()
         displacement = self.fetch()
@@ -204,7 +207,8 @@ class SPC700AddressingModes:
         self.PC = self.address
 
     def CallTable(self, vector):
-        # TCALL n — 8 cycles: opcode + dummy read(PC) + idle + pushPCH + pushPCL + idle + readLo + readHi
+        # TCALL n — 8 cycles: opcode + dummy read(PC) + idle + pushPCH + pushPCL
+        # + idle + readLo + readHi
         self.read(self.PC)  # dummy read of next byte, PC unchanged
         self.idle()
         self.push(self.PC >> 8)
@@ -271,7 +275,8 @@ class SPC700AddressingModes:
         self.store(self.address, self.data)
 
     def DirectDirectCompare(self, func):
-        # CMP dp1,dp2 — 6 cycles: opcode + fetch_src + load_src + fetch_tgt + load_tgt + idle
+        # CMP dp1,dp2 — 6 cycles: opcode + fetch_src + load_src + fetch_tgt +
+        # load_tgt + idle
         source = self.fetch()
         rhs = self.load(source)
         target = self.fetch()
@@ -334,7 +339,8 @@ class SPC700AddressingModes:
         self.YA = func(self, self.YA, self.data)
 
     def DirectModifyWord(self, adjust):
-        # INCW/DECW dp — 6 cycles: opcode + fetch + read_lo + write_lo + read_hi + write_hi
+        # INCW/DECW dp — 6 cycles: opcode + fetch + read_lo + write_lo + read_hi
+        # + write_hi
         self.address = self.fetch()
         lo = self.load(self.address)
         lo_new = (lo + adjust) & 0xFF
@@ -375,7 +381,8 @@ class SPC700AddressingModes:
         self.store(self.address, self.data)
 
     def DirectIndexedWrite(self, reg_data, reg_index):
-        # MOV dp+X,A / MOV dp+Y,A — 5 cycles: opcode + fetch_dp + idle + dummy_read + write
+        # MOV dp+X,A / MOV dp+Y,A — 5 cycles: opcode + fetch_dp + idle +
+        # dummy_read + write
         self.data = getattr(self, reg_data)
         index = getattr(self, reg_index)
         self.address = (self.fetch() + index) & 0xFF
@@ -449,7 +456,8 @@ class SPC700AddressingModes:
         self.A = func(self, self.A, self.data)
 
     def IndexedIndirectWrite(self, reg_data, reg_index):
-        # MOV (dp+X),A — 7 cycles: opcode + fetch + idle + ptr_lo + ptr_hi + dummy_read + write
+        # MOV (dp+X),A — 7 cycles: opcode + fetch + idle + ptr_lo + ptr_hi +
+        # dummy_read + write
         self.data = getattr(self, reg_data)
         index = getattr(self, reg_index)
         indirect = self.fetch()
@@ -471,7 +479,8 @@ class SPC700AddressingModes:
         self.A = func(self, self.A, self.data)
 
     def IndirectIndexedWrite(self, data, index):
-        # MOV (dp)+Y,A — 7 cycles: opcode + fetch + ptr_lo + ptr_hi + idle + dummy_read + write
+        # MOV (dp)+Y,A — 7 cycles: opcode + fetch + ptr_lo + ptr_hi + idle +
+        # dummy_read + write
         data = getattr(self, data)
         index = getattr(self, index)
         assert index >= 0
@@ -608,13 +617,16 @@ class SPC700AddressingModes:
         self.idle()
 
     def Stop(self):
-        # STOP — loops with ghost reads (null value) and waits; 3 iterations = 6 extra cycles
+        # STOP — loops with ghost reads (null value) and waits; 3 iterations = 6
+        # extra cycles
         for _ in range(3):
-            self.idle()  # ghost read of PC (null value, not tracked as memory access)
+            # ghost read of PC (null value, not tracked as memory access)
+            self.idle()
             self.idle()  # internal wait
 
     def TestSetBitsAbsolute(self, bit_set):
-        # TSET1/TCLR1 !a — 6 cycles: opcode + lo + hi + read + read(dummy) + write
+        # TSET1/TCLR1 !a — 6 cycles: opcode + lo + hi + read + read(dummy) +
+        # write
         self.address = self.fetch()
         self.address |= self.fetch() << 8
         self.data = self.read(self.address)
@@ -638,7 +650,9 @@ class SPC700AddressingModes:
             self.NF = bool(self.data & 0x80)
 
     def Wait(self):
-        # SLEEP — loops with ghost reads (null value) and waits; 3 iterations = 6 extra cycles
+        # SLEEP — loops with ghost reads (null value) and waits; 3 iterations =
+        # 6 extra cycles
         for _ in range(3):
-            self.idle()  # ghost read of PC (null value, not tracked as memory access)
+            # ghost read of PC (null value, not tracked as memory access)
+            self.idle()
             self.idle()  # internal wait

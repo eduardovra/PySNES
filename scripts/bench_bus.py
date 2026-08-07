@@ -2,28 +2,28 @@
 Bus read/write micro-benchmark.
 
 Run from the project root:
-    uv run --python pypy3.10 scripts/bench_bus.py          # without Cython build
-    make build && uv run --python pypy3.10 scripts/bench_bus.py  # with Cython build
+    uv run scripts/bench_bus.py                 # without Cython build
+    make build && uv run scripts/bench_bus.py   # with Cython build
 
 Reports ns/op for each hot-path branch in Bus.__getitem__ / __setitem__.
 """
 
-import timeit
 import sys
+import timeit
 from pathlib import Path
 
 # Ensure project root is on path when running as a script
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from pysnes.scheduler import Scheduler
-from pysnes.bus import Bus
-from pysnes.cpu import Cpu
-from pysnes.apu import Apu
-from pysnes.ppu import Ppu
-from pysnes.controller import Controller
-from pysnes.rom import HardwareVectors, InterruptVectors, MappingMode
 from types import SimpleNamespace
 
+from pysnes.apu import Apu
+from pysnes.bus import Bus
+from pysnes.controller import Controller
+from pysnes.cpu import Cpu
+from pysnes.ppu import Ppu
+from pysnes.rom import HardwareVectors, InterruptVectors, MappingMode
+from pysnes.scheduler import Scheduler
 
 ROM_SIZE = 512 * 1024
 
@@ -74,8 +74,8 @@ ITERATIONS = 500_000
 REPEAT = 3
 
 CASES = [
-    # (label, setup, stmt)
-    # --- via __getitem__/__setitem__ (Python slot dispatch → thin wrapper → read/write) ---
+    # (label, setup, stmt) --- via __getitem__/__setitem__ (Python slot dispatch
+    # → thin wrapper → read/write) ---
     ("low_ram_read       []", "", "bus.read(0x000100)"),
     ("low_ram_write      []", "", "bus.__setitem__(0x000100, 0xAB)"),
     ("rom_read           []", "", "bus.read(0x008010)"),
@@ -84,7 +84,8 @@ CASES = [
     ("rdnmi_read         []", "", "bus.read(0x004210)"),
     ("hvbjoy_read        []", "", "bus.read(0x004212)"),
     ("apu_port_read      []", "", "bus.read(0x002140)"),
-    # --- via bus.read()/bus.write() (direct Python call into cfunc; inlined when called from Cython) ---
+    # --- via bus.read()/bus.write() (direct Python call into cfunc; inlined
+    # when called from Cython) ---
     ("low_ram_read    .read", "", "bus.read(0x000100)"),
     ("low_ram_write  .write", "", "bus.write(0x000100, 0xAB)"),
     ("rom_read        .read", "", "bus.read(0x008010)"),

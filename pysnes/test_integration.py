@@ -1,12 +1,15 @@
 """
-Integration tests: compare PySNES emulation state against Mesen 2 (reference oracle).
+Integration tests: compare PySNES emulation state against Mesen 2 (reference
+oracle).
 
-Tier 1 — frame-level: compare CPU/SPC registers + WRAM CRC32 at each frame boundary.
-Tier 2 — instruction-level: compare CPU trace line by line to find the exact diverging instruction.
+Tier 1 — frame-level: compare CPU/SPC registers + WRAM CRC32 at each frame
+boundary. Tier 2 — instruction-level: compare CPU trace line by line to find the
+exact diverging instruction.
 
 Run:
-    uv run --python pypy@3.10 pytest pysnes/test_integration.py::test_frame_divergence -v -s
-    uv run --python pypy@3.10 pytest pysnes/test_integration.py::test_instruction_divergence -v -s
+    uv run pytest pysnes/test_integration.py::test_frame_divergence -v -s
+    uv run pytest pysnes/test_integration.py::test_instruction_divergence \
+        -v -s
 
 Skip in normal suite:
     uv run --python pypy@3.10 pytest pysnes/ -m "not integration"
@@ -54,7 +57,8 @@ def get_mesen():
             return path
 
     pytest.skip(
-        "Mesen binary not found. Download from https://github.com/SourMesen/Mesen2/releases "
+        "Mesen binary not found. Download from "
+        "https://github.com/SourMesen/Mesen2/releases "
         "and set MESEN_BIN env var or 'mesen_bin' in settings.json"
     )
 
@@ -69,7 +73,8 @@ def _start_tcp_server():
 
 
 def _collect_lines(srv, timeout=120):
-    """Accept one connection and collect all newline-delimited lines. Returns list of strings."""
+    """Accept one connection and collect all newline-delimited lines. Returns
+    list of strings."""
     lines = []
     error = []
 
@@ -150,7 +155,7 @@ def oracle_frames(request):
             f"No frames received.\nstdout:\n{stdout}\nstderr:\n{stderr}"
         )
 
-    frames = [json.loads(l) for l in lines]
+    frames = [json.loads(line) for line in lines]
     print(f"\nMesen oracle: {len(frames)} frames collected", flush=True)
     return frames
 
@@ -228,7 +233,8 @@ def pysnes_frames(request):
 
 def test_frame_divergence(oracle_frames, pysnes_frames):
     """Fail at the first frame where PySNES diverges from Mesen."""
-    for ref, got in zip(oracle_frames, pysnes_frames):
+    # strict=False: the runs are expected to diverge, including in length.
+    for ref, got in zip(oracle_frames, pysnes_frames, strict=False):
         frame = ref["frame"]
         diffs = []
 
@@ -250,7 +256,8 @@ def test_frame_divergence(oracle_frames, pysnes_frames):
             if rv != gv:
                 diffs.append(f"spc.{field}: mesen={rv:#x} pysnes={gv:#x}")
 
-        # wram_crc32 comparison omitted until we can read WRAM from Mesen fast enough
+        # wram_crc32 comparison omitted until we can read WRAM from Mesen fast
+        # enough
 
         if diffs:
             msg = [f"Divergence at frame {frame}:"]
@@ -267,14 +274,16 @@ def _cpu_str(c):
         f"PC={c.get('k', 0):02X}:{c.get('pc', 0):04X} "
         f"A={c.get('a', 0):04X} X={c.get('x', 0):04X} Y={c.get('y', 0):04X} "
         f"S={c.get('sp', 0):04X} D={c.get('d', 0):04X} "
-        f"DB={c.get('db', c.get('dbr', 0)):02X} P={c.get('ps', 0):02X} E={c.get('e', 0)}"
+        f"DB={c.get('db', c.get('dbr', 0)):02X} P={c.get('ps', 0):02X} "
+        f"E={c.get('e', 0)}"
     )
 
 
 def _spc_str(s):
     return (
         f"PC={s.get('pc', 0):04X} A={s.get('a', 0):02X} X={s.get('x', 0):02X} "
-        f"Y={s.get('y', 0):02X} SP={s.get('sp', 0):02X} PSW={s.get('ps', 0):02X}"
+        f"Y={s.get('y', 0):02X} SP={s.get('sp', 0):02X} "
+        f"PSW={s.get('ps', 0):02X}"
     )
 
 
@@ -377,7 +386,9 @@ class _LineCollector:
 
 def test_instruction_divergence(oracle_trace_lines, pysnes_trace_lines):
     """Fail at the first CPU instruction where PySNES diverges from Mesen."""
-    for i, (ref, got) in enumerate(zip(oracle_trace_lines, pysnes_trace_lines)):
+    # strict=False: the traces are expected to diverge, including in length.
+    traces = zip(oracle_trace_lines, pysnes_trace_lines, strict=False)
+    for i, (ref, got) in enumerate(traces):
         if ref.startswith("..") or got.startswith(".."):
             continue
         if ref[:6].lower() != got[:6].lower():

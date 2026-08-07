@@ -3,7 +3,8 @@ class SPC700Opcodes:
     Opcodes implementation
 
     Notes:
-    Python stores negative integers as two's complement and that's why bitwise operations won't work correctly
+    Python stores negative integers as two's complement and that's why
+    bitwise operations won't work correctly
     https://stackoverflow.com/questions/46044936/bitwise-and-between-negative-and-positive-numbers
     """
 

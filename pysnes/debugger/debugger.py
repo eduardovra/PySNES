@@ -80,7 +80,8 @@ class Debugger:
     def _hooked_step(self) -> None:
         pc = self._cpu.PC.d
         if pc in self._breakpoints:
-            # Execute the instruction, then pause (PC now points to the next instruction)
+            # Execute the instruction, then pause (PC now points to the next
+            # instruction)
             self._original_step()
             self._pysnes.paused = True
             self._install_hooks()
@@ -115,12 +116,14 @@ class Debugger:
         self._instr_count += 1
 
     def _notify_paused(self) -> None:
-        """Signal the Tkinter window to refresh. Thread-safe: puts to a queue."""
+        """Signal the Tkinter window to refresh. Thread-safe: puts to a
+        queue."""
         if self._window is not None:
             self._notify_queue.put(True)
 
     def drain_commands(self) -> None:
-        """Process commands from the Tkinter thread. Called every main loop iteration."""
+        """Process commands from the Tkinter thread. Called every main loop
+        iteration."""
         while not self._cmd_queue.empty():
             try:
                 cmd = self._cmd_queue.get_nowait()
@@ -133,7 +136,8 @@ class Debugger:
             elif action == "step":
                 done_event = cmd[1]
                 self.step_one_instruction()
-                done_event.set()  # unblocks Tkinter thread so it can refresh immediately
+                # unblocks Tkinter thread so it can refresh immediately
+                done_event.set()
             elif action == "continue":
                 self._pysnes.paused = False
             elif action == "pause":
@@ -143,7 +147,8 @@ class Debugger:
                 self._pysnes.reset()
 
     def disassemble_forward(self, pc: int, count: int) -> list[str]:
-        """Return up to `count` disassembled instruction strings starting at `pc`."""
+        """Return up to `count` disassembled instruction strings starting at
+        `pc`."""
         disasm = self._cpu.disassembler
         results = []
         for _ in range(count):
@@ -156,7 +161,8 @@ class Debugger:
         return results
 
     def _next_pc(self, pc: int) -> int:
-        """Advance PC past the instruction at `pc` using the addressing mode table."""
+        """Advance PC past the instruction at `pc` using the addressing mode
+        table."""
         disasm = self._cpu.disassembler
         bank = pc & 0xFF0000
         addr = pc & 0xFFFF

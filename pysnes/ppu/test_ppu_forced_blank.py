@@ -1,4 +1,4 @@
-from pysnes.ppu.ppu import Ppu, SCREEN_WIDTH
+from pysnes.ppu.ppu import SCREEN_WIDTH, Ppu
 
 
 def _rgb(u32: int) -> tuple[int, int, int]:

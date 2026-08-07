@@ -1,7 +1,6 @@
 from .addressing_modes import SPC700AddressingModes
 from .opcodes_spc700 import SPC700Opcodes
 
-
 INSTRUCTIONS = (
     (0x00, SPC700AddressingModes.NoOperation),
     (0x01, SPC700AddressingModes.CallTable, 0),

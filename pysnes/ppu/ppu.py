@@ -1,23 +1,21 @@
 from array import array
 from ctypes import c_uint8
-from typing import Optional, TYPE_CHECKING
-
+from typing import TYPE_CHECKING
 
 from . import bg_renderer, color_math, obj_renderer
 from .constants import (
-    _MC_PER_SCANLINE,
     _HBLANK_START_MC,
-    _VBLANK_START_LINE,
+    _MC_PER_SCANLINE,
     _TOTAL_SCANLINES,
+    _VBLANK_START_LINE,
     SCREEN_WIDTH,
-    SCREEN_HEIGHT,
 )
 from .data_structures import Background
 from .oam import OAM
 
 if TYPE_CHECKING:
-    from ..scheduler import Scheduler
     from ..bus import Bus
+    from ..scheduler import Scheduler
 
 
 class Ppu:
@@ -37,13 +35,13 @@ class Ppu:
     def __init__(
         self,
         *,
-        vram_dump: Optional[bytes] = None,
-        cgram_dump: Optional[bytes] = None,
-        oam_dump: Optional[bytes] = None,
+        vram_dump: bytes | None = None,
+        cgram_dump: bytes | None = None,
+        oam_dump: bytes | None = None,
     ) -> None:
         # Scheduler and bus are attached after construction via attach()
-        self.scheduler: Optional[Scheduler] = None
-        self.bus: Optional[Bus] = None
+        self.scheduler: Scheduler | None = None
+        self.bus: Bus | None = None
 
         # VRAM - Video RAM
         if vram_dump is None:
@@ -68,7 +66,7 @@ class Ppu:
         else:
             self.cgram = bytearray(cgram_dump)
         self._cgadd = c_uint8(0x00)
-        self._cgdata: Optional[c_uint8] = None
+        self._cgdata: c_uint8 | None = None
 
         # OAM
         self.oam = OAM(oam_dump=oam_dump)
@@ -145,8 +143,8 @@ class Ppu:
 
         self.main_bgs = array("I", [0] * 256 * 262)  # 262 was 239 before
         self.sub_bgs = array("I", [0] * 256 * 262)
-        # Per-pixel main-screen layer tag: 0=backdrop, 1-4=BG1-BG4, 5=OBJ.
-        # Used by the color-math composite pass to know which pixels participate.
+        # Per-pixel main-screen layer tag: 0=backdrop, 1-4=BG1-BG4, 5=OBJ. Used
+        # by the color-math composite pass to know which pixels participate.
         self.main_layer = bytearray(256 * 262)
 
         # CGRAM u32-color cache: 256 entries (one per CGRAM slot), pre-converted
@@ -158,9 +156,10 @@ class Ppu:
         # Reusable 256-byte window mask buffer — avoids per-scanline allocation.
         self._window_mask_buf = bytearray(256)
 
-        # 4bpp sprite tile decode cache. One entry per 32-byte VRAM slot (2048 total).
-        # Each entry stores 64 pre-decoded color indices: 8 rows × 8 pixels (0-15).
-        # Invalidated on VRAM writes; rebuilt lazily while plotting objects.
+        # 4bpp sprite tile decode cache. One entry per 32-byte VRAM slot (2048
+        # total). Each entry stores 64 pre-decoded color indices: 8 rows × 8
+        # pixels (0-15). Invalidated on VRAM writes; rebuilt lazily while
+        # plotting objects.
         _N_OBJ_TILE_SLOTS = 2048  # 65536 VRAM bytes / 32 bytes per 4bpp tile
         self._obj_tile_cache = bytearray(_N_OBJ_TILE_SLOTS * 64)
         self._obj_tile_dirty = bytearray([1] * _N_OBJ_TILE_SLOTS)
@@ -172,7 +171,8 @@ class Ppu:
         # in _render_layers just blit the pixels whose owning sprite has that
         # priority. _obj_line_color holds the packed RGBA (0 = transparent),
         # _obj_line_pri the priority (0-3), _obj_line_layer the color-math layer
-        # tag (5 or 6). _obj_line_vc marks the scanline the buffers were built for.
+        # tag (5 or 6). _obj_line_vc marks the scanline the buffers were built
+        # for.
         self._obj_line_color = array("I", [0] * 256)
         self._obj_line_pri = bytearray(256)
         self._obj_line_layer = bytearray(256)
@@ -278,9 +278,10 @@ class Ppu:
             and not self.display_disable
             and 0 < self.v_counter < _VBLANK_START_LINE
         ):
-            # Forced blank just asserted during active display. Rows 0..v_counter-1
-            # have already been rendered with display enabled; retroactively clear
-            # them so stale pixels don't appear at the top of the frame.
+            # Forced blank just asserted during active display. Rows
+            # 0..v_counter-1 have already been rendered with display enabled;
+            # retroactively clear them so stale pixels don't appear at the top
+            # of the frame.
             black = 0x000000FF
             limit = self.v_counter * SCREEN_WIDTH
             for i in range(limit):
@@ -359,24 +360,20 @@ class Ppu:
         m = self.vmain_addr_remapping
         if m == 0:
             return addr
-        elif m == 1:  # aaaaaaaaBBBccccc → aaaaaaaacccccBBB
+        if m == 1:  # aaaaaaaaBBBccccc → aaaaaaaacccccBBB
             return (
                 (addr & 0xFF00)
                 | ((addr & 0x001F) << 3)
                 | ((addr & 0x00E0) >> 5)
             )
-        elif m == 2:  # aaaaaaaBBBcccccc → aaaaaaaccccccBBB
+        if m == 2:  # aaaaaaaBBBcccccc → aaaaaaaccccccBBB
             return (
                 (addr & 0xFE00)
                 | ((addr & 0x003F) << 3)
                 | ((addr & 0x01C0) >> 6)
             )
-        else:  # aaaaaaBBBccccccc → aaaaaacccccccBBB
-            return (
-                (addr & 0xFC00)
-                | ((addr & 0x007F) << 3)
-                | ((addr & 0x0380) >> 7)
-            )
+        # aaaaaaBBBccccccc → aaaaaacccccccBBB
+        return (addr & 0xFC00) | ((addr & 0x007F) << 3) | ((addr & 0x0380) >> 7)
 
     def write_vram(self) -> None:
         word_addr = (self.vmaddl | self.vmaddh << 8) & 0x7FFF
@@ -456,8 +453,10 @@ class Ppu:
 
     @property
     def slhv(self) -> int:
-        """When read, the H/V counter (as read from $213C and $213D) will be latched to
-        the current X and Y position if bit 7 of $4201 is set. The data actually read is open bus."""
+        """When read, the H/V counter (as read from $213C and $213D) will be
+        latched to the current X and Y position if bit 7 of $4201 is set. The
+        data actually
+        read is open bus."""
         return 0  # TODO
 
     def obsel_set(self, data: int) -> None:
@@ -601,7 +600,8 @@ class Ppu:
     # ------------------------------------------------------------------
 
     def reset_registers(self) -> None:
-        """Reset all PPU I/O registers to power-on state. Preserves VRAM/CGRAM/OAM."""
+        """Reset all PPU I/O registers to power-on state. Preserves
+        VRAM/CGRAM/OAM."""
         self.vmain = 0x00
         self.vmaddl = 0
         self.vmaddh = 0
@@ -866,7 +866,8 @@ class Ppu:
             )  # BG1 pri 1
             obj_renderer.copy_obj_pixels_for_priority(self, priority=3)
         elif self._bgmode == 3:
-            # Mode 3: BG1 (8bpp/256-color), BG2 (4bpp); $2130 may enable Direct Color on BG1.
+            # Mode 3: BG1 (8bpp/256-color), BG2 (4bpp); $2130 may enable Direct
+            # Color on BG1.
             bg_renderer.draw_scanline_backdrop(self)
             bg_renderer.draw_background_scanline(
                 self, self.bg2, 4, False
@@ -905,11 +906,11 @@ class Ppu:
             )  # BG1 pri 1
             obj_renderer.copy_obj_pixels_for_priority(self, priority=3)
         elif self._bgmode == 5:
-            # Mode 5: BG1 (4bpp) + BG2 (2bpp), hi-res.
-            # Natively 512px/scanline (main screen = odd dots, sub = even dots).
-            # We render the main screen downsampled to the 256px framebuffer;
-            # each tilemap entry is a 16-dot cell of two adjacent tiles (T, T+1).
-            # See bg_renderer.draw_hires_background_scanline.
+            # Mode 5: BG1 (4bpp) + BG2 (2bpp), hi-res. Natively 512px/scanline
+            # (main screen = odd dots, sub = even dots). We render the main
+            # screen downsampled to the 256px framebuffer; each tilemap entry is
+            # a 16-dot cell of two adjacent tiles (T, T+1). See
+            # bg_renderer.draw_hires_background_scanline.
             bg_renderer.draw_scanline_backdrop(self)
             bg_renderer.draw_hires_background_scanline(
                 self, self.bg2, 2, False
@@ -942,8 +943,9 @@ class Ppu:
             )  # BG1 pri 1
             obj_renderer.copy_obj_pixels_for_priority(self, priority=3)
         else:
-            # Mode 7: affine-transformed BG1 (8bpp). EXTBG BG2 written by same pass.
-            # Priority (back→front): backdrop, OBJ0, OBJ1, BG1, BG2(EXTBG), OBJ2, OBJ3
+            # Mode 7: affine-transformed BG1 (8bpp). EXTBG BG2 written by same
+            # pass. Priority (back→front): backdrop, OBJ0, OBJ1, BG1,
+            # BG2(EXTBG), OBJ2, OBJ3
             bg_renderer.draw_scanline_backdrop(self)
             obj_renderer.copy_obj_pixels_for_priority(self, priority=0)
             obj_renderer.copy_obj_pixels_for_priority(self, priority=1)
@@ -960,7 +962,8 @@ class Ppu:
         w2_invert: bool,
         combine_logic: int,
     ) -> None:
-        """Fill buf[0..255] with 1 where the pixel is inside the combined window, 0 elsewhere."""
+        """Fill buf[0..255] with 1 where the pixel is inside the combined
+        window, 0 elsewhere."""
         wh0 = self.wh0
         wh1 = self.wh1
         wh2 = self.wh2

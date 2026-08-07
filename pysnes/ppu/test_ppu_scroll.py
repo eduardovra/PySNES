@@ -17,8 +17,6 @@ Run:
     uv run --python pypy3.10 pytest pysnes/ppu/test_ppu_scroll.py -v
 """
 
-import pytest
-
 from pysnes.ppu import bg_renderer
 from pysnes.ppu.ppu import Ppu
 
@@ -150,7 +148,8 @@ class TestHorizontalScroll:
         assert _pixel(ppu, 24, 0) == RED
 
     def test_sub_tile_shift_boundary(self):
-        """hoffset=3: pixel (x=4) lands on tile 0, pixel (x=5) lands on tile 1."""
+        """hoffset=3: pixel (x=4) lands on tile 0, pixel (x=5) lands on tile
+        1."""
         ppu = _make_ppu()
         _setup(ppu, hoffset=3)
         _draw_row(ppu, scanline=1)
@@ -212,7 +211,8 @@ class TestVerticalScroll:
         assert _pixel(ppu, 0, 0) == BLUE
 
     def test_sub_tile_vscroll_stays_row0(self):
-        """voffset=6: scanline 1 → scry=7 → still tile row 0 (RED/BLUE alternating)."""
+        """voffset=6: scanline 1 → scry=7 → still tile row 0 (RED/BLUE
+        alternating)."""
         ppu = _make_ppu()
         _setup(ppu, voffset=6)
         _draw_row(ppu, scanline=1)
@@ -222,7 +222,8 @@ class TestVerticalScroll:
         assert _pixel(ppu, 8, 0) == BLUE
 
     def test_vertical_wrap(self):
-        """voffset=248: last tile row wraps — scanline 1 maps to tilemap row 31."""
+        """voffset=248: last tile row wraps — scanline 1 maps to tilemap row
+        31."""
         ppu = _make_ppu()
         _setup(ppu, voffset=248)  # 248 = 31 * 8
 
@@ -239,7 +240,8 @@ class TestVerticalScroll:
 
 
 class TestTilemapWordBits:
-    """Verify tilemap high-byte bit extraction: palette (bits 12:10) and priority (bit 13).
+    """Verify tilemap high-byte bit extraction: palette (bits 12:10) and
+    priority (bit 13).
 
     SNES tilemap word layout (16-bit):
       bit 15     : V-flip
@@ -259,8 +261,8 @@ class TestTilemapWordBits:
 
         _write_2bpp_solid_tile(ppu, 0, 1)  # tile 0: solid color-index 1
 
-        # Tilemap col 0: tile 0, given palette, priority 0
-        # high byte: vflip=0, hflip=0, palette in bits 4:2, priority=0, tile_hi=0
+        # Tilemap col 0: tile 0, given palette, priority 0 high byte: vflip=0,
+        # hflip=0, palette in bits 4:2, priority=0, tile_hi=0
         high = (palette & 7) << 2
         ppu.vram[0] = 0  # tile index low
         ppu.vram[1] = high
@@ -296,7 +298,8 @@ class TestTilemapWordBits:
         )
 
     def test_priority0_renders_on_low_pass(self):
-        """priority=0 tile renders when priority_selector=False (low-priority pass)."""
+        """priority=0 tile renders when priority_selector=False (low-priority
+        pass)."""
         ppu = _make_ppu()
         _write_cgram(ppu, 0, 0, 0, 0)
         _write_cgram(ppu, 1, 31, 0, 0)  # RED
@@ -316,7 +319,8 @@ class TestTilemapWordBits:
         )
 
     def test_priority1_renders_on_high_pass(self):
-        """priority=1 tile renders only when priority_selector=True (high-priority pass).
+        """priority=1 tile renders only when priority_selector=True
+        (high-priority pass).
 
         SNES: priority is bit 13, i.e. bit 5 of the high byte.
         priority=1 → high = 0x20 → (0x20 >> 5) & 1 = 1.
@@ -379,7 +383,8 @@ class TestWindowMasking:
         ppu.bg1.main_screen_enable = True
 
     def test_no_window_all_pixels_drawn(self):
-        """TMW=0 (window masking disabled): all BG1 pixels drawn regardless of WH0/WH1."""
+        """TMW=0 (window masking disabled): all BG1 pixels drawn regardless of
+        WH0/WH1."""
         ppu = _make_ppu()
         self._solid_red_bg1(ppu)
         ppu.tmw = 0x00  # window masking disabled
@@ -393,7 +398,8 @@ class TestWindowMasking:
         assert _pixel(ppu, 150, 0) == RED, "right of window: RED (no masking)"
 
     def test_window_masks_inside_region(self):
-        """W12SEL=0x02 (enable, no invert): pixels INSIDE [WH0,WH1] are masked (not drawn)."""
+        """W12SEL=0x02 (enable, no invert): pixels INSIDE [WH0,WH1] are masked
+        (not drawn)."""
         ppu = _make_ppu()
         self._solid_red_bg1(ppu)
         ppu.tmw = 0x01  # BG1 window masking on main screen
@@ -410,7 +416,8 @@ class TestWindowMasking:
         assert _pixel(ppu, 101, 0) == RED, "just right of window: drawn"
 
     def test_window_masks_outside_region(self):
-        """W12SEL=0x03 (enable + invert): pixels OUTSIDE [WH0,WH1] are masked."""
+        """W12SEL=0x03 (enable + invert): pixels OUTSIDE [WH0,WH1] are
+        masked."""
         ppu = _make_ppu()
         self._solid_red_bg1(ppu)
         ppu.tmw = 0x01  # BG1 window masking on main screen

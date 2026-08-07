@@ -1,12 +1,10 @@
 import os
-from typing import List
 
-
-from ..rom import MappingMode, Rom
-from ..cpu import Cpu
 from ..apu import Apu
-from ..ppu import Ppu
 from ..controller import Controller
+from ..cpu import Cpu
+from ..ppu import Ppu
+from ..rom import MappingMode, Rom
 from ..scheduler import Scheduler
 
 
@@ -17,7 +15,7 @@ class Bus:
         cpu: Cpu,
         apu: Apu,
         ppu: Ppu,
-        controllers: List[Controller],
+        controllers: list[Controller],
         scheduler: Scheduler,
     ) -> None:
         self.rom = rom  # program memory (LoROM or HiROM, selected below)
@@ -26,8 +24,9 @@ class Bus:
             mapping_mode == MappingMode.HIROM
             or mapping_mode == MappingMode.HIROM_FAST
         )
-        # TODO: HiROM mapping is implemented but lightly tested; address mirroring and
-        # SRAM window placement may diverge from hardware for some titles.
+        # TODO: HiROM mapping is implemented but lightly tested; address
+        # mirroring and SRAM window placement may diverge from hardware for some
+        # titles.
         self.cpu = cpu
         self.apu = apu  # Sound system [0x2140-0x217F]
         self.ppu = ppu
@@ -88,7 +87,8 @@ class Bus:
         self._wrdiv = d["_wrdiv"]
 
     def load_sram(self, path: str) -> int:
-        """Load SRAM bytes from `path`. Returns the number of bytes loaded (0 if no SRAM or file missing)."""
+        """Load SRAM bytes from `path`. Returns the number of bytes loaded (0 if
+        no SRAM or file missing)."""
         if self.sram_size == 0 or not os.path.exists(path):
             return 0
         with open(path, "rb") as f:
@@ -100,7 +100,8 @@ class Bus:
         return n
 
     def save_sram(self, path: str) -> int:
-        """Write SRAM bytes to `path` if dirty. Returns bytes written (0 if no SRAM or not dirty)."""
+        """Write SRAM bytes to `path` if dirty. Returns bytes written (0 if no
+        SRAM or not dirty)."""
         if self.sram_size == 0 or not self.sram_dirty:
             return 0
         with open(path, "wb") as f:
@@ -111,9 +112,9 @@ class Bus:
     def raise_nmi(self) -> None:
         """Called by PPU at V-Blank start (rising NMI edge).
 
-        TODO: NMI timing — on real hardware the NMI fires ~2 CPU cycles after V-Blank
-        starts; we fire it synchronously which may be slightly early for games that
-        poll $4210 before the NMI handler runs.
+        TODO: NMI timing — on real hardware the NMI fires ~2 CPU cycles after
+        V-Blank starts; we fire it synchronously which may be slightly early for
+        games that poll $4210 before the NMI handler runs.
         """
         self.cpu.status.nmi_line = True
         if self.cpu.status.auto_joypad_read_enable:
@@ -182,7 +183,8 @@ class Bus:
                 )
                 return self.rom.read(rom_addr)
 
-            # SRAM: LoROM banks $70-$7D, addr $0000-$7FFF (mirrored from $F0-$FD)
+            # SRAM: LoROM banks $70-$7D, addr $0000-$7FFF (mirrored from
+            # $F0-$FD)
             if 0x70 <= bank <= 0x7D and addr < 0x8000:
                 if self.sram_size:
                     sram_addr = (((bank - 0x70) << 15) | addr) & self.sram_mask
@@ -195,11 +197,10 @@ class Bus:
         if 0x7E8000 <= abs_addr <= 0x7FFFFF:
             return self.extended_ram[abs_addr - 0x7E8000]
 
-        if (0x00 <= bank <= 0x3F) or bank == 0x7E:
-            if 0x0000 <= addr <= 0x1FFF:
-                return self.low_ram[
-                    addr & 0xFFFF
-                ]  # LowRAM, shadowed from bank $7E
+        bank_has_low_ram = (0x00 <= bank <= 0x3F) or bank == 0x7E
+        if bank_has_low_ram and 0x0000 <= addr <= 0x1FFF:
+            # LowRAM, shadowed from bank $7E
+            return self.low_ram[addr & 0xFFFF]
 
         if 0x00 <= bank <= 0x3F:
             # Hardware registers $2100-$21FF and $4200-$44FF are mirrored
@@ -263,7 +264,9 @@ class Bus:
                     data = (
                         self.cpu.status.nmi_line << 7
                         | 1
-                        << 6  # This bit is open bus, I'm setting it to satisfy the PLP test program
+                        # This bit is open bus, I'm setting it to satisfy the
+                        # PLP test program
+                        << 6
                         | 0x02  # 5A22 chip version number [0-3]
                     )
                     self.cpu.status.nmi_line = False  # Reading clears the line
@@ -279,7 +282,9 @@ class Bus:
                     return (
                         (
                             1 << 5
-                        )  # This bit is unmapped but the test program keeps reading it
+                            # This bit is unmapped but the test program keeps
+                            # reading it
+                        )
                         | self.hblank << 6
                         | self.vblank << 7
                     )
@@ -305,8 +310,9 @@ class Bus:
             # than 0. We approximate the MDR with the high byte of the address,
             # which is the value the CPU last drove on the bus for an absolute
             # read (`lda $21C2` → 0x21). This is what the SuperNES Test Program
-            # relies on: it gates its Character Test animation on bit 5 of a read
-            # from $21C2 (expects 0x21, bit 5 set); returning 0 froze the demo.
+            # relies on: it gates its Character Test animation on bit 5 of a
+            # read from $21C2 (expects 0x21, bit 5 set); returning 0 froze the
+            # demo.
             if (
                 0x2000
                 <= addr
@@ -378,7 +384,8 @@ class Bus:
             ):
                 return
 
-            # SRAM: LoROM banks $70-$7D, addr $0000-$7FFF (mirrored from $F0-$FD)
+            # SRAM: LoROM banks $70-$7D, addr $0000-$7FFF (mirrored from
+            # $F0-$FD)
             if 0x70 <= bank <= 0x7D and addr < 0x8000:
                 if self.sram_size:
                     sram_addr = (((bank - 0x70) << 15) | addr) & self.sram_mask
@@ -386,10 +393,10 @@ class Bus:
                     self.sram_dirty = True
                 return
 
-        if (0x00 <= bank <= 0x3F) or bank == 0x7E:
-            if 0x0000 <= addr <= 0x1FFF:
-                self.low_ram[addr & 0xFFFF] = data
-                return
+        bank_has_low_ram = (0x00 <= bank <= 0x3F) or bank == 0x7E
+        if bank_has_low_ram and 0x0000 <= addr <= 0x1FFF:
+            self.low_ram[addr & 0xFFFF] = data
+            return
 
         if 0x00 <= bank <= 0x3F:
             if 0x2100 <= addr <= 0x21FF:
@@ -417,7 +424,9 @@ class Bus:
                     ]
                     self.ppu.mosaic_size = (
                         (data >> 4) + 1
-                    )  # Not sure if I should add 1 here - (0=Smallest/1x1, 0Fh=Largest/16x16)
+                        # Not sure if I should add 1 here - (0=Smallest/1x1,
+                        # 0Fh=Largest/16x16)
+                    )
                     return
 
                 if addr == 0x2105:  # BGMODE
@@ -520,8 +529,8 @@ class Bus:
                     """
                     7-6   Screen Over (see below)
                     5-2   Not used
-                    1     Screen V-Flip (0=Normal, 1=Flipped)     ;\flip 256x256 "screen"
-                    0     Screen H-Flip (0=Normal, 1=Flipped)     ;/
+                    1     Screen V-Flip (0=Normal, 1=Flipped)  ;\flip the
+                    0     Screen H-Flip (0=Normal, 1=Flipped)  ;/256x256 screen
                     Screen Over (when exceeding the 128x128 tile BG Map size):
                         0=Wrap within 128x128 tile area
                         1=Wrap within 128x128 tile area (same as 0)
@@ -596,13 +605,15 @@ class Bus:
                     return
 
                 if addr == 0x2133:  # SETINI — display control (write-only)
-                    # Bit 0: Screen interlace       (0=progressive, 1=interlaced 448-line field alternation)
-                    # Bit 1: OBJ interlace          (0=normal, 1=split sprite rows across fields)
-                    # Bit 2: Overscan               (0=224 visible lines, 1=239 visible lines)
-                    # Bit 3: Pseudo-hires           (0=256-wide, 1=512-wide via subscreen half-pixel offset)
-                    # Bits 4-5: unused
-                    # Bit 6: EXTBG                  (Mode 7 only; enables BG2 as a second Mode 7 layer)
-                    # Bit 7: External sync          (genlock to external video; no effect in emulation)
+                    # Bit 0: Screen interlace       (0=progressive, 1=interlaced
+                    # 448-line field alternation) Bit 1: OBJ interlace
+                    # (0=normal, 1=split sprite rows across fields) Bit 2:
+                    # Overscan               (0=224 visible lines, 1=239 visible
+                    # lines) Bit 3: Pseudo-hires           (0=256-wide,
+                    # 1=512-wide via subscreen half-pixel offset) Bits 4-5:
+                    # unused Bit 6: EXTBG                  (Mode 7 only; enables
+                    # BG2 as a second Mode 7 layer) Bit 7: External sync
+                    # (genlock to external video; no effect in emulation)
                     self.ppu.m7_extbg = (data >> 6) & 1
                     return
 
@@ -718,16 +729,18 @@ class Bus:
                         self.cpu.status.hirq_enable
                         or self.cpu.status.virq_enable
                     )
-                    # Disabling both H-IRQ and V-IRQ clears any latched IRQ flag.
+                    # Disabling both H-IRQ and V-IRQ clears any latched IRQ
+                    # flag.
                     if not self.cpu.status.irq_enable:
                         self.cpu.status.irq_line = False
-                    # If NMI is being enabled while V-Blank line is already high, trigger immediately.
-                    # nmi_enable must be set first so nmi_rising_edge() sees it as True.
+                    # If NMI is being enabled while V-Blank line is already
+                    # high, trigger immediately. nmi_enable must be set first so
+                    # nmi_rising_edge() sees it as True.
                     was_enabled = self.cpu.status.nmi_enable
                     self.cpu.status.nmi_enable = bool(data & 0x80)
-                    if data & 0x80:
-                        if not was_enabled and self.cpu.status.nmi_line:
-                            self.cpu.nmi_rising_edge()
+                    nmi_now_enabled = data & 0x80 and not was_enabled
+                    if nmi_now_enabled and self.cpu.status.nmi_line:
+                        self.cpu.nmi_rising_edge()
                     return
 
                 if addr == 0x4207:  # HTIMEL
@@ -773,7 +786,8 @@ class Bus:
                 return
 
             raise NotImplementedError(
-                f"Writting unmapped memory region: 0x{abs_addr:06X} = 0x{data:02X}"
+                f"Writting unmapped memory region: 0x{abs_addr:06X} = "
+                f"0x{data:02X}"
             )
 
         if 0x7E2000 <= abs_addr <= 0x7E7FFF:

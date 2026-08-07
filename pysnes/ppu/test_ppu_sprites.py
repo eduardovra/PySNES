@@ -1,9 +1,9 @@
 """
 Synthetic PPU sprite (OAM) unit tests.
 
-These bypass ROM loading entirely — they write VRAM/CGRAM/OAM directly and
-call copy_obj_pixels_for_priority() to verify that sprite pixels land in main_bgs correctly.
-No Mesen, no ROM files needed.
+These bypass ROM loading entirely — they write VRAM/CGRAM/OAM directly and call
+copy_obj_pixels_for_priority() to verify that sprite pixels land in main_bgs
+correctly. No Mesen, no ROM files needed.
 
 Setup:
   - 4BPP tile at VRAM[0x200..0x21F] (solid green, color index 1)
@@ -15,8 +15,6 @@ Setup:
 Run:
     uv run --python pypy3.10 pytest pysnes/ppu/test_ppu_sprites.py -v
 """
-
-import pytest
 
 from pysnes.ppu import bg_renderer, obj_renderer
 from pysnes.ppu.ppu import Ppu
@@ -177,7 +175,8 @@ class TestSpriteRendering:
             )
 
     def test_sprite_off_screen_left_no_crash(self):
-        """Sprite partially off-screen to the left must not crash or write OOB."""
+        """Sprite partially off-screen to the left must not crash or write
+        OOB."""
         ppu = _make_ppu()
         _setup_sprite(ppu)
 
@@ -190,7 +189,7 @@ class TestSpriteRendering:
         )  # must not raise IndexError
 
         # Only the visible part (x=0..4) should be green
-        for x in range(0, 5):
+        for x in range(5):
             assert _pixel(ppu, x, 5) == GREEN, f"Expected GREEN at ({x}, 5)"
 
     def test_sprite_x_9bit_sign_extends_to_negative(self):
@@ -209,9 +208,10 @@ class TestSpriteRendering:
         bg_renderer.draw_scanline_backdrop(ppu)
         obj_renderer.copy_obj_pixels_for_priority(ppu)
 
-        for x in range(0, 5):
+        for x in range(5):
             assert _pixel(ppu, x, 5) == GREEN, f"Expected GREEN at ({x}, 5)"
-        # Pixel at x=5 is outside the sprite's right edge — must still be backdrop.
+        # Pixel at x=5 is outside the sprite's right edge — must still be
+        # backdrop.
         assert _pixel(ppu, 5, 5) == BLACK
 
     def test_sprite_scanline_not_rendered_above_or_below(self):
@@ -300,10 +300,12 @@ def _setup_16x16_sprite(ppu: Ppu) -> None:
 
 
 class TestMultiTileSprite:
-    """16x16 sprites must render all four 8x8 sub-tiles, not just the top-left."""
+    """16x16 sprites must render all four 8x8 sub-tiles, not just the
+    top-left."""
 
     def test_16x16_top_left_tile(self):
-        """Scanline through the top-left tile (y=10, pixels x=20..27) → GREEN."""
+        """Scanline through the top-left tile (y=10, pixels x=20..27) →
+        GREEN."""
         ppu = _make_ppu()
         _setup_16x16_sprite(ppu)
 
@@ -327,7 +329,8 @@ class TestMultiTileSprite:
             assert _pixel(ppu, x, 10) == RED, f"top-right at ({x},10)"
 
     def test_16x16_bottom_left_tile(self):
-        """Scanline through the bottom-left tile (y=18, pixels x=20..27) → BLUE."""
+        """Scanline through the bottom-left tile (y=18, pixels x=20..27) →
+        BLUE."""
         ppu = _make_ppu()
         _setup_16x16_sprite(ppu)
 
@@ -339,7 +342,8 @@ class TestMultiTileSprite:
             assert _pixel(ppu, x, 18) == BLUE, f"bottom-left at ({x},18)"
 
     def test_16x16_bottom_right_tile(self):
-        """Scanline through the bottom-right tile (y=18, pixels x=28..35) → GREEN."""
+        """Scanline through the bottom-right tile (y=18, pixels x=28..35) →
+        GREEN."""
         ppu = _make_ppu()
         _setup_16x16_sprite(ppu)
 
@@ -426,10 +430,10 @@ def _setup_bg1_tile_over_sprite(
     _write_bg1_4bpp_solid_tile(ppu, 0, color_index=1)
 
     # Tilemap: one tile at tilemap row 1, col 2 → covers screen (16..23, 8..15).
-    # Simpler: put the BG tile at col 2, row 1 so it covers the sprite at (20,10).
-    # Tilemap entry: word 0 for (col 0, row 0). Each row = 32 words = 64 bytes.
-    # For (col 2, row 1) → byte addr = 1*64 + 2*2 = 68.
-    # Low byte = tile index 0; high byte bit 5 = priority bit.
+    # Simpler: put the BG tile at col 2, row 1 so it covers the sprite at
+    # (20,10). Tilemap entry: word 0 for (col 0, row 0). Each row = 32 words =
+    # 64 bytes. For (col 2, row 1) → byte addr = 1*64 + 2*2 = 68. Low byte =
+    # tile index 0; high byte bit 5 = priority bit.
     base = 0  # BG1 tilemap base at VRAM byte 0
     tilemap_addr = base + (1 * 32 + 2) * 2
     ppu.vram[tilemap_addr + 0] = 0  # tile 0
@@ -463,7 +467,8 @@ class TestSpritePriorityOrdering:
         ppu.render_scanline()
         # Sprite and BG1 both at (20, 10). BG1 pri-1 wins → YELLOW.
         assert _pixel(ppu, 20, 10) == YELLOW, (
-            f"BG1 pri-1 should be in front of sprite pri-2, got {_pixel(ppu, 20, 10)}"
+            "BG1 pri-1 should be in front of sprite pri-2, got "
+            f"{_pixel(ppu, 20, 10)}"
         )
 
     def test_bg1_low_priority_behind_sprite_priority_2(self):
@@ -548,7 +553,8 @@ class TestSpriteVsSpritePriority:
         ppu.v_counter = 11
         ppu.render_scanline()
         assert _pixel(ppu, 20, 10) == GREEN, (
-            f"Sprite 0 (lowest index) should be on top, got {_pixel(ppu, 20, 10)}"
+            "Sprite 0 (lowest index) should be on top, got "
+            f"{_pixel(ppu, 20, 10)}"
         )
 
     def test_lower_index_wins_despite_lower_priority_field(self):
@@ -572,5 +578,6 @@ class TestSpriteVsSpritePriority:
         ppu.v_counter = 11
         ppu.render_scanline()
         assert _pixel(ppu, 20, 10) == GREEN, (
-            f"Sprite 0 (lowest index) must win the pixel, got {_pixel(ppu, 20, 10)}"
+            "Sprite 0 (lowest index) must win the pixel, got "
+            f"{_pixel(ppu, 20, 10)}"
         )

@@ -9,8 +9,6 @@ BG mode dispatch + VRAM-wrap unit tests.
   data at addresses where the computed fetch offset spills past 0xFFFF.
 """
 
-import pytest
-
 from pysnes.ppu import bg_renderer, obj_renderer
 from pysnes.ppu.ppu import Ppu
 
@@ -186,7 +184,8 @@ class TestVramWrap:
         ppu.bg1.tiledata_addr = 0xFFFE
         ppu.bg1.main_screen_enable = True
 
-        # Scanline 2 → v_shift=1 → fetches row 1 = bytes at wrapped 0x0000/0x0001.
+        # Scanline 2 → v_shift=1 → fetches row 1 = bytes at wrapped
+        # 0x0000/0x0001.
         ppu.v_counter = 2
         bg_renderer.draw_background_scanline(
             ppu, ppu.bg1, bpp=2, priority_selector=0

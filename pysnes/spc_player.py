@@ -46,11 +46,12 @@ class SpcPlayer:
     def _process_events(self) -> None:
         event = sdl.SDL_Event()
         while sdl.SDL_PollEvent(event):
-            if event.type == sdl.SDL_QUIT:
+            escape_pressed = (
+                event.type == sdl.SDL_KEYDOWN
+                and event.key.keysym.sym == sdl.SDLK_ESCAPE
+            )
+            if event.type == sdl.SDL_QUIT or escape_pressed:
                 self.running = False
-            elif event.type == sdl.SDL_KEYDOWN:
-                if event.key.keysym.sym == sdl.SDLK_ESCAPE:
-                    self.running = False
 
     def run(self) -> None:
         self._init_sdl()

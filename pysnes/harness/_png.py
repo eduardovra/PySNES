@@ -20,7 +20,8 @@ def write_png(path: Path, pixels, width: int, height: int) -> None:
         flat = bytes(pixels)
         if len(flat) != width * height * 3:
             raise ValueError(
-                f"bytes pixels length {len(flat)} does not match {width}*{height}*3"
+                f"bytes pixels length {len(flat)} does not match "
+                f"{width}*{height}*3"
             )
         raw = bytearray(height * (1 + width * 3))
         stride = 1 + width * 3

@@ -1,7 +1,6 @@
-from typing import Callable
+from collections.abc import Callable
 
 from ...cpu import Cpu, Reg
-
 from .decorator import decorator_mode_8bit
 
 

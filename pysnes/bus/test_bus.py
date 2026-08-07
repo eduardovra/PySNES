@@ -8,16 +8,13 @@ the bus can be constructed with its normal code path.
 
 from types import SimpleNamespace
 
-import pytest
-
+from ..apu import Apu
+from ..controller import Controller
+from ..cpu import Cpu
+from ..ppu import Ppu
+from ..rom import HardwareVectors, InterruptVectors, MappingMode
 from ..scheduler import Scheduler
 from .bus import Bus
-from ..cpu import Cpu
-from ..apu import Apu
-from ..ppu import Ppu
-from ..controller import Controller
-from ..rom import HardwareVectors, InterruptVectors, MappingMode
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -166,7 +163,8 @@ def test_lorom_mirror_high_bank():
 
 
 def test_lorom_write_to_rom_region_stored():
-    """Writes to ROM-mapped addresses are silently dropped (ROM is read-only on hardware)."""
+    """Writes to ROM-mapped addresses are silently dropped (ROM is read-only on
+    hardware)."""
     bus, rom, *_ = make_bus()
     bus.write(0x008100, 0x7F)
     assert rom.rom[0x0100] == 0  # write ignored; ROM unchanged
@@ -220,7 +218,7 @@ def test_ppu_bgmode_write():
 # ---------------------------------------------------------------------------
 
 
-def test_nmitimen_enables_nmi(make_bus=make_bus):
+def test_nmitimen_enables_nmi():
     bus, _, cpu, *_ = make_bus()
     bus.write(0x004200, 0x80)  # bit 7 = NMI enable
     assert cpu.status.nmi_enable
@@ -303,15 +301,16 @@ def test_low_ram_boundary_first_byte():
 def test_lorom_region2_read():
     """Banks $40–$6F expose the full 64KB: low half is ROM too."""
     bus, rom, *_ = make_bus()
-    # Bank $40, addr $0010 → ROM offset: 0x40 * 0x8000 + 0x0010 = 0x200010
-    # But ROM is only 512 KB (0x80000), so use a small bank number inside range
-    # Bank $40 = 64 decimal; offset = 64 * 0x8000 + 0x0010 = 0x200010 — beyond 512KB
-    # Use bank $40 with addr >= 0x8000 to stay in region 1 overlap, OR use addr < 0x8000
-    # For region 2 specifically (addr 0x0000-0x7FFF in banks 0x40-0x6F):
-    # rom_addr = bank * 0x8000 + addr (addr < 0x8000, so no subtraction)
-    # Bank $40=64, addr $0020 → rom_addr = 64*0x8000 + 0x0020 = 0x200020 (too big)
-    # Use bank $40 but stub ROM is 512KB=0x80000; 0x200020 > 0x80000 → returns 0
-    # Instead use bank $40 addr $0000 with small value to test routing (not OOB crash)
+    # Bank $40, addr $0010 → ROM offset: 0x40 * 0x8000 + 0x0010 = 0x200010 But
+    # ROM is only 512 KB (0x80000), so use a small bank number inside range Bank
+    # $40 = 64 decimal; offset = 64 * 0x8000 + 0x0010 = 0x200010 — beyond 512KB
+    # Use bank $40 with addr >= 0x8000 to stay in region 1 overlap, OR use addr
+    # < 0x8000 For region 2 specifically (addr 0x0000-0x7FFF in banks
+    # 0x40-0x6F): rom_addr = bank * 0x8000 + addr (addr < 0x8000, so no
+    # subtraction) Bank $40=64, addr $0020 → rom_addr = 64*0x8000 + 0x0020 =
+    # 0x200020 (too big) Use bank $40 but stub ROM is 512KB=0x80000; 0x200020 >
+    # 0x80000 → returns 0 Instead use bank $40 addr $0000 with small value to
+    # test routing (not OOB crash)
     rom.rom[0] = 0  # ensure clean
     val = bus.read(
         0x400000
@@ -338,8 +337,9 @@ def test_lorom_region2_boundary_bank40():
 def test_lorom_region3_read():
     """Banks $70–$7D, high half map to ROM."""
     bus, rom, *_ = make_bus()
-    # bank $70=112, addr $8010 → rom_addr = 112*0x8000 + (0x8010-0x8000) = 0x380010
-    # 0x380010 > 512KB → OOB, StubRom returns 0; test just confirms routing/no crash
+    # bank $70=112, addr $8010 → rom_addr = 112*0x8000 + (0x8010-0x8000) =
+    # 0x380010 0x380010 > 512KB → OOB, StubRom returns 0; test just confirms
+    # routing/no crash
     val = bus.read(0x708010)
     assert val == 0
 
@@ -358,7 +358,8 @@ def test_lorom_region3_not_ram():
 
 
 def test_lorom_mirror_write():
-    """Write through a mirrored bank ($80+) is silently dropped (ROM is read-only on hardware)."""
+    """Write through a mirrored bank ($80+) is silently dropped (ROM is
+    read-only on hardware)."""
     bus, rom, *_ = make_bus()
     bus.write(0x808010, 0x55)  # bank $80 mirrors bank $00
     assert rom.rom[0x0010] == 0  # write ignored; ROM unchanged
@@ -374,9 +375,10 @@ def test_joyser0_write_latches_controller():
     bus, *_ = make_bus()
     bus.write(0x004016, 0x01)  # latch high
     bus.write(0x004016, 0x00)  # latch low — loads shift register
-    # After latch cycle, reading data() should return 1s (no keys pressed → padding)
+    # After latch cycle, reading data() should return 1s (no keys pressed →
+    # padding)
     val = bus.read(0x004016)  # JOYSER0 read
-    assert val in range(0, 0x100)  # sanity: valid byte returned
+    assert val in range(0x100)  # sanity: valid byte returned
 
 
 # ---------------------------------------------------------------------------
@@ -434,7 +436,8 @@ def test_memsel_fastrom_off_by_default():
 
 
 def test_memsel_fastrom_on_sets_fast_speed():
-    """Writing 1 to $420D enables FastROM: banks $80-$BF/$C0-$FF use fast (6 MC)."""
+    """Writing 1 to $420D enables FastROM: banks $80-$BF/$C0-$FF use fast (6
+    MC)."""
     bus, _rom, cpu, *_ = make_bus()
     bus.write(0x00420D, 0x01)  # MEMSEL: enable FastROM
     assert cpu.get_clock_cycles(0xC00000) == 6
@@ -612,7 +615,8 @@ def test_sram_load_missing_file_noop(tmp_path):
 
 
 def test_sram_load_smaller_file_preserves_tail(tmp_path):
-    """Loading a file smaller than sram_size only overwrites the leading bytes."""
+    """Loading a file smaller than sram_size only overwrites the leading
+    bytes."""
     path = tmp_path / "partial.srm"
     path.write_bytes(b"\x11\x22")
     bus, *_ = make_bus(sram_size=0x800)
@@ -625,7 +629,8 @@ def test_sram_load_smaller_file_preserves_tail(tmp_path):
 
 
 def test_sram_upper_half_still_rom():
-    """Bank $70 $8000-$FFFF is ROM, not SRAM — reads must not return SRAM data."""
+    """Bank $70 $8000-$FFFF is ROM, not SRAM — reads must not return SRAM
+    data."""
     bus, rom, *_ = make_bus(sram_size=0x2000)
     bus.write(0x700000, 0xCC)  # SRAM at offset 0
     # Bank $00 $8000 -> ROM offset 0; set it so we can verify $70 $8000 hits ROM
@@ -667,13 +672,15 @@ def test_rdvramh_routes_to_ppu():
 
 
 def test_open_bus_unmapped_2000_range():
-    """Reads in $2000-$20FF return open bus, approximated by the address high byte."""
+    """Reads in $2000-$20FF return open bus, approximated by the address high
+    byte."""
     bus, *_ = make_bus()
     assert bus.read(0x0020F1) == 0x20
 
 
 def test_open_bus_unmapped_2200_range():
-    """Reads in $2200-$3FFF return open bus, approximated by the address high byte."""
+    """Reads in $2200-$3FFF return open bus, approximated by the address high
+    byte."""
     bus, *_ = make_bus()
     assert bus.read(0x0027A8) == 0x27
 
@@ -764,7 +771,8 @@ def test_hirom_read_bank_c1_spans_full_64kb():
 
 
 def test_hirom_read_bank_00_upper_half():
-    """Bank $00 addr $8000 is the upper half of HiROM bank $C0 → rom_addr 0x008000."""
+    """Bank $00 addr $8000 is the upper half of HiROM bank $C0 → rom_addr
+    0x008000."""
     bus, rom, *_ = make_bus(mapping_mode=MappingMode.HIROM)
     rom.rom[0x008000] = 0xCD
     assert bus.read(0x008000) == 0xCD
@@ -792,14 +800,16 @@ def test_hirom_read_bank_80_mirrors_bank_00_upper_half():
 
 
 def test_hirom_write_to_rom_region():
-    """Writes to HiROM-mapped addresses are silently dropped (ROM is read-only on hardware)."""
+    """Writes to HiROM-mapped addresses are silently dropped (ROM is read-only
+    on hardware)."""
     bus, rom, *_ = make_bus(mapping_mode=MappingMode.HIROM)
     bus.write(0xC00001, 0x7F)
     assert rom.rom[0x000001] == 0  # write ignored; ROM unchanged
 
 
 def test_hirom_bank_00_low_half_is_lowram_not_rom():
-    """HiROM banks $00-$3F below $8000 are system area (LowRAM / I/O), NOT ROM."""
+    """HiROM banks $00-$3F below $8000 are system area (LowRAM / I/O), NOT
+    ROM."""
     bus, rom, *_ = make_bus(mapping_mode=MappingMode.HIROM)
     bus.write(0x000100, 0xFA)
     # Must go to low_ram, not rom.rom
@@ -891,7 +901,8 @@ def test_hirom_bank_00_hw_registers_still_work():
 
 
 def test_multiply_basic():
-    """Writing WRMPYB ($4203) triggers 8x8 unsigned multiply; result in $4216-$4217."""
+    """Writing WRMPYB ($4203) triggers 8x8 unsigned multiply; result in
+    $4216-$4217."""
     bus, *_ = make_bus()
     bus.write(0x004202, 5)  # WRMPYA = 5
     bus.write(0x004203, 3)  # WRMPYB = 3 → product = 15
@@ -911,7 +922,8 @@ def test_multiply_overflow():
 
 
 def test_divide_basic():
-    """Writing WRDIVB ($4206) triggers 16÷8 unsigned divide; quotient in $4214-$4215, remainder in $4216-$4217."""
+    """Writing WRDIVB ($4206) triggers 16÷8 unsigned divide; quotient in
+    $4214-$4215, remainder in $4216-$4217."""
     bus, *_ = make_bus()
     bus.write(0x004204, 100 & 0xFF)  # WRDIVL low byte of 100
     bus.write(0x004205, 100 >> 8)  # WRDIVH high byte of 100

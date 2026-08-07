@@ -1,4 +1,5 @@
-from ctypes import c_uint8, c_int8, c_uint16, c_int16
+from ctypes import c_int8, c_int16, c_uint16
+
 from ..cpu import Cpu
 
 
@@ -45,9 +46,16 @@ class Disassembler:
         _, name, func = self.TABLE[self.opcode]
         operand = func()
 
-        s = f"{self.pc:06X} {name} {operand.ljust(10, ' ')} [{self.effective:06X}] "
+        s = (
+            f"{self.pc:06X} {name} {operand.ljust(10, ' ')} "
+            f"[{self.effective:06X}] "
+        )
 
-        s += f"A:{self.cpu.A.w:04X} X:{self.cpu.X.w:04X} Y:{self.cpu.Y.w:04X} S:{self.cpu.S.w:04X} D:{self.cpu.D.w:04X} DB:{self.cpu.DB.l:02X} "
+        s += (
+            f"A:{self.cpu.A.w:04X} X:{self.cpu.X.w:04X} "
+            f"Y:{self.cpu.Y.w:04X} S:{self.cpu.S.w:04X} "
+            f"D:{self.cpu.D.w:04X} DB:{self.cpu.DB.l:02X} "
+        )
 
         if self.cpu.EF:
             s += "N" if self.cpu.NFlag else "n"

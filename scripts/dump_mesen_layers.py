@@ -20,6 +20,7 @@ Output files per config:
 """
 
 import argparse
+import contextlib
 import json
 import os
 import struct
@@ -56,12 +57,10 @@ def mesen_bin() -> str:
     ]
     cfg_path = REPO_ROOT / "settings.json"
     if cfg_path.exists():
-        try:
+        with contextlib.suppress(Exception):
             candidates.insert(
                 1, json.loads(cfg_path.read_text()).get("mesen_bin")
             )
-        except Exception:
-            pass
     for c in candidates:
         if c and Path(c).is_file() and os.access(c, os.X_OK):
             return c

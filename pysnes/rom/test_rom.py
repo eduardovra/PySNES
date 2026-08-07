@@ -7,8 +7,6 @@ the native COP vector offset, 16-bit checksum width, region-vs-developer field
 naming, byte=0 size handling, and unfamiliar mapping_mode bytes.
 """
 
-import pathlib
-
 import pytest
 
 from .rom import (
@@ -20,7 +18,6 @@ from .rom import (
     Rom,
     SnesHeader,
 )
-
 
 LOROM_BANK_SIZE = 0x8000
 HEADER_BASE = 0x7FC0  # offset within bank 0 of the cartridge header
@@ -102,7 +99,8 @@ def make_rom(tmp_path):
 
 
 def test_native_cop_vector_reads_from_FFE4(make_rom):
-    """Regression: previously read $FFE5/$FFE6 (high byte of COP + low of BRK)."""
+    """Regression: previously read $FFE5/$FFE6 (high byte of COP + low of
+    BRK)."""
     img = _build_lorom(
         native_vectors={"cop": 0xCAFE, "brk": 0xDEAD},
     )
@@ -164,7 +162,8 @@ def test_checksum_and_complement_are_16_bit(make_rom):
 
 
 def test_destination_code_field(make_rom):
-    """$FFD9 holds the region byte; the field used to be misnamed developer_id."""
+    """$FFD9 holds the region byte; the field used to be misnamed
+    developer_id."""
     img = _build_lorom(destination_code=0x07)
     rom = make_rom(img)
     assert rom.snes_header.destination_code == 0x07
@@ -249,7 +248,8 @@ def test_game_title_decoded(make_rom):
 
 
 def test_smc_header_is_stripped(make_rom):
-    """A 512-byte SMC copier header at the front must not shift the parsed header."""
+    """A 512-byte SMC copier header at the front must not shift the parsed
+    header."""
     raw = _build_lorom(checksum=0xFACE)
     img_with_header = b"\x00" * 0x200 + raw  # 512 SMC bytes + 32 KB ROM
     rom = make_rom(img_with_header, name="test.smc")
@@ -277,4 +277,5 @@ def test_header_dataclasses_are_typed():
     )
     # Field access uses attributes, not dict keys
     assert h.destination_code == 0
-    assert v.native.cop == 0 and v.emulation.reset == 0
+    assert v.native.cop == 0
+    assert v.emulation.reset == 0

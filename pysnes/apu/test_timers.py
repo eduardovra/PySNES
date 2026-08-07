@@ -25,8 +25,7 @@ Test register $F0:
 
 import pytest
 
-from .apu import Apu, Timer
-
+from .apu import Apu
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -160,13 +159,15 @@ def test_counter_wraps_at_4_bits(apu: Apu):
 
 
 def _tick_until_overflow(apu: Apu, timer_idx: int, expected_hits: int) -> None:
-    """Step the APU timer enough times to get exactly expected_hits overflows."""
+    """Step the APU timer enough times to get exactly expected_hits
+    overflows."""
     t = apu.timers[timer_idx]
     t.enable = True
     t.stage2 = 0
     t.stage3 = 0
-    # Each call passes t.frequency APU cycles so stage0 overflows exactly once per call,
-    # incrementing stage2 directly. stage3 increments every target stage2 increments.
+    # Each call passes t.frequency APU cycles so stage0 overflows exactly once
+    # per call, incrementing stage2 directly. stage3 increments every target
+    # stage2 increments.
     steps = t.target * expected_hits + 1
     for _ in range(steps):
         apu.step_timers(t.frequency)
@@ -239,7 +240,8 @@ def test_timers_enable_false_inhibits_all(apu: Apu):
 
 
 def test_control_bit4_resets_ports_r_01(apu: Apu):
-    """Bit 4 resets CPU→APU input ports (ports_r); APU output ports (ports_w) unchanged."""
+    """Bit 4 resets CPU→APU input ports (ports_r); APU output ports (ports_w)
+    unchanged."""
     apu.ports_r[0] = 0xAA
     apu.ports_r[1] = 0xBB
     apu.ports_w[0] = 0x11
@@ -252,7 +254,8 @@ def test_control_bit4_resets_ports_r_01(apu: Apu):
 
 
 def test_control_bit5_resets_ports_r_23(apu: Apu):
-    """Bit 5 resets CPU→APU input ports (ports_r); APU output ports (ports_w) unchanged."""
+    """Bit 5 resets CPU→APU input ports (ports_r); APU output ports (ports_w)
+    unchanged."""
     apu.ports_r[2] = 0xCC
     apu.ports_r[3] = 0xDD
     apu.ports_w[2] = 0x33

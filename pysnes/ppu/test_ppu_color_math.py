@@ -22,8 +22,6 @@ Run:
     uv run --python pypy3.10 pytest pysnes/ppu/test_ppu_color_math.py -v
 """
 
-import pytest
-
 from pysnes.ppu.ppu import Ppu
 
 SCREEN_W = 256
@@ -52,7 +50,8 @@ def _write_2bpp_solid_tile(ppu: Ppu, tile_index: int, color_index: int) -> None:
 
 
 def _write_4bpp_solid_tile(ppu: Ppu, tile_index: int, color_index: int) -> None:
-    """4bpp tile = 32 bytes. Bytes 0-15 = bp0/bp1 interleaved, bytes 16-31 = bp2/bp3 interleaved."""
+    """4bpp tile = 32 bytes. Bytes 0-15 = bp0/bp1 interleaved, bytes 16-31 =
+    bp2/bp3 interleaved."""
     bp0 = 0xFF if (color_index & 1) else 0x00
     bp1 = 0xFF if (color_index & 2) else 0x00
     bp2 = 0xFF if (color_index & 4) else 0x00
@@ -93,7 +92,8 @@ def _setup_solid_bg(
     """Configure BG{bg_index} to render a single solid colour everywhere."""
     bg = (None, ppu.bg1, ppu.bg2, ppu.bg3, ppu.bg4)[bg_index]
 
-    # Always set CGRAM index 0 = black (backdrop), index = color_index = chosen colour.
+    # Always set CGRAM index 0 = black (backdrop), index = color_index = chosen
+    # colour.
     _write_cgram(ppu, 0, 0, 0, 0)
     _write_cgram(ppu, color_index, *rgb5)
 
@@ -138,10 +138,12 @@ class TestSubScreenBuffer:
 
 
 class TestPerScreenRouting:
-    """Verify each background renders into the right buffer based on its enable flags."""
+    """Verify each background renders into the right buffer based on its enable
+    flags."""
 
     def test_main_only_bg_does_not_touch_sub(self):
-        """BG1 main=True/sub=False → main_bgs has the BG colour, sub_bgs stays at backdrop."""
+        """BG1 main=True/sub=False → main_bgs has the BG colour, sub_bgs stays
+        at backdrop."""
         ppu = _make_ppu()
         ppu.bg1.screen_addr = 0
         _setup_solid_bg(
@@ -159,7 +161,8 @@ class TestPerScreenRouting:
         )
 
     def test_sub_only_bg_does_not_touch_main(self):
-        """BG2 main=False/sub=True → sub_bgs has the BG colour, main_bgs stays at backdrop."""
+        """BG2 main=False/sub=True → sub_bgs has the BG colour, main_bgs stays
+        at backdrop."""
         ppu = _make_ppu()
         ppu.bg2.screen_addr = 0
         _setup_solid_bg(
@@ -195,16 +198,19 @@ class TestPerScreenRouting:
 
 
 class TestColorMathBackdropAdd:
-    """CGADSUB=0x20 (backdrop participates, ADD) + CGWSEL=0x02 (sub layers enabled).
+    """CGADSUB=0x20 (backdrop participates, ADD) + CGWSEL=0x02 (sub layers
+    enabled).
 
-    This is what SMW's title screen sets: BG2 is on the sub-screen only, and where
-    the main screen is just backdrop, the final pixel should be backdrop + sub.
+    This is what SMW's title screen sets: BG2 is on the sub-screen only, and
+    where the main screen is just backdrop, the final pixel should be backdrop +
+    sub.
     With backdrop = black, that simplifies to just the sub pixel."""
 
     def _setup_smw_title_like(self, ppu: Ppu) -> None:
         """BG1 on main only (the logo), BG2 on sub only (the sky)."""
-        # BG1: solid red, but only on the LEFT half of the row (cols 0-15).
-        # We do this by leaving the right half of the tilemap pointing at a transparent tile.
+        # BG1: solid red, but only on the LEFT half of the row (cols 0-15). We
+        # do this by leaving the right half of the tilemap pointing at a
+        # transparent tile.
         ppu.bg1.screen_addr = 0
         ppu.bg2.screen_addr = (
             0x800  # word offset 0x800 → byte 0x1000 (different region)
@@ -212,18 +218,21 @@ class TestColorMathBackdropAdd:
 
         # Backdrop = black
         _write_cgram(ppu, 0, 0, 0, 0)
-        # BG1 palette index 1 = red, index 2 (transparent placeholder) stays 0/0/0
+        # BG1 palette index 1 = red, index 2 (transparent placeholder) stays
+        # 0/0/0
         _write_cgram(ppu, 1, 31, 0, 0)
         # BG2 palette index 2 = blue (the "sky")
         _write_cgram(ppu, 2, 0, 0, 31)
 
-        # BG1/BG2 are 4bpp in mode 1 → use 4bpp tiles. Different tile indices so they
-        # don't share VRAM bytes (each 4bpp tile = 32 bytes).
+        # BG1/BG2 are 4bpp in mode 1 → use 4bpp tiles. Different tile indices so
+        # they don't share VRAM bytes (each 4bpp tile = 32 bytes).
         _write_4bpp_solid_tile(ppu, 0, 1)
         _write_4bpp_solid_tile(ppu, 1, 2)
 
-        # BG1 tilemap (at byte 0): tile 0 in cols 0-15, transparent (use a tile we never wrote = bp0=bp1=0) in cols 16-31
-        # CGRAM index 0 is "transparent" by SNES convention, so a tile with all-zero bitplanes renders nothing.
+        # BG1 tilemap (at byte 0): tile 0 in cols 0-15, transparent (use a tile
+        # we never wrote = bp0=bp1=0) in cols 16-31 CGRAM index 0 is
+        # "transparent" by SNES convention, so a tile with all-zero bitplanes
+        # renders nothing.
         for col in range(32):
             addr = 0 + col * 2
             ppu.vram[addr] = (
@@ -249,42 +258,49 @@ class TestColorMathBackdropAdd:
             bg.main_screen_enable = en_main
             bg.sub_screen_enable = en_sub
 
-        # CGWSEL bit 1 = sub-screen layers (not just sub backdrop) participate in math
+        # CGWSEL bit 1 = sub-screen layers (not just sub backdrop) participate
+        # in math
         ppu.cgwsel = 0b00000010
-        # CGADSUB bit 5 = backdrop is the main-screen layer that takes part in math
-        # bit 7 = 0 → ADD (not subtract); bit 6 = 0 → no half
+        # CGADSUB bit 5 = backdrop is the main-screen layer that takes part in
+        # math bit 7 = 0 → ADD (not subtract); bit 6 = 0 → no half
         ppu.cgadsub = 0b00100000
 
     def test_main_backdrop_picks_up_sub_pixel(self):
-        """Where main is backdrop, the composited pixel equals the sub-screen pixel."""
+        """Where main is backdrop, the composited pixel equals the sub-screen
+        pixel."""
         ppu = _make_ppu()
         self._setup_smw_title_like(ppu)
 
         ppu.v_counter = 1
         ppu.render_scanline()
 
-        # Right half (cols 16-31, pixels 128-255): main = backdrop (black), sub = blue (sky).
-        # With CGADSUB=0x20 ADD: result = (0,0,0) + (0,0,255) = (0,0,255).
+        # Right half (cols 16-31, pixels 128-255): main = backdrop (black), sub
+        # = blue (sky). With CGADSUB=0x20 ADD: result = (0,0,0) + (0,0,255) =
+        # (0,0,255).
         assert _main_pixel(ppu, 200, 0) == (0, 0, 255), (
-            "Backdrop + sub should equal the sub pixel where main is bare backdrop"
+            "Backdrop + sub should equal the sub pixel where main is bare "
+            "backdrop"
         )
 
     def test_main_bg_pixel_is_unchanged_by_color_math(self):
-        """Where BG1 is on the main screen, color math leaves it alone (BG1 is not in CGADSUB)."""
+        """Where BG1 is on the main screen, color math leaves it alone (BG1 is
+        not in CGADSUB)."""
         ppu = _make_ppu()
         self._setup_smw_title_like(ppu)
 
         ppu.v_counter = 1
         ppu.render_scanline()
 
-        # Left half (cols 0-15, pixels 0-127): main = BG1 (red). BG1 bit (bit 0) is NOT
-        # set in CGADSUB, so BG1 pixels pass through as-is.
+        # Left half (cols 0-15, pixels 0-127): main = BG1 (red). BG1 bit (bit 0)
+        # is NOT set in CGADSUB, so BG1 pixels pass through as-is.
         assert _main_pixel(ppu, 50, 0) == (255, 0, 0), (
-            "BG1 pixel should not be modified by color math when its CGADSUB bit is clear"
+            "BG1 pixel should not be modified by color math when its CGADSUB "
+            "bit is clear"
         )
 
     def test_color_math_disabled_produces_main_only(self):
-        """With CGADSUB=0 no math runs, so backdrop areas stay backdrop even if sub has content."""
+        """With CGADSUB=0 no math runs, so backdrop areas stay backdrop even if
+        sub has content."""
         ppu = _make_ppu()
         self._setup_smw_title_like(ppu)
         ppu.cgadsub = 0  # disable all color math
@@ -292,9 +308,11 @@ class TestColorMathBackdropAdd:
         ppu.v_counter = 1
         ppu.render_scanline()
 
-        # Right half: main = backdrop, sub = blue. With math off, result stays backdrop.
+        # Right half: main = backdrop, sub = blue. With math off, result stays
+        # backdrop.
         assert _main_pixel(ppu, 200, 0) == (0, 0, 0), (
-            "With color math disabled, the main backdrop should be visible (not the sub)"
+            "With color math disabled, the main backdrop should be visible "
+            "(not the sub)"
         )
 
 
@@ -309,7 +327,8 @@ class TestColorMathSubtract:
     def _setup_subtract_scene(
         self, ppu: Ppu, main_rgb5=(31, 31, 31), sub_rgb5=(15, 15, 15)
     ) -> None:
-        """BG1 on main = bright, BG2 on sub = mid-gray. Subtract bit targets BG1."""
+        """BG1 on main = bright, BG2 on sub = mid-gray. Subtract bit targets
+        BG1."""
         ppu.bg1.screen_addr = 0
         ppu.bg2.screen_addr = 0x800
 
@@ -349,10 +368,12 @@ class TestColorMathSubtract:
         ppu.v_counter = 1
         ppu.render_scanline()
         r, g, b = _main_pixel(ppu, 0, 0)
-        # 5-bit 31 → 248 when scaled; 5-bit 15 → 120. 248 - 120 = 128 (allow small rounding).
-        assert 120 <= r <= 140 and 120 <= g <= 140 and 120 <= b <= 140, (
-            f"expected ~128, got ({r},{g},{b})"
-        )
+        # 5-bit 31 → 248 when scaled; 5-bit 15 → 120. 248 - 120 = 128 (allow
+        # small rounding).
+        expected = f"expected ~128, got ({r},{g},{b})"
+        assert 120 <= r <= 140, expected
+        assert 120 <= g <= 140, expected
+        assert 120 <= b <= 140, expected
 
     def test_subtract_clamps_at_zero(self):
         """main=dim (8) − sub=bright (255) = 0, not negative."""
@@ -366,7 +387,8 @@ class TestColorMathSubtract:
         assert (r, g, b) == (0, 0, 0), f"expected clamp to 0, got ({r},{g},{b})"
 
     def test_subtract_gating_by_cgadsub_bit(self):
-        """When BG1 bit is clear in CGADSUB, BG1 pixels are unchanged even with subtract on."""
+        """When BG1 bit is clear in CGADSUB, BG1 pixels are unchanged even with
+        subtract on."""
         ppu = _make_ppu()
         self._setup_subtract_scene(ppu)
         ppu.cgadsub = 0b10000000  # subtract, but no layer participates
@@ -420,7 +442,8 @@ class TestColorMathHalf:
         ppu.cgwsel = 0b00000010
 
     def test_half_add(self):
-        """(main + sub) / 2 with both = white → result ≈ white (no clamp loss)."""
+        """(main + sub) / 2 with both = white → result ≈ white (no clamp
+        loss)."""
         ppu = _make_ppu()
         self._setup_half_scene(ppu)
         # bit 7 = 0 (add), bit 6 = 1 (half), bit 0 = 1 (BG1 participates)
@@ -429,9 +452,10 @@ class TestColorMathHalf:
         ppu.render_scanline()
         r, g, b = _main_pixel(ppu, 0, 0)
         # (255 + 255) / 2 = 255
-        assert r >= 250 and g >= 250 and b >= 250, (
-            f"expected ~255, got ({r},{g},{b})"
-        )
+        expected = f"expected ~255, got ({r},{g},{b})"
+        assert r >= 250, expected
+        assert g >= 250, expected
+        assert b >= 250, expected
 
     def test_half_add_produces_average(self):
         """Half-add of two different colors produces the midpoint."""
@@ -442,9 +466,10 @@ class TestColorMathHalf:
         ppu.render_scanline()
         r, g, b = _main_pixel(ppu, 0, 0)
         # (255,0,0) + (0,0,255) = (255,0,255); half = (127,0,127)
-        assert 120 <= r <= 130 and g == 0 and 120 <= b <= 130, (
-            f"expected ~(127,0,127), got ({r},{g},{b})"
-        )
+        expected = f"expected ~(127,0,127), got ({r},{g},{b})"
+        assert 120 <= r <= 130, expected
+        assert g == 0, expected
+        assert 120 <= b <= 130, expected
 
     def test_half_subtract(self):
         """(main - sub) / 2 with both = white → 0 / 2 = 0."""

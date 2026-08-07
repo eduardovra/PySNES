@@ -4,8 +4,11 @@ Run as:
 
     uv run python -m pysnes.harness.cli --rom ROM.smc
 
-Each line of stdin is a JSON object: {"method": "run_frames", "args": {"n": 60}}.
-Each line of stdout is: {"ok": true, "result": ...} or {"ok": false, "error": "..."}.
+Each line of stdin is a JSON object:
+    {"method": "run_frames", "args": {"n": 60}}
+Each line of stdout is one of:
+    {"ok": true, "result": ...}
+    {"ok": false, "error": "..."}
 
 Methods mirror the `Harness` class. Binary blobs (cgram, vram, oam, wram) come
 back base64-encoded.

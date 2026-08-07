@@ -9,8 +9,7 @@ import threading
 
 import pytest
 
-from .debugger import Debugger, BreakpointHit
-
+from .debugger import BreakpointHit, Debugger
 
 # ---------------------------------------------------------------------------
 # Minimal stubs
@@ -219,7 +218,8 @@ def test_step_one_instruction_calls_cpu_step(debugger, pysnes):
 
 
 def test_step_one_instruction_does_not_install_hook(debugger, pysnes):
-    """step_one_instruction no longer uses the hook mechanism — cpu._step stays as original."""
+    """step_one_instruction no longer uses the hook mechanism — cpu._step stays
+    as original."""
     debugger.step_one_instruction()
     assert pysnes.cpu._step == debugger._original_step
 
@@ -317,7 +317,8 @@ def test_drain_processes_all_queued_commands(debugger, pysnes):
 
 
 def test_breakpoint_exits_scheduler_run_to(pysnes):
-    """Simulate the main loop: BreakpointHit raised inside scheduler.run_to()."""
+    """Simulate the main loop: BreakpointHit raised inside
+    scheduler.run_to()."""
     dbg = Debugger(pysnes)
     dbg.attach()
     dbg.toggle_breakpoint(0x8000)
@@ -348,7 +349,7 @@ def test_breakpoint_exits_scheduler_run_to(pysnes):
 # ---------------------------------------------------------------------------
 
 
-def test_step_one_instruction_executes_exactly_one_instruction_with_realistic_scheduler():
+def test_step_one_instruction_runs_exactly_one_with_real_scheduler():
     """
     Reproduces the real-world bug: when step_one_instruction() is called, the
     scheduler queue already holds a reference to _original_step (captured while
@@ -379,6 +380,7 @@ def test_step_one_instruction_executes_exactly_one_instruction_with_realistic_sc
     dbg.step_one_instruction()
 
     assert cpu._steps - steps_before == 1, (
-        f"step_one_instruction() executed {cpu._steps - steps_before} instructions; "
+        f"step_one_instruction() executed {cpu._steps - steps_before} "
+        "instructions; "
         f"expected exactly 1"
     )

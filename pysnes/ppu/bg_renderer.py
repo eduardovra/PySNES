@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-
 from . import color_math
 from .constants import SCREEN_WIDTH, _colorcode_table
 from .data_structures import Background
@@ -119,16 +118,14 @@ def draw_mode7_scanline(ppu: Ppu) -> None:
         if outside:
             if screen_over == 2:
                 continue  # transparent
-            elif screen_over != 3:
+            if screen_over != 3:
                 vx &= 0x3FF  # wrap to 1024×1024
                 vy &= 0x3FF
                 outside = False
 
-        # Tilemap: low byte of VRAM word at (ty*128+tx) = tile number
-        if outside:  # screen_over == 3: force tile 0
-            tile_num = 0
-        else:
-            tile_num = ppu.vram[2 * ((vy >> 3) * 128 + (vx >> 3))]
+        # Tilemap: low byte of VRAM word at (ty*128+tx) = tile number.
+        # screen_over == 3 forces tile 0 outside the map.
+        tile_num = 0 if outside else ppu.vram[2 * ((vy >> 3) * 128 + (vx >> 3))]
 
         # Pixel: high byte of VRAM word at tile data offset (8bpp)
         tile_px = vx & 7
@@ -172,15 +169,14 @@ def draw_background_scanline(
     write_sub = bg.sub_screen_enable
     layer_tag = bg.number
 
-    # Window masking setup for this BG.
-    # $212E TMW bit (bg.number-1): window masking enabled for this BG on main screen.
-    # $2123 W12SEL (for BG1/BG2) / $2124 W34SEL (for BG3/BG4):
-    #   bit pairs per BG: (W1 invert, W1 enable, W2 invert, W2 enable).
-    # For BG1: W12SEL bits 3:2:1:0 = (W2_enable, W2_invert, W1_enable, W1_invert).
-    # invert=0: pixels INSIDE [WHx_L,WHx_R] are in the mask zone.
-    # invert=1: pixels OUTSIDE [WHx_L,WHx_R] are in the mask zone.
-    # $212A WBGLOG combines the two window outputs per BG:
-    #   bits 2n..2n+1 for BGn: 0=OR, 1=AND, 2=XOR, 3=XNOR.
+    # Window masking setup for this BG. $212E TMW bit (bg.number-1): window
+    # masking enabled for this BG on main screen. $2123 W12SEL (for BG1/BG2) /
+    # $2124 W34SEL (for BG3/BG4): bit pairs per BG: (W1 invert, W1 enable, W2
+    # invert, W2 enable). For BG1: W12SEL bits 3:2:1:0 = (W2_enable, W2_invert,
+    # W1_enable, W1_invert). invert=0: pixels INSIDE [WHx_L,WHx_R] are in the
+    # mask zone. invert=1: pixels OUTSIDE [WHx_L,WHx_R] are in the mask zone.
+    # $212A WBGLOG combines the two window outputs per BG: bits 2n..2n+1 for
+    # BGn: 0=OR, 1=AND, 2=XOR, 3=XNOR.
     bg_idx = bg.number - 1
     window_active = ppu.tmw & (1 << bg_idx)
     w1_enable = False
@@ -241,7 +237,8 @@ def draw_background_scanline(
     sub_bgs = ppu.sub_bgs
     ct = _colorcode_table
 
-    # Precompute per-dot window mask once for the scanline (constant window boundaries).
+    # Precompute per-dot window mask once for the scanline (constant window
+    # boundaries).
     window_masked = None
     if window_active and (w1_enable or w2_enable):
         window_masked = ppu._window_mask_buf
@@ -346,7 +343,8 @@ def draw_background_scanline(
         eff_scry = (scry_base + scroll_y) % (8 * bg_size_h)
         i = eff_scry & 7
         # Precompute the scry-dependent part of the tilemap word offset.
-        # (bg_size_w >> 6) == bg_size_w // 64: 0 for 32-tile-wide, 1 for 64-tile-wide.
+        # (bg_size_w >> 6) == bg_size_w // 64: 0 for 32-tile-wide, 1 for
+        # 64-tile-wide.
         scry_for_row = eff_scry % 256 if bg_size_w == 64 else eff_scry
         scry_page = eff_scry >> 8
         scry_offset = (scry_for_row >> 3) * 32 + (bg_size_w >> 6) * (
@@ -379,7 +377,8 @@ def draw_background_scanline(
             if tilemap_priority == priority_selector:
                 v_shift = i if not tilemap_v_flip else (7 - i)
 
-                # Tile-data fetch — once per tile column, shared across all 8 pixels.
+                # Tile-data fetch — once per tile column, shared across all 8
+                # pixels.
                 if bpp == 2:
                     tile_address = (
                         tiledata_addr + tile_num * 16 + v_shift * 2
@@ -506,7 +505,8 @@ def draw_background_scanline(
 
 
 def _bg_window_config(ppu: Ppu, bg_idx: int):
-    """Return (window_active, w1_en, w1_inv, w2_en, w2_inv, combine) for a BG."""
+    """Return (window_active, w1_en, w1_inv, w2_en, w2_inv, combine) for a
+    BG."""
     window_active = ppu.tmw & (1 << bg_idx)
     if not window_active:
         return False, False, False, False, False, 0
@@ -536,12 +536,14 @@ def _bg_window_config(ppu: Ppu, bg_idx: int):
 def draw_hires_background_scanline(
     ppu: Ppu, bg: Background, bpp: int, priority_selector: bool
 ) -> None:
-    """Render one BG scanline for the hi-res modes 5 and 6, downsampled to 256px.
+    """Render one BG scanline for the hi-res modes 5 and 6, downsampled to
+    256px.
 
     In modes 5/6 the PPU outputs 512 dots per scanline. Each tilemap entry maps
-    to a 16-pixel-wide cell built from two horizontally-adjacent name-table tiles
-    (T for the left 8 dots, T+1 for the right 8); the on-screen 512 dots come
-    from interleaving the main screen (odd dots) with the sub screen (even dots).
+    to a 16-pixel-wide cell built from two horizontally-adjacent name-table
+    tiles (T for the left 8 dots, T+1 for the right 8); the on-screen 512 dots
+    come from interleaving the main screen (odd dots) with the sub screen (even
+    dots).
 
     Our framebuffer is 256px, so we render only the main screen's 256 dots —
     each output pixel x samples hi-res dot (2x+1). bg.hoffset is already in

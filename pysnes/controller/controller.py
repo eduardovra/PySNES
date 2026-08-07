@@ -4,7 +4,7 @@ import sdl2
 class Controller:
     def __init__(self, *, disabled: bool = False) -> None:
         self.pressed_keys = set()
-        self.shift_register = list()
+        self.shift_register = []
         self.latched = 0
         self.joy_h = 0
         self.joy_l = 0

@@ -1,9 +1,11 @@
 import ctypes
 import time
+
 import numpy as np
 import sdl2 as sdl
 
-# The SNES DSP always generates at this rate. Pitch registers are calibrated for it.
+# The SNES DSP always generates at this rate. Pitch registers are calibrated for
+# it.
 DSP_RATE = 32000
 CHANNELS = 2
 BUFFER_SAMPLES = 1024
@@ -19,7 +21,8 @@ class AudioSDL2:
         self._max_queue_bytes = round(DSP_RATE / 60 + 1) * BYTES_PER_SAMPLE * 4
 
     def initialize(self) -> None:
-        """Open SDL2 audio device in queue mode (SDL_Init already called by video)."""
+        """Open SDL2 audio device in queue mode (SDL_Init already called by
+        video)."""
         spec = sdl.SDL_AudioSpec(
             DSP_RATE,
             sdl.AUDIO_S16SYS,
@@ -54,7 +57,8 @@ class AudioSDL2:
         )
 
     def _resample(self, samples: np.ndarray) -> np.ndarray:
-        """Linear interpolation from DSP_RATE to device rate when they differ."""
+        """Linear interpolation from DSP_RATE to device rate when they
+        differ."""
         if self._device_rate == DSP_RATE:
             return samples
         n_in = len(samples)

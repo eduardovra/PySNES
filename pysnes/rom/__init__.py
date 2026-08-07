@@ -1,4 +1,5 @@
 from .rom import (
+    SUPPORTED_MAPPING_MODES,
     CartridgeType,
     HardwareVectors,
     InterruptVectors,
@@ -6,5 +7,4 @@ from .rom import (
     Region,
     Rom,
     SnesHeader,
-    SUPPORTED_MAPPING_MODES,
 )

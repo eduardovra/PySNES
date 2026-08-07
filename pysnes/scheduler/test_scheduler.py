@@ -56,7 +56,8 @@ def test_only_events_up_to_target_fire(s):
 
 
 def test_events_scheduled_by_handlers_fire_in_same_run_to(s):
-    """A handler that schedules a new event within the same window should fire."""
+    """A handler that schedules a new event within the same window should
+    fire."""
     fired = []
 
     def first():

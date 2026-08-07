@@ -13,10 +13,10 @@ from tkinter import ttk
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from . import Debugger
-    from ..cpu.cpu import Cpu
     from ..bus.bus import Bus
+    from ..cpu.cpu import Cpu
     from ..ppu.ppu import Ppu
+    from . import Debugger
 
 # Memory regions selectable in the memory view
 _REGIONS = ["WRAM", "VRAM", "CGRAM", "ROM"]
@@ -29,7 +29,9 @@ def _cpu_flags_str(cpu) -> str:
     p = cpu.P
     names = ("N", "V", "M", "X", "D", "I", "Z", "C")
     bits = (0x80, 0x40, 0x20, 0x10, 0x08, 0x04, 0x02, 0x01)
-    return "".join(n if p & b else n.lower() for n, b in zip(names, bits))
+    return "".join(
+        n if p & b else n.lower() for n, b in zip(names, bits, strict=True)
+    )
 
 
 def _apu_flags_str(apu) -> str:
@@ -204,7 +206,8 @@ class DebuggerWindow:
     # ------------------------------------------------------------------
 
     def _poll(self) -> None:
-        """Called every 100 ms in the Tkinter thread to process refresh signals."""
+        """Called every 100 ms in the Tkinter thread to process refresh
+        signals."""
         while not self._debugger._notify_queue.empty():
             self._debugger._notify_queue.get_nowait()
         self.refresh()
@@ -238,7 +241,8 @@ class DebuggerWindow:
         st = cpu.status
         mc = self._debugger._scheduler.master_clock
         text = (
-            f" A:{cpu.A.w:04X}  X:{cpu.X.w:04X}  Y:{cpu.Y.w:04X}  S:{cpu.S.w:04X}\n"
+            f" A:{cpu.A.w:04X}  X:{cpu.X.w:04X}  Y:{cpu.Y.w:04X}  "
+            f"S:{cpu.S.w:04X}\n"
             f" D:{cpu.D.w:04X}  DB:{cpu.DB.l:02X}  PC:{cpu.PC.d:06X}\n"
             f" P:{p}  EF:{int(cpu.EF)}\n"
             f"\n"
@@ -377,7 +381,8 @@ class DebuggerWindow:
                 chr(b) if 0x20 <= b < 0x7F else "." for b in chunk
             )
             lines.append(
-                f"{region}:{base + row:06X}  {hex_part:<{_HEX_COLS * 3}}  {ascii_part}"
+                f"{region}:{base + row:06X}  {hex_part:<{_HEX_COLS * 3}}  "
+                f"{ascii_part}"
             )
 
         self._set_text(self._mem_text, "\n".join(lines))
@@ -396,13 +401,13 @@ class DebuggerWindow:
                 else:
                     result.append(0)
             return bytes(result)
-        elif region == "VRAM":
+        if region == "VRAM":
             end = min(base + length, len(self._ppu.vram))
             return bytes(self._ppu.vram[base:end])
-        elif region == "CGRAM":
+        if region == "CGRAM":
             end = min(base + length, len(self._ppu.cgram))
             return bytes(self._ppu.cgram[base:end])
-        elif region == "ROM":
+        if region == "ROM":
             data = self._bus.rom.rom
             end = min(base + length, len(data))
             return bytes(data[base:end])
@@ -484,4 +489,5 @@ class DebuggerWindow:
         self._debugger._cmd_queue.put(("reset",))
 
     def _on_close(self) -> None:
-        self.root.quit()  # stops mainloop; destroy() is called in the daemon thread
+        # stops mainloop; destroy() is called in the daemon thread
+        self.root.quit()

@@ -1,14 +1,14 @@
-from collections import defaultdict
 import os
-import ijson
-import pytest
+from collections import defaultdict
 from unittest.mock import patch
 
+import ijson
+import pytest
 from rich import print
 
-from .cpu import Cpu
 from pysnes._ss_cache import get_or_build
 
+from .cpu import Cpu
 
 TESTS_PATH = "submodules/65816/v1"
 
@@ -19,7 +19,7 @@ _FILE_CACHE_VAL: list | None = None
 
 def _load_case(file_path: str, index: int) -> dict:
     global _FILE_CACHE_KEY, _FILE_CACHE_VAL
-    if _FILE_CACHE_KEY != file_path:
+    if file_path != _FILE_CACHE_KEY:
         with open(file_path, "rb") as f:
             _FILE_CACHE_VAL = list(ijson.items(f, "item"))
         _FILE_CACHE_KEY = file_path
@@ -27,7 +27,8 @@ def _load_case(file_path: str, index: int) -> dict:
 
 
 def _parse_test_index(opcode_filter, max_per_opcode, mode):
-    """Stream test names from every matching JSON and build the (file,index) index.
+    """Stream test names from every matching JSON and build the (file,index)
+    index.
 
     Uses ijson sub-path 'item.name' so only name strings are materialized — the
     bulky `ram`/`cycles` arrays are never converted to Python objects.
@@ -41,9 +42,7 @@ def _parse_test_index(opcode_filter, max_per_opcode, mode):
             return False
         if prefix is not None and not parts[0].upper().startswith(prefix):
             return False
-        if mode is not None and parts[1].lower() != mode.lower():
-            return False
-        return True
+        return mode is None or parts[1].lower() == mode.lower()
 
     onlyfiles = sorted(
         os.path.join(TESTS_PATH, f)
@@ -85,8 +84,8 @@ def get_test_cases(opcode_filter=None, max_per_opcode=None, mode=None):
         lambda: _parse_test_index(opcode_filter, max_per_opcode, mode),
     )
     # Apply xdist_group markers at collection time (cache stores plain tuples).
-    # With --dist=loadgroup, all cases from one JSON file route to the same worker,
-    # so the single-slot _load_case cache stays warm.
+    # With --dist=loadgroup, all cases from one JSON file route to the same
+    # worker, so the single-slot _load_case cache stays warm.
     test_cases = [
         pytest.param(rp, marks=pytest.mark.xdist_group(rp[0]))
         for rp in raw_params
@@ -118,9 +117,10 @@ def test_cpu(test_case):
     cpu.X.w = initial["x"]
     cpu.Y.w = initial["y"]
     cpu.EF = bool(initial["e"])
-    # In 8-bit mode (Emulation Mode): The stack pointer (S) is restricted to an 8-bit value, meaning it can only point to
-    # addresses within the range $0100 to $01FF (the first 256 bytes of page 1).
-    # This effectively limits the stack to 256 bytes in this mode, similar to how the 6502 operates.
+    # In 8-bit mode (Emulation Mode): The stack pointer (S) is restricted to an
+    # 8-bit value, meaning it can only point to addresses within the range $0100
+    # to $01FF (the first 256 bytes of page 1). This effectively limits the
+    # stack to 256 bytes in this mode, similar to how the 6502 operates.
     if cpu.EF:
         cpu.S.l = initial["s"]
     else:
@@ -137,9 +137,9 @@ def test_cpu(test_case):
     final = test_case["final"]
     calls_expected, calls_performed = [], []
     for address, value, outputs in test_case["cycles"]:
-        # The environment used does not activate RAM unless one of VDA, VPA or VPB is active,
-        # therefore affected bus transactions with the read line set do not produce a value.
-        # null is recorded in its place.
+        # The environment used does not activate RAM unless one of VDA, VPA or
+        # VPB is active, therefore affected bus transactions with the read line
+        # set do not produce a value. null is recorded in its place.
         if value is None:
             continue
 
@@ -191,8 +191,8 @@ def test_cpu(test_case):
     assert cpu.A.w == final["a"], f"{hex(cpu.A.w)} != {hex(final['a'])}"
     assert cpu.X.w == final["x"], f"{hex(cpu.X.w)} != {hex(final['x'])}"
     assert cpu.Y.w == final["y"], f"{hex(cpu.Y.w)} != {hex(final['y'])}"
-    assert cpu.EF == bool(final["e"])
-    assert cpu.P == final["p"], f"{hex(cpu.P)} != {hex(final['p'])}"
+    assert bool(final["e"]) == cpu.EF
+    assert final["p"] == cpu.P, f"{hex(cpu.P)} != {hex(final['p'])}"
     assert cpu.D.w == final["d"], f"{hex(cpu.D.w)} != {hex(final['d'])}"
     assert cpu.DB.l == final["dbr"], f"{hex(cpu.DB.l)} != {hex(final['dbr'])}"
     assert cpu.PC.b == final["pbr"], f"{hex(cpu.PC.b)} != {hex(final['pbr'])}"

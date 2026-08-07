@@ -1,6 +1,7 @@
 from typing import TYPE_CHECKING
 
-from . import addressing_modes as AM, opcodes as OP
+from . import addressing_modes as AM
+from . import opcodes as OP
 
 if TYPE_CHECKING:
     from ..cpu import Cpu
@@ -10,9 +11,9 @@ def build_instructions(cpu: "Cpu") -> tuple:
     """Opcode table bound to this CPU's live Reg objects.
 
     Register operands are the actual Reg instances (cpu.X, cpu.A, ...) so the
-    addressing-mode functions need no per-call getattr(cpu, name). Operands that
-    aren't registers (flag set/clear, single-byte pushes) have dedicated handlers
-    (CLC/SEC/.../PHP/PHK/PHB) and take no operand at all.
+    addressing-mode functions need no per-call getattr(cpu, name). Operands
+    that aren't registers (flag set/clear, single-byte pushes) have dedicated
+    handlers (CLC/SEC/.../PHP/PHK/PHB) and take no operand at all.
     """
     return (
         (0x00, AM.Interrupt, lambda cpu: 0xFFFE if cpu.EF else 0xFFE6),

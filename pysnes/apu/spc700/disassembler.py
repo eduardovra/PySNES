@@ -99,7 +99,7 @@ def _build_table():
 
         elif name == "CallTable":
             n = args[0]
-            table[opcode] = (f"TCALL", 0, lambda pc, _n=n: f"{_n}")
+            table[opcode] = ("TCALL", 0, lambda pc, _n=n: f"{_n}")
 
         elif name == "FlagSet":
             flag, val = args
@@ -295,12 +295,7 @@ def _build_table():
         elif name == "DirectCompareWord":
             table[opcode] = ("CMPW", 1, lambda pc, d: f"YA,${d:02X}")
 
-        elif name == "DirectDirectModify":
-            func = args[0]
-            mnem = _OPNAMES[func]
-            table[opcode] = (mnem, 2, lambda pc, s, t: f"${t:02X},${s:02X}")
-
-        elif name == "DirectDirectCompare":
+        elif name == "DirectDirectModify" or name == "DirectDirectCompare":
             func = args[0]
             mnem = _OPNAMES[func]
             table[opcode] = (mnem, 2, lambda pc, s, t: f"${t:02X},${s:02X}")
@@ -408,14 +403,13 @@ class SPC700Disassembler:
         addr &= 0xFFFF
         if addr <= 0x00EF:
             return self.apu.page_0[addr]
-        elif addr <= 0x00FF:
+        if addr <= 0x00FF:
             return 0  # I/O region — skip side-effect read
-        elif addr <= 0x01FF:
+        if addr <= 0x01FF:
             return self.apu.page_1[addr - 0x0100]
-        elif addr <= 0xFFBF:
+        if addr <= 0xFFBF:
             return self.apu.memory[addr - 0x0200]
-        else:
-            return self.apu.ipl_rom[addr - 0xFFC0]
+        return self.apu.ipl_rom[addr - 0xFFC0]
 
     def disassemble(self, pc):
         opcode = self._peek(pc)

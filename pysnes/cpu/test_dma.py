@@ -9,17 +9,15 @@ Covers:
   - Bus integration: DMA writes are visible via bus reads
 """
 
-import pytest
-
-from ..scheduler import Scheduler
-from ..bus import Bus
-from .cpu import Cpu
-from ..apu import Apu
-from ..ppu import Ppu
-from ..controller import Controller
-from ..rom import HardwareVectors, InterruptVectors, MappingMode
 from types import SimpleNamespace
 
+from ..apu import Apu
+from ..bus import Bus
+from ..controller import Controller
+from ..ppu import Ppu
+from ..rom import HardwareVectors, InterruptVectors, MappingMode
+from ..scheduler import Scheduler
+from .cpu import Cpu
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -293,7 +291,8 @@ def test_hdmaen_clears_when_zero():
 
 
 def _setup_hdma_channel0(bus, rom, table_offset, table_bytes):
-    """Write an HDMA table at ROM[table_offset] and configure channel 0 (mode 1, target $2126)."""
+    """Write an HDMA table at ROM[table_offset] and configure channel 0 (mode 1,
+    target $2126)."""
     for i, b in enumerate(table_bytes):
         rom.rom[table_offset + i] = b
     # source address = 0x8000 + table_offset (LoROM: bank 0 / $8000 region)
@@ -307,7 +306,8 @@ def _setup_hdma_channel0(bus, rom, table_offset, table_bytes):
 
 
 def test_hdma_non_repeat_writes_bytes_to_target():
-    """Do-repeat entry (bit 7=1): each scanline gets fresh 2-byte data written to $2126/$2127."""
+    """Do-repeat entry (bit 7=1): each scanline gets fresh 2-byte data written
+    to $2126/$2127."""
     bus, rom, cpu = make_bus()
     # Table: count=0x82 (do-repeat, 2 scanlines), data=[10,200], [20,210], end
     _setup_hdma_channel0(bus, rom, 0x0000, [0x82, 10, 200, 20, 210, 0x00])
@@ -341,7 +341,8 @@ def test_hdma_non_repeat_end_of_table_stops():
 
 
 def test_hdma_repeat_reuses_same_data():
-    """Do-not-repeat entry (bit 7=0): same 2 bytes written for all scanlines in entry."""
+    """Do-not-repeat entry (bit 7=0): same 2 bytes written for all scanlines in
+    entry."""
     bus, rom, cpu = make_bus()
     # Table: count=0x03 (do-not-repeat, 3 scanlines), data=[30, 150], end
     _setup_hdma_channel0(bus, rom, 0x0000, [0x03, 30, 150, 0x00])
@@ -421,7 +422,8 @@ def _setup_hdma_indirect_channel0(
 
 
 def test_hdma_indirect_non_repeat_reads_from_pointer():
-    """Indirect + do-not-repeat: count byte + 2-byte pointer → read data at pointer."""
+    """Indirect + do-not-repeat: count byte + 2-byte pointer → read data at
+    pointer."""
     bus, rom, cpu = make_bus()
     # Table: count=0x02 (do-not-repeat, 2 scanlines), ptr=$1234, end
     _setup_hdma_indirect_channel0(

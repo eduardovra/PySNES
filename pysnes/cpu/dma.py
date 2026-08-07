@@ -1,5 +1,5 @@
-from typing import TYPE_CHECKING
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from ..bus import Bus
@@ -101,7 +101,8 @@ class Channel:
         count = self.transfer_size if self.transfer_size else 0x10000
         offsets = _HDMA_TARGET_OFFSETS[self.transfer_mode]
         unit_len = len(offsets)
-        if self.fixed_transfer:
+        # Left as if/else: the ternary form nests two levels and reads worse.
+        if self.fixed_transfer:  # noqa: SIM108
             step = 0
         else:
             step = -1 if self.reverse_transfer else 1
@@ -136,7 +137,7 @@ class DMA:
         return {"channels": [ch.dump_state() for ch in self.channels]}
 
     def load_state(self, d: dict) -> None:
-        for ch, cs in zip(self.channels, d["channels"]):
+        for ch, cs in zip(self.channels, d["channels"], strict=True):
             ch.load_state(cs)
 
     def write(self, abs_addr: int, data: int) -> None:
@@ -238,10 +239,10 @@ class DMA:
     def hdma_init(self) -> None:
         """Initialize all HDMA-enabled channels at the start of each frame.
 
-        TODO: DMA/HDMA timing — cycle counts for DMA transfers and HDMA setup are
-        not deducted from the CPU cycle budget; games that rely on precise DMA
-        timing (e.g. mid-frame HDMA effects that depend on cycle-accurate firing)
-        may render incorrectly.
+        TODO: DMA/HDMA timing — cycle counts for DMA transfers and HDMA setup
+        are not deducted from the CPU cycle budget; games that rely on precise
+        DMA timing (e.g. mid-frame HDMA effects that depend on cycle-accurate
+        firing) may render incorrectly.
         """
         for ch in self.channels:
             if not ch.hdma_enable:
@@ -253,7 +254,8 @@ class DMA:
             self._load_entry(ch)
 
     def _load_entry(self, ch: "Channel") -> None:
-        """Read the count byte at _hdma_ptr and set up channel state for the entry."""
+        """Read the count byte at _hdma_ptr and set up channel state for the
+        entry."""
         count = ch.bus.read(ch._hdma_bank << 16 | ch._hdma_ptr)
         ch._hdma_ptr = (ch._hdma_ptr + 1) & 0xFFFF
         if count == 0:
@@ -321,7 +323,8 @@ class DMA:
                 ch._hdma_line_counter_repeat - 1
             ) & 0xFF
 
-            # Step 3: DoTransfer for next scanline = bit 7 of decremented counter.
+            # Step 3: DoTransfer for next scanline = bit 7 of decremented
+            # counter.
             ch._hdma_do_transfer = bool(ch._hdma_line_counter_repeat & 0x80)
 
             # Step 4: if bits 6:0 reached zero, load next entry.

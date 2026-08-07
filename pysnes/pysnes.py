@@ -1,27 +1,28 @@
 import argparse
-from collections import deque
-from ctypes import byref
+import contextlib
 import heapq
 import pathlib
-import signal
-import time
-import sys
 import platform
+import signal
+import sys
+import time
+from collections import deque
+from ctypes import byref
 
 import sdl2 as sdl
 
+from . import settings as settings_module
+from .apu import Apu
+from .audio import AudioSDL2
+from .bus import Bus
+from .controller import Controller
+from .cpu import Cpu
+from .debugger import BreakpointHit, Debugger
+from .ppu import Ppu
 from .rom import Rom
 from .scheduler import Scheduler
-from .bus import Bus
-from .cpu import Cpu
-from .apu import Apu
-from .ppu import Ppu
-from .controller import Controller
-from .video import Video
-from .debugger import Debugger, BreakpointHit
-from .audio import AudioSDL2
 from .spc_player import SpcPlayer
-from . import settings as settings_module
+from .video import Video
 
 
 class PySNES:
@@ -157,12 +158,14 @@ class PySNES:
         with open("wram_dump.bin", "wb") as f:
             f.write(wram)
         print(
-            f"Memory dumps saved: vram_dump.bin ({len(vram)}B), cgram_dump.bin ({len(cgram)}B), wram_dump.bin ({len(wram)}B)",
+            f"Memory dumps saved: vram_dump.bin ({len(vram)}B), "
+            f"cgram_dump.bin ({len(cgram)}B), wram_dump.bin ({len(wram)}B)",
             flush=True,
         )
 
     def reset(self) -> None:
-        """Soft reset: restore CPU/APU to power-on state and jump to the reset vector."""
+        """Soft reset: restore CPU/APU to power-on state and jump to the reset
+        vector."""
         # Drop any queued CPU step events so we can reschedule from scratch.
         # The debugger's _install_hooks rebinds _hooked_step on every call
         # (including from inside _hooked_step at breakpoint fire), so the
@@ -175,13 +178,15 @@ class PySNES:
         q[:] = [e for e in q if not (e[-1] == orig or e[-1] == cur)]
         heapq.heapify(q)
         self.cpu.reset_registers()
-        # reset_registers() makes new Reg objects; rebuild the instruction table so
-        # its pre-resolved register references point at the live Reg instances.
+        # reset_registers() makes new Reg objects; rebuild the instruction table
+        # so its pre-resolved register references point at the live Reg
+        # instances.
         self.cpu.load_instructions()
         self.cpu.PC.w = self._reset_vector
         self.apu.reset_registers()
         self.ppu.reset_registers()
-        # Reschedule CPU step; _step may be the debugger hook if breakpoints are active.
+        # Reschedule CPU step; _step may be the debugger hook if breakpoints are
+        # active.
         self.scheduler.add(0, self.cpu._step)
         self.paused = True
         self.debugger._notify_paused()
@@ -190,10 +195,12 @@ class PySNES:
         """Start CPU tracing to cpu_trace.log.
 
         ref_path: optional bsnes reference log to compare against.
-        last: if > 0, keep only the last N lines in a ring buffer and write on exit.
-              if 0, stream every line to the file immediately (unlimited).
+        last: if > 0, keep only the last N lines in a ring buffer and write
+              them on exit. If 0, stream every line to the file immediately
+              (unlimited).
         """
-        self._trace_file = open("cpu_trace.log", "w")
+        # Trace handles stay open until tracing stops, so no context manager.
+        self._trace_file = open("cpu_trace.log", "w")  # noqa: SIM115
         self.cpu.trace_enabled = True
         if last > 0:
             self._trace_ring = deque(maxlen=last)
@@ -205,7 +212,7 @@ class PySNES:
             mode_str = "unlimited"
         if ref_path is not None:
             try:
-                self._trace_ref = open(ref_path, "r")
+                self._trace_ref = open(ref_path)  # noqa: SIM115
                 print(
                     f"CPU trace started ({mode_str}, ref: {ref_path})",
                     flush=True,
@@ -239,7 +246,8 @@ class PySNES:
         self._trace_active = False
         self.cpu.trace_enabled = True
         print(
-            f"[trace] waiting for PC=0x{addr:06X} (limit {limit} instructions) …",
+            f"[trace] waiting for PC=0x{addr:06X} (limit {limit} "
+            "instructions) …",
             flush=True,
         )
 
@@ -251,7 +259,9 @@ class PySNES:
             pc = pysnes.cpu.PC.d
             if not pysnes._trace_active and pc == addr:
                 pysnes._trace_active = True
-                pysnes._trace_file = open("cpu_trace.log", "w")
+                pysnes._trace_file = open(  # noqa: SIM115
+                    "cpu_trace.log", "w"
+                )
                 print(
                     f"[trace] triggered at PC=0x{addr:06X} → cpu_trace.log",
                     flush=True,
@@ -282,8 +292,10 @@ class PySNES:
         )
         return (
             f"{disasm:<30} "
-            f"A:{self.cpu.A.value:04X} X:{self.cpu.X.value:04X} Y:{self.cpu.Y.value:04X} "
-            f"S:{self.cpu.S.value:04X} D:{self.cpu.D.value:04X} DB:{self.cpu.DB.value:02X} "
+            f"A:{self.cpu.A.value:04X} X:{self.cpu.X.value:04X} "
+            f"Y:{self.cpu.Y.value:04X} "
+            f"S:{self.cpu.S.value:04X} D:{self.cpu.D.value:04X} "
+            f"DB:{self.cpu.DB.value:02X} "
             f"{flags}"
         )
 
@@ -292,7 +304,6 @@ class PySNES:
         if self._trace_limit and self._trace_count >= self._trace_limit:
             return
 
-        pc = self.cpu.PC.d
         self._trace_count += 1
         line = self._format_trace_line()
 
@@ -301,7 +312,8 @@ class PySNES:
         elif self._trace_file:
             self._trace_file.write(line + "\n")
 
-        # Compare against reference (streaming mode only; up to first divergence)
+        # Compare against reference (streaming mode only; up to first
+        # divergence)
         if (
             self._trace_ring is None
             and not self._trace_diverged
@@ -314,7 +326,8 @@ class PySNES:
                 ref_line = ref_line.rstrip()
                 if line[:6].lower() != ref_line[:6].lower():
                     print(
-                        f"\n*** TRACE DIVERGENCE at instruction {self._trace_count} ***",
+                        "\n*** TRACE DIVERGENCE at instruction "
+                        f"{self._trace_count} ***",
                         flush=True,
                     )
                     print(f"  OUR: {line}", flush=True)
@@ -338,7 +351,8 @@ class PySNES:
         last: if > 0, keep only the last N lines (ring buffer, written on exit).
               if 0, stream every line to the file immediately.
         """
-        self._apu_trace_file = open("apu_trace.log", "w")
+        # Trace handles stay open until tracing stops, so no context manager.
+        self._apu_trace_file = open("apu_trace.log", "w")  # noqa: SIM115
         self.apu.trace_enabled = True
         if last > 0:
             self._apu_trace_ring = deque(maxlen=last)
@@ -348,7 +362,7 @@ class PySNES:
             mode_str = "unlimited"
         if ref_path is not None:
             try:
-                self._apu_trace_ref = open(ref_path, "r")
+                self._apu_trace_ref = open(ref_path)  # noqa: SIM115
                 print(
                     f"APU trace started ({mode_str}, ref: {ref_path})",
                     flush=True,
@@ -386,7 +400,7 @@ class PySNES:
             if ref_line:
                 ref_line = ref_line.rstrip()
                 if line[:4].lower() != ref_line[:4].lower():
-                    print(f"\n*** APU TRACE DIVERGENCE ***", flush=True)
+                    print("\n*** APU TRACE DIVERGENCE ***", flush=True)
                     print(f"  OUR: {line}", flush=True)
                     print(f"  REF: {ref_line}", flush=True)
                     self._apu_trace_diverged = True
@@ -396,7 +410,8 @@ class PySNES:
     def main(self):
         """Main loop driven by the event scheduler."""
         MC_PER_FRAME: int = 262 * 1364
-        # Exact NTSC frame period: 21.477272 MHz / (262 lines * 1364 dots) ≈ 16.6836 ms
+        # Exact NTSC frame period: 21.477272 MHz / (262 lines * 1364 dots) ≈
+        # 16.6836 ms
         FRAME_TIME_S: float = MC_PER_FRAME / 21_477_272.0
         _FRAME_HEADROOM_S: float = (
             0.001  # busy-wait the last 1 ms for precision
@@ -416,28 +431,31 @@ class PySNES:
         try:
             while self.running:
                 if not self.paused:
-                    # Reset deadline after a pause or any large gap so the emulator
-                    # doesn't try to catch up across many frames at once.
+                    # Reset deadline after a pause or any large gap so the
+                    # emulator doesn't try to catch up across many frames at
+                    # once.
                     now = time.perf_counter()
                     if now - frame_deadline > FRAME_TIME_S * 4:
                         frame_deadline = now
                         frame_tick = now
 
                     frame_end = self.scheduler.master_clock + MC_PER_FRAME
-                    try:
+                    # On a breakpoint paused=True is already set: skip the
+                    # draw and let the next iteration observe it.
+                    with contextlib.suppress(BreakpointHit):
                         self.scheduler.run_to(frame_end)
-                    except BreakpointHit:
-                        pass  # paused=True already set; skip draw, next iteration checks paused
 
                     if self.audio is not None:
-                        # Ensure the SPC700 has run all its cycles for this frame.
-                        # sync_to is normally called lazily from the bus on APU port access;
-                        # if the CPU went the whole frame without touching APU ports the
-                        # SPC700 would be behind and DSP register state would be stale.
+                        # Ensure the SPC700 has run all its cycles for this
+                        # frame. sync_to is normally called lazily from the bus
+                        # on APU port access; if the CPU went the whole frame
+                        # without touching APU ports the SPC700 would be behind
+                        # and DSP register state would be stale.
                         self.apu.sync_to(self.scheduler.master_clock)
-                        # Fixed-point accumulator matching Apu.sync_to pattern — avoids rounding drift.
-                        # DSP rate = Apu._APU_MC_DEN / 32 = 32000 Hz
-                        # samples per frame ≈ MC_PER_FRAME * _APU_MC_DEN / (_APU_MC_NUM * 32) ≈ 532.48
+                        # Fixed-point accumulator matching Apu.sync_to pattern —
+                        # avoids rounding drift. DSP rate = Apu._APU_MC_DEN / 32
+                        # = 32000 Hz samples per frame ≈ MC_PER_FRAME *
+                        # _APU_MC_DEN / (_APU_MC_NUM * 32) ≈ 532.48
                         self._audio_frac += MC_PER_FRAME * self.apu._APU_MC_DEN
                         n_samples = self._audio_frac // (
                             self.apu._APU_MC_NUM * 32
@@ -459,14 +477,16 @@ class PySNES:
                             self._frame_count / elapsed if elapsed > 0 else 0.0
                         )
                         print(
-                            f"\nBenchmark: {self._frame_count} frames in {elapsed:.2f}s = {avg_fps:.2f} FPS",
+                            f"\nBenchmark: {self._frame_count} frames in "
+                            f"{elapsed:.2f}s = {avg_fps:.2f} FPS",
                             flush=True,
                         )
                         self.running = False
 
-                    # Wall-clock frame limiter: sleep to the next frame deadline so the
-                    # emulator runs at exactly NTSC speed when computation finishes early.
-                    # On slow frames we skip the sleep and start the next frame immediately.
+                    # Wall-clock frame limiter: sleep to the next frame deadline
+                    # so the emulator runs at exactly NTSC speed when
+                    # computation finishes early. On slow frames we skip the
+                    # sleep and start the next frame immediately.
                     frame_deadline += FRAME_TIME_S
                     remaining = frame_deadline - time.perf_counter()
                     if remaining > _FRAME_HEADROOM_S:
@@ -540,7 +560,7 @@ class PySNES:
             if self.event.type == sdl.SDL_QUIT:
                 self.running = False
                 return
-            elif self.event.type == sdl.SDL_KEYUP:
+            if self.event.type == sdl.SDL_KEYUP:
                 self.controllers[0].pressed_keys.discard(
                     self.event.key.keysym.sym
                 )
@@ -590,7 +610,9 @@ def main():
         metavar="N",
         type=int,
         default=0,
-        help="Keep only the last N trace lines; written to cpu_trace.log on exit",
+        help=(
+            "Keep only the last N trace lines; written to cpu_trace.log on exit"
+        ),
     )
     parser.add_argument(
         "--trace-from",

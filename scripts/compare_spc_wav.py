@@ -2,7 +2,8 @@
 Compare PySNES SPC audio output against a reference WAV (e.g. from Mesen).
 
 Usage:
-    uv run python scripts/compare_spc_wav.py <spc_file> <reference.wav> [--seconds N]
+    uv run python scripts/compare_spc_wav.py <spc_file> <reference.wav> \
+        [--seconds N]
 
 Dumps our SPC player's output to a temp WAV at 32 kHz, resamples the
 reference to the same rate, then prints per-second RMS error and
@@ -10,18 +11,16 @@ writes a difference WAV for further inspection.
 """
 
 import argparse
+import pathlib
 import sys
 import wave
-import pathlib
-import struct
-import tempfile
 
 import numpy as np
 
 sys.path.insert(0, str(pathlib.Path(__file__).parent.parent))
 
-from pysnes.apu.spc_file import SpcFile
 from pysnes.apu.apu import Apu
+from pysnes.apu.spc_file import SpcFile
 
 _APU_HZ = 1_024_000
 _DSP_DIV = 32
@@ -42,7 +41,8 @@ def dump_pysnes(spc_path: str, duration_s: float) -> np.ndarray:
     chunks = []
     collected = 0
     print(
-        f"Dumping PySNES: {duration_s:.1f}s ({total_samples} samples @ {_AUDIO_HZ} Hz)..."
+        f"Dumping PySNES: {duration_s:.1f}s ({total_samples} samples @ "
+        f"{_AUDIO_HZ} Hz)..."
     )
     while collected < total_samples:
         clocks_left = apu_per_chunk
@@ -72,7 +72,8 @@ def load_reference(
         raw = w.readframes(want_frames)
 
     print(
-        f"Reference: {wav_path} — {src_rate} Hz, {n_channels}ch, {n_frames} frames ({n_frames / src_rate:.1f}s)"
+        f"Reference: {wav_path} — {src_rate} Hz, {n_channels}ch, {n_frames} "
+        f"frames ({n_frames / src_rate:.1f}s)"
     )
 
     dtype = np.int16 if sampwidth == 2 else np.int32
@@ -120,7 +121,7 @@ def compare(ours: np.ndarray, ref: np.ndarray, rate: int) -> None:
     print(f"Max abs diff: {np.max(np.abs(diff)):.0f}")
 
     # Per-second breakdown
-    print(f"\nPer-second RMS diff (left channel):")
+    print("\nPer-second RMS diff (left channel):")
     for sec in range(int(n / rate)):
         sl = slice(sec * rate, (sec + 1) * rate)
         rms = np.sqrt(np.mean(diff[sl, 0] ** 2))

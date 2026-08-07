@@ -92,8 +92,9 @@ def test_on_write_range_fires_for_cgram():
 
 def test_tap_press_release_edge():
     _require_smw()
-    from pysnes.harness import Harness
     import sdl2
+
+    from pysnes.harness import Harness
 
     with Harness(SMW_ROM) as h:
         h.tap("Start", hold_frames=2, gap_frames=1)

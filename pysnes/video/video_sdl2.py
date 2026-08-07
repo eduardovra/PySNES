@@ -3,10 +3,10 @@ SDL2-based video renderer for PySNES
 Replaces OpenGL with direct SDL2 2D rendering for better performance
 """
 
-import sdl2 as sdl
-import numpy as np
 import ctypes
-from typing import Optional
+
+import numpy as np
+import sdl2 as sdl
 
 
 class SDL2Renderer:
@@ -15,11 +15,11 @@ class SDL2Renderer:
     def __init__(self, width: int = 256, height: int = 224):
         self.width = width
         self.height = height
-        self.renderer: Optional[sdl.SDL_Renderer] = None
-        self.texture: Optional[sdl.SDL_Texture] = None
+        self.renderer: sdl.SDL_Renderer | None = None
+        self.texture: sdl.SDL_Texture | None = None
         self.window = None
-        self._last_pixel_data: Optional[np.ndarray] = None
-        self._pixel_data: Optional[np.ndarray] = None
+        self._last_pixel_data: np.ndarray | None = None
+        self._pixel_data: np.ndarray | None = None
 
     def initialize(self, window) -> None:
         """Initialize SDL2 renderer from existing window"""
@@ -41,7 +41,8 @@ class SDL2Renderer:
 
             if not self.renderer:
                 raise RuntimeError(
-                    f"Failed to create SDL2 renderer: {sdl.SDL_GetError().decode()}"
+                    "Failed to create SDL2 renderer: "
+                    f"{sdl.SDL_GetError().decode()}"
                 )
 
             # Get renderer info for debugging (stored, not printed)
@@ -62,7 +63,8 @@ class SDL2Renderer:
 
             if not self.texture:
                 raise RuntimeError(
-                    f"Failed to create SDL2 texture: {sdl.SDL_GetError().decode()}"
+                    "Failed to create SDL2 texture: "
+                    f"{sdl.SDL_GetError().decode()}"
                 )
 
             # Set texture blend mode for proper alpha blending
@@ -75,7 +77,9 @@ class SDL2Renderer:
             # Note: VSync control is renderer-specific in SDL2
 
         except Exception as e:
-            raise RuntimeError(f"Failed to initialize SDL2 renderer: {e}")
+            raise RuntimeError(
+                f"Failed to initialize SDL2 renderer: {e}"
+            ) from e
 
     def draw_frame(self, texture_data) -> None:
         """Draw a frame using SDL2."""
@@ -159,7 +163,6 @@ class SDL2Renderer:
         """Enable/disable VSync (if supported by renderer)"""
         # Note: SDL2 VSync is set during renderer creation
         # This would require recreating the renderer to change
-        pass
 
     def get_performance_info(self) -> dict:
         """Get performance-related information"""
@@ -180,9 +183,8 @@ class SDL2Renderer:
                 "texture_size": f"{self.width}x{self.height}",
                 "backend": "SDL2",
             }
-        else:
-            return {
-                "backend": "SDL2",
-                "texture_size": f"{self.width}x{self.height}",
-                "name": getattr(self, "renderer_name", "Unknown"),
-            }
+        return {
+            "backend": "SDL2",
+            "texture_size": f"{self.width}x{self.height}",
+            "name": getattr(self, "renderer_name", "Unknown"),
+        }

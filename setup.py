@@ -1,14 +1,16 @@
-from setuptools import setup, Extension
-from Cython.Build import cythonize
 import glob
-import pathlib
 import multiprocessing
+import pathlib
 
-# Modules excluded from Cython compilation: PyPy JIT cannot trace through compiled
-# C extension call boundaries. The CPU/bus hot path (cpu.py, bus.py, dma.py,
-# wdc65816/*.py) calls across module boundaries on every instruction cycle, so
-# compiling them creates JIT trace breaks and causes a severe performance regression.
-# These are left as pure Python for PyPy to JIT natively.
+from Cython.Build import cythonize
+from setuptools import Extension, setup
+
+# Modules excluded from Cython compilation: PyPy JIT cannot trace through
+# compiled C extension call boundaries. The CPU/bus hot path (cpu.py, bus.py,
+# dma.py, wdc65816/*.py) calls across module boundaries on every instruction
+# cycle, so compiling them creates JIT trace breaks and causes a severe
+# performance regression. These are left as pure Python for PyPy to JIT
+# natively.
 EXCLUDE_FROM_CYTHON = {
     "pysnes/cpu/cpu.py",
     "pysnes/cpu/dma.py",

@@ -8,8 +8,6 @@ Run:
     uv run --python pypy3.10 pytest pysnes/ppu/test_ppu_registers.py -v
 """
 
-import pytest
-
 from pysnes.ppu.ppu import Ppu
 
 
@@ -77,7 +75,8 @@ class TestOamaddGetters:
         assert ppu.oamaddh == 0x81
 
     def test_oamaddl_preserves_high_bit_across_oamaddh_write(self):
-        """oamaddl getter only returns low 8 bits even after oamaddh sets bit 8."""
+        """oamaddl getter only returns low 8 bits even after oamaddh sets bit
+        8."""
         ppu = _make_ppu()
         ppu.oamaddl = 0x55
         ppu.oamaddh = 0x01  # set bit 8 of address
@@ -91,7 +90,8 @@ class TestOamaddGetters:
 
 
 def _write_word(ppu: Ppu, word_addr: int, low: int, high: int) -> None:
-    """Set VRAM word address and write a word (low, high) triggering write_vram."""
+    """Set VRAM word address and write a word (low, high) triggering
+    write_vram."""
     ppu.vmaddl = word_addr & 0xFF
     ppu.vmaddh = (word_addr >> 8) & 0xFF
     ppu.vmdatal = low
@@ -192,7 +192,8 @@ class TestVramReadPort:
         ppu.vram[base + 1] = high
 
     def test_first_read_returns_prefetch_from_vmadd_write(self):
-        """Writing VMADDL/VMADDH fills the prefetch buffer; first $2139 read returns that pre-fetched byte."""
+        """Writing VMADDL/VMADDH fills the prefetch buffer; first $2139 read
+        returns that pre-fetched byte."""
         ppu = _make_ppu()
         ppu.vmain = 0x00  # increment on low read, step +1
         self._seed(ppu, 0x0010, 0xAA, 0xBB)

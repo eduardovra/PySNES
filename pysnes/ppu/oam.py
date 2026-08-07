@@ -1,10 +1,8 @@
-from typing import Optional
-
 from .data_structures import Object
 
 
 class OAM:
-    def __init__(self, *, oam_dump: Optional[bytes] = None) -> None:
+    def __init__(self, *, oam_dump: bytes | None = None) -> None:
         # Object Attribute Memory
         self.oam = bytearray(512 + 32)
         self.objects = [Object() for i in range(128)]

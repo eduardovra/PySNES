@@ -1,9 +1,8 @@
 from typing import Any
 
-
-from .spc700.instructions_spc700 import INSTRUCTIONS
-from .spc700.disassembler import SPC700Disassembler
 from .dsp import Dsp
+from .spc700.disassembler import SPC700Disassembler
+from .spc700.instructions_spc700 import INSTRUCTIONS
 
 
 class InstructionSlot:
@@ -88,19 +87,12 @@ class Timer:
 
 
 class Apu:
-    # Registers
-    # Flags
-    # Timing
-    # Registers (raw storage)
-    # Test register ($F0) fields
-    # Debug
-    # Memory regions
-    # Instruction dispatch
-    # Memory access tracing (None = disabled; set to [] in tests to capture accesses)
-    # Flat I/O mode: when True, reads/writes to $F0-$FC bypass I/O routing and
-    # use page_0 directly.  Set by the single-step test harness so that CPU unit
-    # tests see a simple flat-RAM model instead of DSP/port indirection.
-    # Instruction trace
+    # Registers Flags Timing Registers (raw storage) Test register ($F0) fields
+    # Debug Memory regions Instruction dispatch Memory access tracing (None =
+    # disabled; set to [] in tests to capture accesses) Flat I/O mode: when
+    # True, reads/writes to $F0-$FC bypass I/O routing and use page_0 directly.
+    # Set by the single-step test harness so that CPU unit tests see a simple
+    # flat-RAM model instead of DSP/port indirection. Instruction trace
 
     def __init__(self) -> None:
         self.reset_registers()
@@ -155,20 +147,21 @@ class Apu:
 
         self.timers = [Timer(self, 128), Timer(self, 128), Timer(self, 16)]
 
-        # Catchup clock tracking: master clock value at last APU sync.
-        # APU runs at ~1.024 MHz; 1 APU clock ≈ 21 master clocks (21477272/1024000).
-        # Start 2 APU bus cycles ahead of master-clock 0 to model the SPC700 reset
-        # vector fetch that Mesen performs (Spc::Reset -> ReadWord(ResetVector))
-        # before any IPL ROM instruction runs.  Without this the APU trails by ~42 MC
-        # and the SMW main-CPU↔APU handshake loop exits one iteration late.
+        # Catchup clock tracking: master clock value at last APU sync. APU runs
+        # at ~1.024 MHz; 1 APU clock ≈ 21 master clocks (21477272/1024000).
+        # Start 2 APU bus cycles ahead of master-clock 0 to model the SPC700
+        # reset vector fetch that Mesen performs (Spc::Reset ->
+        # ReadWord(ResetVector)) before any IPL ROM instruction runs.  Without
+        # this the APU trails by ~42 MC and the SMW main-CPU↔APU handshake loop
+        # exits one iteration late.
         self._last_synced_mc: int = -(2 * 21477272 // 1024000)
         # Fixed-point remainder for the APU cycle budget (in units of MC_DEN).
         # Avoids lossy MC↔APU-cycle round-trips in sync_to.
         self._apu_mc_frac: int = 0
 
         # Per-instruction cycle counter.  Reset at the top of fetch_and_execute;
-        # incremented by every read_external, write_external, and idle() call so tests
-        # can assert the total cycle count matches the reference data.
+        # incremented by every read_external, write_external, and idle() call so
+        # tests can assert the total cycle count matches the reference data.
         self.cycles: int = 0
 
         self._control_register_raw = 0x80  # F1 raw written value (for readback)
@@ -271,7 +264,7 @@ class Apu:
         self.ports_w[:] = d["ports_w"]
         for f, v in d["scalars"].items():
             setattr(self, f, v)
-        for t, ts in zip(self.timers, d["timers"]):
+        for t, ts in zip(self.timers, d["timers"], strict=True):
             t.load_state(ts)
 
     def load_instructions(self):
@@ -294,29 +287,31 @@ class Apu:
         self.cycles += 1
 
     def generate_audio_frame(self, n_samples: int):
-        """Generate n_samples of 16-bit stereo audio. Returns numpy array shape (n_samples, 2)."""
+        """Generate n_samples of 16-bit stereo audio. Returns numpy array shape
+        (n_samples, 2)."""
         return self.dsp.generate_samples(n_samples)
 
     def read_ram(self, addr: int) -> int:
-        """Read APU RAM for DSP use — no cycle increment, no I/O side-effects."""
+        """Read APU RAM for DSP use — no cycle increment, no I/O
+        side-effects."""
         addr &= 0xFFFF
         if addr <= 0x00EF:
             return self.page_0[addr]
-        elif addr <= 0x00FF:
+        if addr <= 0x00FF:
             return 0  # I/O register range — BRR data never lives here
-        elif addr <= 0x01FF:
+        if addr <= 0x01FF:
             return self.page_1[addr - 0x0100]
-        elif addr <= 0xFFBF:
+        if addr <= 0xFFBF:
             return self.memory[addr - 0x0200]
-        else:
-            return self.ipl_rom[addr - 0xFFC0]
+        return self.ipl_rom[addr - 0xFFC0]
 
     def load_program(self, data):
         """Used for testing only"""
         self.ipl_rom = data
 
     def load_spc(self, spc) -> None:
-        """Load SPC700 state from a parsed SpcFile, bypassing the IPL boot sequence."""
+        """Load SPC700 state from a parsed SpcFile, bypassing the IPL boot
+        sequence."""
         ram = spc.ram
 
         # Page 0 ($0000-$00EF) — general RAM
@@ -345,25 +340,26 @@ class Apu:
         self.auxio5 = ram[0x00F9]
         self.dsp_register_address = ram[0x00F2]
 
-        # Timer targets ($FA-$FC) live in the I/O region skipped above — restore explicitly.
+        # Timer targets ($FA-$FC) live in the I/O region skipped above — restore
+        # explicitly.
         for i in range(3):
             self.timers[i].target = ram[0x00FA + i]
 
-        # Control register enables/disables timers and may reset port latches (bits 4/5).
-        # Set it before restoring ports_r so the port reset doesn't clobber the saved values.
+        # Control register enables/disables timers and may reset port latches
+        # (bits 4/5). Set it before restoring ports_r so the port reset doesn't
+        # clobber the saved values.
         self.control_register = ram[0x00F1]
         self.ipl_rom_enable = False
 
-        # Restore ports_r/$F4-$F7 after control_register write (bits 4/5 would clear them).
+        # Restore ports_r/$F4-$F7 after control_register write (bits 4/5 would
+        # clear them).
         for i in range(4):
             self.ports_r[i] = ram[0x00F4 + i]
             self.ports_w[i] = ram[0x00F4 + i]
 
     def _read(self, addr: int) -> int:
         self.cycles += 1
-        if addr <= 0x00EF:
-            result = self.page_0[addr]
-        elif addr <= 0x00FC and self._io_flat:
+        if addr <= 0x00EF or addr <= 0x00FC and self._io_flat:
             result = self.page_0[addr]
         elif addr == 0x00F0:
             result = self.test_register
@@ -401,9 +397,7 @@ class Apu:
         self.cycles += 1
         if self._mem_log is not None:
             self._mem_log.append((addr, value, "write"))
-        if addr <= 0x00EF:
-            self.page_0[addr] = value
-        elif addr <= 0x00FC and self._io_flat:
+        if addr <= 0x00EF or addr <= 0x00FC and self._io_flat:
             self.page_0[addr] = value
         elif addr == 0x00F0:
             self.test_register = value
@@ -415,9 +409,10 @@ class Apu:
             self.dsp_register_data = value
             self.dsp.write_register(self.dsp_register_address, value)
         elif addr <= 0x00F7:
-            # $F4-$F7 from SPC side: writing updates the SPC→CPU latch (ports_w).
-            # The CPU→SPC latch (ports_r) is separate hardware; do NOT mirror — the
-            # SPC reads back whatever the main CPU last wrote, not its own writes.
+            # $F4-$F7 from SPC side: writing updates the SPC→CPU latch
+            # (ports_w). The CPU→SPC latch (ports_r) is separate hardware; do
+            # NOT mirror — the SPC reads back whatever the main CPU last wrote,
+            # not its own writes.
             self.ports_w[addr - 0x00F4] = value
         elif addr == 0x00F8:
             self.auxio4 = value
@@ -479,15 +474,8 @@ class Apu:
             + ("C" if self.CF else "c")
         )
         return (
-            "{:<24} A:{:02X} X:{:02X} Y:{:02X} S:{:02X} PSW:{:02X} {}".format(
-                disasm,
-                self.A,
-                self.X,
-                self.Y,
-                self.S,
-                self.PSW,
-                flags,
-            )
+            f"{disasm:<24} A:{self.A:02X} X:{self.X:02X} "
+            f"Y:{self.Y:02X} S:{self.S:02X} PSW:{self.PSW:02X} {flags}"
         )
 
     def fetch_and_execute(self):
@@ -500,19 +488,15 @@ class Apu:
             self.trace_log = self.trace_log[-10:]
         if self.print_debug:
             print(
-                "\033[93mAPU 0x{:04X} 0x{:02X} {} [{:04X}] [{:02X}] {}\033[0m".format(
-                    self.PC - 1,
-                    opcode,
-                    self.debug_symbols[opcode],
-                    self.address,
-                    self.data,
-                    str(self),
-                )
+                f"\033[93mAPU 0x{self.PC - 1:04X} 0x{opcode:02X} "
+                f"{self.debug_symbols[opcode]} [{self.address:04X}] "
+                f"[{self.data:02X}] {str(self)}\033[0m"
             )
         self.instructions[opcode].call()
 
     # Approximate master-clock-to-APU-clock ratio (integer division)
-    _APU_MC_PER_CLOCK: int = 21  # 21477272 / 1024000 ≈ 20.979 (integer-approx; exact ratio used in sync_to)
+    # 21477272 / 1024000 ≈ 20.979 (integer-approx; exact ratio used in sync_to)
+    _APU_MC_PER_CLOCK: int = 21
     _APU_MC_NUM: int = 21477272
     _APU_MC_DEN: int = 1024000
 
@@ -520,7 +504,8 @@ class Apu:
         """Catch the APU up to the given master clock value.
 
         Called lazily whenever the CPU reads or writes an APU I/O port, ensuring
-        the APU has run up to that point in time before the port value is sampled.
+        the APU has run up to that point in time before the port value is
+        sampled.
 
         Each call drains the full budget up to master_clock so the CPU observes
         the port value as of its access time (the last write at or before now).
@@ -531,7 +516,8 @@ class Apu:
         self._last_synced_mc = master_clock
 
         # Fixed-point accumulator: add elapsed MC scaled by MC_DEN so we never
-        # lose fractional cycles across calls.  One APU cycle costs MC_NUM units.
+        # lose fractional cycles across calls.  One APU cycle costs MC_NUM
+        # units.
         self._apu_mc_frac += elapsed * self._APU_MC_DEN
         while self._apu_mc_frac >= self._APU_MC_NUM:
             self.fetch_and_execute()

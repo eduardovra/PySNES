@@ -12,36 +12,35 @@ def check_trace_line(line: str, cpu: Cpu):
     assert actual == expected, f"{actual!r} != {expected!r}"
 
     PC = int(line[:6], 16)
-    assert PC == cpu.PC.value, "{:06X} != {:06X}".format(PC, cpu.PC.value)
+    assert cpu.PC.value == PC, f"{PC:06X} != {cpu.PC.value:06X}"
     A = int(line[33:37], 16)
-    assert A == cpu.A.value, "{:04X} != {:04X}".format(A, cpu.A.value)
+    assert cpu.A.value == A, f"{A:04X} != {cpu.A.value:04X}"
     X = int(line[40:44], 16)
-    assert X == cpu.X.value, "{:04X} != {:04X}".format(X, cpu.X.value)
+    assert cpu.X.value == X, f"{X:04X} != {cpu.X.value:04X}"
     Y = int(line[47:51], 16)
-    assert Y == cpu.Y.value, "{:04X} != {:04X}".format(Y, cpu.Y.value)
+    assert cpu.Y.value == Y, f"{Y:04X} != {cpu.Y.value:04X}"
     S = int(line[54:59], 16)
-    assert S == cpu.S.value, "{:04X} != {:04X}".format(S, cpu.S.value)
+    assert cpu.S.value == S, f"{S:04X} != {cpu.S.value:04X}"
 
     NF = line[72] == "N"
-    assert NF == cpu.NFlag, f"{NF} != {cpu.NFlag} {line=} {disassembled=}"
+    assert cpu.NFlag == NF, f"{NF} != {cpu.NFlag} {line=} {disassembled=}"
     VF = line[73] == "V"
-    assert VF == cpu.VFlag, f"{VF} != {cpu.VFlag} {line=} {disassembled=}"
+    assert cpu.VFlag == VF, f"{VF} != {cpu.VFlag} {line=} {disassembled=}"
     IF = line[77] == "I"
-    assert IF == cpu.IFlag, f"{IF} != {cpu.IFlag} {line=} {disassembled=}"
+    assert cpu.IFlag == IF, f"{IF} != {cpu.IFlag} {line=} {disassembled=}"
     ZF = line[78] == "Z"
-    assert ZF == cpu.ZFlag, f"{ZF} != {cpu.ZFlag} {line=} {disassembled=}"
+    assert cpu.ZFlag == ZF, f"{ZF} != {cpu.ZFlag} {line=} {disassembled=}"
     CF = line[79] == "C"
-    assert CF == cpu.CFlag, f"{CF} != {cpu.CFlag} {line=} {disassembled=}"
+    assert cpu.CFlag == CF, f"{CF} != {cpu.CFlag} {line=} {disassembled=}"
 
     EF = line[74] == "1"
     assert EF == cpu.EF, f"{EF} != {cpu.EF}"
 
-    if cpu.EF:
-        BF = line[75] == "B"
-        # TODO: Fix this assertion
-        # assert BF == bool(cpu.status.), f"{BF} != {cpu.P.B}"
-    else:
+    # TODO: in emulation mode (cpu.EF), assert the B flag too:
+    # BF = line[75] == "B"
+    # assert BF == bool(cpu.status.), f"{BF} != {cpu.P.B}"
+    if not cpu.EF:
         MF = line[74] == "M"
-        assert MF == cpu.MFlag, f"{MF} != {cpu.MFlag}"
+        assert cpu.MFlag == MF, f"{MF} != {cpu.MFlag}"
         XF = line[75] == "X"
-        assert XF == cpu.XFlag, f"{XF} != {cpu.XFlag}"
+        assert cpu.XFlag == XF, f"{XF} != {cpu.XFlag}"

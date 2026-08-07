@@ -1,10 +1,10 @@
 from __future__ import annotations
-from typing import Any, TYPE_CHECKING
 
-from rich import print
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from ..bus import Bus
+    from ..rom import HardwareVectors
 
 
 class Reg:
@@ -12,13 +12,15 @@ class Reg:
         self.bits = bits
         self.value = value
 
+    # `l`/`h` mirror the 65816's low/high byte accessor names; E743 objects
+    # to `l` as ambiguous, but renaming would break the register vocabulary.
     @property
-    def l(self) -> int:
+    def l(self) -> int:  # noqa: E743
         """Low byte getter"""
         return self.value & 0xFF
 
     @l.setter
-    def l(self, value: int) -> None:
+    def l(self, value: int) -> None:  # noqa: E743
         """Low byte setter"""
         self.value &= 0xFFFF00
         self.value |= value & 0xFF
@@ -68,11 +70,11 @@ class Reg:
 
 
 class CpuStatus:
-    # nmi_line: set to True at V-Blank start by bus.raise_nmi(); read by bus at $4210
-    # irq_line: set by PPU when H/V match condition is satisfied; cleared by
-    # reading $4211 (TIMEUP) or by disabling both H-IRQ and V-IRQ via $4200.
-    # H/V IRQ target registers ($4207-$420A). 9-bit each.
-    # MEMSEL ($420D) bit 0: 1 = FastROM (banks $80-$BF and $C0-$FF use 6 MC instead of 8)
+    # nmi_line: set to True at V-Blank start by bus.raise_nmi(); read by bus at
+    # $4210 irq_line: set by PPU when H/V match condition is satisfied; cleared
+    # by reading $4211 (TIMEUP) or by disabling both H-IRQ and V-IRQ via $4200.
+    # H/V IRQ target registers ($4207-$420A). 9-bit each. MEMSEL ($420D) bit 0:
+    # 1 = FastROM (banks $80-$BF and $C0-$FF use 6 MC instead of 8)
 
     def __init__(self):
         self.hirq_enable = False
@@ -135,7 +137,7 @@ class InstructionSlot:
 
 
 class Cpu:
-    def __init__(self, hardware_vectors: "HardwareVectors") -> None:
+    def __init__(self, hardware_vectors: HardwareVectors) -> None:
         self.reset_registers()
         self.load_instructions()
 
@@ -149,7 +151,11 @@ class Cpu:
         self.scheduler = None
 
     def __str__(self) -> str:
-        return f"A:{self.A.w:04X} X:{self.X.w:04X} Y:{self.Y.w:04X} D:{self.D.w:04X} S:{self.S.w:04X} P:{self.P:02X} DB:{self.DB.l:02X} PB:{self.PC.b:02X} PC:{self.PC.w:06X}"
+        return (
+            f"A:{self.A.w:04X} X:{self.X.w:04X} Y:{self.Y.w:04X} "
+            f"D:{self.D.w:04X} S:{self.S.w:04X} P:{self.P:02X} "
+            f"DB:{self.DB.l:02X} PB:{self.PC.b:02X} PC:{self.PC.w:06X}"
+        )
 
     def reset_registers(self):
         # Registers
@@ -159,7 +165,8 @@ class Cpu:
         self.D = Reg(16, 0x0000)  # Direct Page Register
         self.S = Reg(16, 0x01FF)  # Stack Pointer
         self.P = 0x34  # Status register
-        # self.PB = Reg(8, 0x00)  # Program Bank Register (removed in favor of PC.b)
+        # self.PB = Reg(8, 0x00)  # Program Bank Register (removed in favor of
+        # PC.b)
         self.DB = Reg(8, 0x00)  # Data Bank Register
         self.PC = Reg(24, 0x00)  # self.hardware_vectors.emulation.reset
 
@@ -186,8 +193,8 @@ class Cpu:
         )
         self.stp: bool = False  # raised during stp, never cleared
 
-        # reg to count cpu clock cycles
-        # snes9x: CPU.Cycles = 182; // Or 188. This is the cycle count just after the jump to the Reset Vector.
+        # reg to count cpu clock cycles snes9x: CPU.Cycles = 182; // Or 188.
+        # This is the cycle count just after the jump to the Reset Vector.
         self.cycles: int = 182
         self.prev_cycles = self.cycles
 
@@ -267,13 +274,14 @@ class Cpu:
 
         self.instructions: Any = [None] * 256
 
-        # build_instructions binds the opcode table to this CPU's live Reg objects
-        # (cpu.X, cpu.A, ...) so the hot addressing-mode functions need no per-call
-        # getattr(cpu, name). The reset path rebuilds the table after
-        # reset_registers() makes new Reg objects.
+        # build_instructions binds the opcode table to this CPU's live Reg
+        # objects (cpu.X, cpu.A, ...) so the hot addressing-mode functions need
+        # no per-call getattr(cpu, name). The reset path rebuilds the table
+        # after reset_registers() makes new Reg objects.
         for opcode, addr_mode, *args in build_instructions(self):
-            # InstructionSlot stores addr_mode + extra args; cpu is passed at call time.
-            # This replaces functools.partial — see InstructionSlot.call().
+            # InstructionSlot stores addr_mode + extra args; cpu is passed at
+            # call time. This replaces functools.partial — see
+            # InstructionSlot.call().
             if len(args) == 0:
                 slot = InstructionSlot(addr_mode, nargs=0)
             elif len(args) == 1:
@@ -293,7 +301,8 @@ class Cpu:
     # ------------------------------------------------------------------
 
     def start(self, scheduler) -> None:
-        """Register the CPU with the scheduler. Call once before the main loop."""
+        """Register the CPU with the scheduler. Call once before the main
+        loop."""
         self.scheduler = scheduler
         self.scheduler.add(0, self._step)
 
@@ -471,38 +480,44 @@ class Cpu:
 
         # https://wiki.superfamicom.org/timing#clocks-and-refresh-10
 
-        # A CPU internal operation (an IO cycle) takes 6 master cycles.
-        # A memory access cycle takes 6, 8, or 12 master cycles,
-        # depending on the memory region accessed and bit 0 of CPU register $420D.
+        # A CPU internal operation (an IO cycle) takes 6 master cycles. A memory
+        # access cycle takes 6, 8, or 12 master cycles, depending on the memory
+        # region accessed and bit 0 of CPU register $420D.
 
-        # The SNES runs 1 scanline every 1364 master cycles, except in non-interlace mode scanline
-        # $F0 of every other frame (those with $213F.7=1) is only 1360 cycles. Frames are 262 scanlines
-        # in non-interlace mode, while in interlace mode frames with $213F.7=0 are 263 scanlines.
-        # "V-Blank" runs from either scanline $E1 or $F0 until the end of the frame.
+        # The SNES runs 1 scanline every 1364 master cycles, except in
+        # non-interlace mode scanline $F0 of every other frame (those with
+        # $213F.7=1) is only 1360 cycles. Frames are 262 scanlines in
+        # non-interlace mode, while in interlace mode frames with $213F.7=0 are
+        # 263 scanlines. "V-Blank" runs from either scanline $E1 or $F0 until
+        # the end of the frame.
 
-        # The CPU is paused for 40 cycles beginning about 536 cycles after the start of each scanline.
-        # Current theory is that this is used for WRAM Refresh. The exact timing is that the refresh pause
-        # begins at 538 cycles into the first scanline of the first frame, and thereafter some multiple of
-        # 8 cycles after the previous pause that comes closest to 536.
+        # The CPU is paused for 40 cycles beginning about 536 cycles after the
+        # start of each scanline. Current theory is that this is used for WRAM
+        # Refresh. The exact timing is that the refresh pause begins at 538
+        # cycles into the first scanline of the first frame, and thereafter some
+        # multiple of 8 cycles after the previous pause that comes closest to
+        # 536.
 
         return self.cycles - self.prev_cycles
 
     def get_clock_cycles(self, addr: int) -> int:
         """Returns the number of clock cycles to perform IO on a given address
 
-        The 'Speed' column indicates the memory access speed for that area of memory.
-        The SNES master clock runs at about 21MHz (probably as close to 1.89e9/88 Hz as possible).
-        Internal operation CPU cycles always take 6 master cycles. Fast memory access cycles also
-        take 6 master cycles, Slow memory access cycles take 8 master cycles, and XSlow memory access cycles take 12 master cycles.
+        The 'Speed' column indicates the memory access speed for that area of
+        memory. The SNES master clock runs at about 21MHz (probably as close to
+        1.89e9/88 Hz as possible). Internal operation CPU cycles always take 6
+        master cycles. Fast memory access cycles also take 6 master cycles, Slow
+        memory access cycles take 8 master cycles, and XSlow memory access
+        cycles take 12 master cycles.
 
         Banks   |  Addresses  | Speed | Mapping
         --------+-------------+-------+---------
-        $00-$3F | $0000-$1FFF | Slow  | Address Bus A + /WRAM (mirror $7E:0000-$1FFF)
+        $00-$3F | $0000-$1FFF | Slow  | Address Bus A + /WRAM (mirror of $7E)
                 | $2000-$20FF | Fast  | Address Bus A
                 | $2100-$21FF | Fast  | Address Bus B
                 | $2200-$3FFF | Fast  | Address Bus A
-                | $4000-$41FF | XSlow | Internal CPU registers (see Note 1 below)
-                | $4200-$43FF | Fast  | Internal CPU registers (see Note 1 below)
+                | $4000-$41FF | XSlow | Internal CPU registers (Note 1)
+                | $4200-$43FF | Fast  | Internal CPU registers (Note 1)
                 | $4400-$5FFF | Fast  | Address Bus A
                 | $6000-$7FFF | Slow  | Address Bus A
                 | $8000-$FFFF | Slow  | Address Bus A + /CART
@@ -511,32 +526,35 @@ class Cpu:
         --------+-------------+-------+---------
         $7E-$7F | $0000-$FFFF | Slow  | Address Bus A + /WRAM
         --------+-------------+-------+---------
-        $80-$BF | $0000-$1FFF | Slow  | Address Bus A + /WRAM (mirror $7E:0000-$1FFF)
+        $80-$BF | $0000-$1FFF | Slow  | Address Bus A + /WRAM (mirror of $7E)
                 | $2000-$20FF | Fast  | Address Bus A
                 | $2100-$21FF | Fast  | Address Bus B
                 | $2200-$3FFF | Fast  | Address Bus A
-                | $4000-$41FF | XSlow | Internal CPU registers (see Note 1 below)
-                | $4200-$43FF | Fast  | Internal CPU registers (see Note 1 below)
+                | $4000-$41FF | XSlow | Internal CPU registers (Note 1)
+                | $4200-$43FF | Fast  | Internal CPU registers (Note 1)
                 | $4400-$5FFF | Fast  | Address Bus A
                 | $6000-$7FFF | Slow  | Address Bus A
                 | $8000-$FFFF | Note2 | Address Bus A + /CART
         --------+-------------+-------+---------
         $C0-$FF | $0000-$FFFF | Note2 | Address Bus A + /CART
 
-        Note 2: If bit 1 of CPU register $420D is set, the speed is Fast, otherwise it is Slow.
+        Note 2: If bit 1 of CPU register $420D is set, the speed is Fast,
+        otherwise it is Slow.
         """
 
         """
         https://board.zsnes.com/phpBB3/viewtopic.php?t=12711
 
         Hard to say exactly. The core clocks runs at 21.477MHz.
-        Each cycle can take 6, 8 or 12 clocks, let's assume 8 on average (12 is very rare.)
+        Each cycle can take 6, 8 or 12 clocks, let's assume 8 on
+        average (12 is very rare.)
         Each opcode takes 2-6 cycles, so let's say 4 on average.
         21,477,272/32=~671,164 opcodes/second.
 
         https://forums.nesdev.org/viewtopic.php?p=175515&sid=e26b9af85c521bb4c8fa1e905af2157c#p175515
-        Right. Every CPU instruction takes some number of CPU cycles; each CPU cycle in turn takes
-        6, 8, or 12 master clock cycles depending on which memory it's accessing.
+        Right. Every CPU instruction takes some number of CPU cycles;
+        each CPU cycle in turn takes 6, 8, or 12 master clock cycles
+        depending on which memory it's accessing.
         """
 
         fast, slow, xslow = 6, 8, 12
@@ -596,7 +614,8 @@ class Cpu:
         self.NFlag = data & 0x80 > 0
 
     def interrupt(self, vector: int) -> int:
-        """NMI/IRQ handler. Returns elapsed master-clock cycles for the scheduler."""
+        """NMI/IRQ handler. Returns elapsed master-clock cycles for the
+        scheduler."""
         self.prev_cycles = self.cycles
         self.idle()
         self.idle()

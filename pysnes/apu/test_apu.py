@@ -1,12 +1,12 @@
-import pytest
 import numpy as np
+import pytest
 
 from .apu import Apu
 
 
 @pytest.fixture
 def apu():
-    yield Apu()
+    return Apu()
 
 
 """

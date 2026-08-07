@@ -1,5 +1,5 @@
-from typing import TYPE_CHECKING
 import functools
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from ...cpu import Cpu

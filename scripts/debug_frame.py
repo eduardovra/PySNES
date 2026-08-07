@@ -1,10 +1,10 @@
-from pysnes.scheduler import Scheduler
-from pysnes.rom import Rom
-from pysnes.bus import Bus
-from pysnes.cpu import Cpu
 from pysnes.apu import Apu
-from pysnes.ppu import Ppu
+from pysnes.bus import Bus
 from pysnes.controller import Controller
+from pysnes.cpu import Cpu
+from pysnes.ppu import Ppu
+from pysnes.rom import Rom
+from pysnes.scheduler import Scheduler
 
 rom = Rom("roms/SNES Test Program.sfc")
 scheduler = Scheduler()
@@ -32,7 +32,9 @@ def _patched_get(self, abs_addr):
     addr = abs_addr & 0xFFFF
     if 0x2140 <= addr <= 0x2143:
         port_log.append(
-            f"R ${addr:04X}={hex(val)} ports_w[{addr - 0x2140}]  CPU_PC={hex(cpu.PC.value)} A.l={hex(cpu.A.l)} MC={scheduler.master_clock}"
+            f"R ${addr:04X}={hex(val)} ports_w[{addr - 0x2140}]  "
+            f"CPU_PC={hex(cpu.PC.value)} A.l={hex(cpu.A.l)} "
+            f"MC={scheduler.master_clock}"
         )
     return val
 
@@ -44,7 +46,9 @@ def _patched_set(self, abs_addr, data):
     addr = abs_addr & 0xFFFF
     if 0x2140 <= addr <= 0x2143:
         port_log.append(
-            f"W ${addr:04X}={hex(data)}              CPU_PC={hex(cpu.PC.value)} A.l={hex(cpu.A.l)} MC={scheduler.master_clock}"
+            f"W ${addr:04X}={hex(data)}              "
+            f"CPU_PC={hex(cpu.PC.value)} A.l={hex(cpu.A.l)} "
+            f"MC={scheduler.master_clock}"
         )
     _orig_set(self, abs_addr, data)
 
@@ -53,7 +57,7 @@ bus.__class__.__getitem__ = _patched_get
 bus.__class__.__setitem__ = _patched_set
 
 # Run until CPU gets stuck (or 30 frames max)
-for frame in range(30):
+for _frame in range(30):
     scheduler.run_to(scheduler.master_clock + MC_PER_FRAME)
 
 # Find where the stuck state (A.l=0x0 but port!=0x0) first occurs
@@ -75,8 +79,10 @@ for entry in port_log[max(0, stuck - 10) : min(len(port_log), stuck + 5)]:
 
 print()
 print(
-    f"CPU PC={hex(cpu.PC.value)}  A={hex(cpu.A.value)}  A.l={hex(cpu.A.l)}  P={hex(cpu.P):4s}"
+    f"CPU PC={hex(cpu.PC.value)}  A={hex(cpu.A.value)}  A.l={hex(cpu.A.l)}  "
+    f"P={hex(cpu.P):4s}"
 )
 print(
-    f"apu.ports_r={list(apu.ports_r)}  apu.ports_w={list(apu.ports_w)}  apu.PC={hex(apu.PC)}"
+    f"apu.ports_r={list(apu.ports_r)}  apu.ports_w={list(apu.ports_w)}  "
+    f"apu.PC={hex(apu.PC)}"
 )

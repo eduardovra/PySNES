@@ -28,14 +28,18 @@ pysnes = "pysnes.pysnes:main"
 
 [dependency-groups]
 dev = [
-    "ruff>=0.15.20",
+    # Pinned exactly: a floating formatter version makes CI and local
+    # checkouts disagree about what "formatted" means.
+    "ruff==0.16.2",
 ]
 
 [tool.ruff]
 line-length = 80
 target-version = "py310"
-# Third-party checkouts (Mesen2, the SingleStepTests suites).
-extend-exclude = ["submodules"]
+# Third-party checkouts (Mesen2, the SingleStepTests suites). Markdown is
+# excluded too: ruff formats Python blocks inside .md, which would rewrite
+# the hand-tuned examples in AGENTS.md.
+extend-exclude = ["submodules", "*.md"]
 
 [tool.ruff.lint]
 # E/W (pycodestyle), F (pyflakes), I (isort), UP (pyupgrade), B (bugbear),

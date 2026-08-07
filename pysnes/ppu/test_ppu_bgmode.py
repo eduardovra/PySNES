@@ -16,9 +16,9 @@ from pysnes.ppu.ppu import Ppu
 
 SCREEN_W = 256
 
-RED   = (255, 0, 0)
+RED = (255, 0, 0)
 GREEN = (0, 255, 0)
-BLUE  = (0, 0, 255)
+BLUE = (0, 0, 255)
 
 
 # ---------------------------------------------------------------------------
@@ -84,8 +84,14 @@ def _write_8bpp_solid_tile_at(ppu: Ppu, addr: int, color_index: int) -> None:
         ppu.vram[(addr + 48 + row * 2 + 1) & 0xFFFF] = planes[7]
 
 
-def _write_tilemap_entry(ppu: Ppu, screen_addr: int, col: int, row: int,
-                         tile_index: int, palette: int = 0) -> None:
+def _write_tilemap_entry(
+    ppu: Ppu,
+    screen_addr: int,
+    col: int,
+    row: int,
+    tile_index: int,
+    palette: int = 0,
+) -> None:
     """Write a single tilemap word at (col, row) in a 32×32 tilemap."""
     word_off = (row * 32 + col) * 2
     ppu.vram[(screen_addr + word_off + 0) & 0xFFFF] = tile_index & 0xFF
@@ -103,24 +109,25 @@ class TestBgMode2Dispatch:
     def test_mode2_does_not_raise_not_implemented(self):
         ppu = _make_ppu(bgmode=2)
         # No BGs enabled — just verify dispatch path runs.
-        ppu.render_scanline()        # should not raise
+        ppu.render_scanline()  # should not raise
 
     def test_mode2_renders_bg1_as_4bpp(self):
         """BG1 in Mode 2 renders at 4bpp (palette index 1 → color 1)."""
         ppu = _make_ppu(bgmode=2)
 
         # Palette 0, color 1 = RED  (4bpp uses 16-color palettes)
-        _write_cgram(ppu, 0, 0,  0,  0)
-        _write_cgram(ppu, 1, 31, 0,  0)
+        _write_cgram(ppu, 0, 0, 0, 0)
+        _write_cgram(ppu, 1, 31, 0, 0)
 
         # Tile 0 = solid color-1 pixels
         _write_4bpp_solid_tile_at(ppu, 0x4000, color_index=1)
         # Tilemap[0, 0] = tile 0, palette 0
-        _write_tilemap_entry(ppu, screen_addr=0x0000, col=0, row=0,
-                             tile_index=0, palette=0)
+        _write_tilemap_entry(
+            ppu, screen_addr=0x0000, col=0, row=0, tile_index=0, palette=0
+        )
 
-        ppu.bg1.screen_addr    = 0x0000
-        ppu.bg1.tiledata_addr  = 0x4000
+        ppu.bg1.screen_addr = 0x0000
+        ppu.bg1.tiledata_addr = 0x4000
         ppu.bg1.main_screen_enable = True
 
         ppu.render_scanline()
@@ -130,15 +137,16 @@ class TestBgMode2Dispatch:
         """BG2 in Mode 2 renders at 4bpp (behind BG1)."""
         ppu = _make_ppu(bgmode=2)
 
-        _write_cgram(ppu, 0, 0,  0,  0)
-        _write_cgram(ppu, 1, 0,  0, 31)   # color 1 = BLUE
+        _write_cgram(ppu, 0, 0, 0, 0)
+        _write_cgram(ppu, 1, 0, 0, 31)  # color 1 = BLUE
 
         _write_4bpp_solid_tile_at(ppu, 0x5000, color_index=1)
-        _write_tilemap_entry(ppu, screen_addr=0x0800, col=0, row=0,
-                             tile_index=0, palette=0)
+        _write_tilemap_entry(
+            ppu, screen_addr=0x0800, col=0, row=0, tile_index=0, palette=0
+        )
 
-        ppu.bg2.screen_addr    = 0x0800
-        ppu.bg2.tiledata_addr  = 0x5000
+        ppu.bg2.screen_addr = 0x0800
+        ppu.bg2.tiledata_addr = 0x5000
         ppu.bg2.main_screen_enable = True
 
         ppu.render_scanline()
@@ -161,8 +169,8 @@ class TestVramWrap:
         pixel decodes correctly."""
         ppu = _make_ppu(bgmode=1)
 
-        _write_cgram(ppu, 0, 0,  0,  0)
-        _write_cgram(ppu, 1, 31, 0,  0)   # RED
+        _write_cgram(ppu, 0, 0, 0, 0)
+        _write_cgram(ppu, 1, 31, 0, 0)  # RED
 
         # Place 2bpp tile 0 starting at 0xFFF0. Each tile = 16 bytes → tile
         # occupies 0xFFF0..0xFFFF then wraps to 0x0000..0x000F? No — tile 0
@@ -170,16 +178,19 @@ class TestVramWrap:
         # 0xFFFE: row 0 at 0xFFFE/0xFFFF, row 1 at 0x0000/0x0001 (wrapped).
         _write_2bpp_solid_tile_at(ppu, addr=0xFFFE, color_index=1)
 
-        _write_tilemap_entry(ppu, screen_addr=0x0100, col=0, row=0,
-                             tile_index=0, palette=0)
+        _write_tilemap_entry(
+            ppu, screen_addr=0x0100, col=0, row=0, tile_index=0, palette=0
+        )
 
-        ppu.bg1.screen_addr    = 0x0100
-        ppu.bg1.tiledata_addr  = 0xFFFE
+        ppu.bg1.screen_addr = 0x0100
+        ppu.bg1.tiledata_addr = 0xFFFE
         ppu.bg1.main_screen_enable = True
 
         # Scanline 2 → v_shift=1 → fetches row 1 = bytes at wrapped 0x0000/0x0001.
         ppu.v_counter = 2
-        bg_renderer.draw_background_scanline(ppu, ppu.bg1, bpp=2, priority_selector=0)
+        bg_renderer.draw_background_scanline(
+            ppu, ppu.bg1, bpp=2, priority_selector=0
+        )
         assert _pixel(ppu, 0, 1) == RED
 
     def test_4bpp_tile_fetch_wraps_at_0xffff(self):
@@ -187,44 +198,50 @@ class TestVramWrap:
         also wrap."""
         ppu = _make_ppu(bgmode=1)
 
-        _write_cgram(ppu, 0, 0,  0,  0)
-        _write_cgram(ppu, 1, 0,  31, 0)   # GREEN
+        _write_cgram(ppu, 0, 0, 0, 0)
+        _write_cgram(ppu, 1, 0, 31, 0)  # GREEN
 
         # Place tile at 0xFFF0: row 0 plane 0/1 at 0xFFF0/0xFFF1 (in range),
         # plane 2/3 at 0xFFF0+16=0x10000 → wraps to 0x0000.
         _write_4bpp_solid_tile_at(ppu, addr=0xFFF0, color_index=1)
 
-        _write_tilemap_entry(ppu, screen_addr=0x0100, col=0, row=0,
-                             tile_index=0, palette=0)
+        _write_tilemap_entry(
+            ppu, screen_addr=0x0100, col=0, row=0, tile_index=0, palette=0
+        )
 
-        ppu.bg1.screen_addr    = 0x0100
-        ppu.bg1.tiledata_addr  = 0xFFF0
+        ppu.bg1.screen_addr = 0x0100
+        ppu.bg1.tiledata_addr = 0xFFF0
         ppu.bg1.main_screen_enable = True
 
         ppu.v_counter = 1
-        bg_renderer.draw_background_scanline(ppu, ppu.bg1, bpp=4, priority_selector=0)
+        bg_renderer.draw_background_scanline(
+            ppu, ppu.bg1, bpp=4, priority_selector=0
+        )
         assert _pixel(ppu, 0, 0) == GREEN
 
     def test_8bpp_tile_fetch_wraps_at_0xffff(self):
         """8bpp needs 64 bytes; the +32 and +48 plane pairs must wrap too."""
         ppu = _make_ppu(bgmode=1)
 
-        _write_cgram(ppu, 0, 0,  0,  0)
-        _write_cgram(ppu, 1, 0,  0, 31)   # BLUE (palette idx 1)
+        _write_cgram(ppu, 0, 0, 0, 0)
+        _write_cgram(ppu, 1, 0, 0, 31)  # BLUE (palette idx 1)
 
         # Place tile at 0xFFE0: row 0 plane 0/1 in range, planes 2/3 at +16
         # (0xFFF0), planes 4/5 at +32 (0x10000 → 0x0000), planes 6/7 at +48.
         _write_8bpp_solid_tile_at(ppu, addr=0xFFE0, color_index=1)
 
-        _write_tilemap_entry(ppu, screen_addr=0x0100, col=0, row=0,
-                             tile_index=0, palette=0)
+        _write_tilemap_entry(
+            ppu, screen_addr=0x0100, col=0, row=0, tile_index=0, palette=0
+        )
 
-        ppu.bg1.screen_addr    = 0x0100
-        ppu.bg1.tiledata_addr  = 0xFFE0
+        ppu.bg1.screen_addr = 0x0100
+        ppu.bg1.tiledata_addr = 0xFFE0
         ppu.bg1.main_screen_enable = True
 
         ppu.v_counter = 1
-        bg_renderer.draw_background_scanline(ppu, ppu.bg1, bpp=8, priority_selector=0)
+        bg_renderer.draw_background_scanline(
+            ppu, ppu.bg1, bpp=8, priority_selector=0
+        )
         assert _pixel(ppu, 0, 0) == BLUE
 
 
@@ -239,11 +256,11 @@ class TestSpriteDrawPointWrap:
         ppu = _make_ppu(bgmode=1)
 
         # All four bitplane bytes have bit 7 set → pixel 7 resolves to color 15.
-        ppu.vram[0xFFFF] = 0x80   # plane 0
-        ppu.vram[0x0000] = 0x80   # plane 1 (wrapped)
-        ppu.vram[0x000F] = 0x80   # plane 2 (wrapped)
-        ppu.vram[0x0010] = 0x80   # plane 3 (wrapped)
-        _write_cgram(ppu, 15, 31, 0, 0)   # palette 0, color 15 = RED
+        ppu.vram[0xFFFF] = 0x80  # plane 0
+        ppu.vram[0x0000] = 0x80  # plane 1 (wrapped)
+        ppu.vram[0x000F] = 0x80  # plane 2 (wrapped)
+        ppu.vram[0x0010] = 0x80  # plane 3 (wrapped)
+        _write_cgram(ppu, 15, 31, 0, 0)  # palette 0, color 15 = RED
 
         # Snapshot vram into a bytes object to pass as tile_data. tlen=65536
         # so the `% tlen` wrap matches how VRAM indexing works in real fetches.

@@ -17,7 +17,8 @@ EXCLUDE_FROM_CYTHON = {
 
 py_files = glob.glob("pysnes/**/*.py", recursive=True)
 py_files = [
-    f for f in py_files
+    f
+    for f in py_files
     if not f.endswith("__init__.py")
     and not pathlib.Path(f).name.startswith("test_")
     and pathlib.Path(f).name != "conftest.py"
@@ -27,13 +28,17 @@ py_files = [
 
 extensions = []
 for py_file in py_files:
-    module_name = pathlib.Path(py_file).with_suffix("").as_posix().replace("/", ".")
-    extensions.append(Extension(
-        name=module_name,
-        sources=[py_file],
-        libraries=["SDL2"],
-        include_dirs=["/usr/include/SDL2/"],
-    ))
+    module_name = (
+        pathlib.Path(py_file).with_suffix("").as_posix().replace("/", ".")
+    )
+    extensions.append(
+        Extension(
+            name=module_name,
+            sources=[py_file],
+            libraries=["SDL2"],
+            include_dirs=["/usr/include/SDL2/"],
+        )
+    )
 
 setup(
     ext_modules=cythonize(

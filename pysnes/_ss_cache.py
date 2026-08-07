@@ -31,7 +31,9 @@ def _dir_fingerprint(tests_path):
 
 
 def _cache_key(suite_name, tests_path, filter_args):
-    blob = repr((suite_name, filter_args, _dir_fingerprint(tests_path))).encode()
+    blob = repr(
+        (suite_name, filter_args, _dir_fingerprint(tests_path))
+    ).encode()
     return hashlib.sha1(blob).hexdigest()[:16]
 
 

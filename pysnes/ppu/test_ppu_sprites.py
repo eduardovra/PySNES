@@ -33,6 +33,7 @@ BLACK = (0, 0, 0)
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _make_ppu() -> Ppu:
     ppu = Ppu()
     ppu.inidisp_set(0x0F)  # max brightness
@@ -60,8 +61,8 @@ def _write_4bpp_solid_tile(ppu: Ppu, vram_addr: int, color_index: int) -> None:
     bp2 = 0xFF if (color_index & 4) else 0x00
     bp3 = 0xFF if (color_index & 8) else 0x00
     for row in range(8):
-        ppu.vram[vram_addr + row * 2 + 0]  = bp0
-        ppu.vram[vram_addr + row * 2 + 1]  = bp1
+        ppu.vram[vram_addr + row * 2 + 0] = bp0
+        ppu.vram[vram_addr + row * 2 + 1] = bp1
         ppu.vram[vram_addr + 16 + row * 2 + 0] = bp2
         ppu.vram[vram_addr + 16 + row * 2 + 1] = bp3
 
@@ -71,7 +72,7 @@ def _pixel(ppu: Ppu, x: int, y: int) -> tuple:
     u32 = ppu.main_bgs[y * SCREEN_W + x]
     r = (u32 >> 24) & 0xFF
     g = (u32 >> 16) & 0xFF
-    b = (u32 >>  8) & 0xFF
+    b = (u32 >> 8) & 0xFF
     return (r, g, b)
 
 
@@ -91,8 +92,8 @@ def _setup_sprite(ppu: Ppu) -> None:
 
     # CGRAM sprite palette 8, color 1 = GREEN
     # palette_index = 8 * 16 = 128; color_index = 129; CGRAM byte addr = 258
-    _write_cgram(ppu, 0,   0,  0,  0)  # color 0 = transparent / backdrop (black)
-    _write_cgram(ppu, 129, 0, 31,  0)  # sprite palette 8, color 1 = GREEN
+    _write_cgram(ppu, 0, 0, 0, 0)  # color 0 = transparent / backdrop (black)
+    _write_cgram(ppu, 129, 0, 31, 0)  # sprite palette 8, color 1 = GREEN
 
     # Configure PPU OAM tile base
     ppu.oam_tiledata_address = 0x100
@@ -106,17 +107,20 @@ def _setup_sprite(ppu: Ppu) -> None:
     obj.x = 10
     obj.y = 5
     obj.character = 0
-    obj.palette = 8   # +8 already applied (matches OAM decoder in update_low_table)
+    obj.palette = (
+        8  # +8 already applied (matches OAM decoder in update_low_table)
+    )
     obj.priority = 0
     obj.h_flip = False
     obj.v_flip = False
-    obj.size = False   # 8×8 sprite (small size)
+    obj.size = False  # 8×8 sprite (small size)
     obj.name_select = False
 
 
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
+
 
 class TestSpriteRendering:
     def test_sprite_pixels_written_to_framebuffer(self):
@@ -148,7 +152,7 @@ class TestSpriteRendering:
         obj_renderer.copy_obj_pixels_for_priority(ppu)
 
         # Columns 9 and 18 are adjacent to the sprite — must be backdrop (black)
-        assert _pixel(ppu, 9,  5) == BLACK, "Left neighbor should be backdrop"
+        assert _pixel(ppu, 9, 5) == BLACK, "Left neighbor should be backdrop"
         assert _pixel(ppu, 18, 5) == BLACK, "Right neighbor should be backdrop"
 
     def test_transparent_sprite_pixel_does_not_overwrite_backdrop(self):
@@ -181,7 +185,9 @@ class TestSpriteRendering:
 
         ppu.v_counter = 6
         bg_renderer.draw_scanline_backdrop(ppu)
-        obj_renderer.copy_obj_pixels_for_priority(ppu)  # must not raise IndexError
+        obj_renderer.copy_obj_pixels_for_priority(
+            ppu
+        )  # must not raise IndexError
 
         # Only the visible part (x=0..4) should be green
         for x in range(0, 5):
@@ -271,10 +277,10 @@ def _setup_16x16_sprite(ppu: Ppu) -> None:
     _write_4bpp_solid_tile(ppu, TILE_BASE + 17 * TILE_SIZE_4BPP, color_index=1)
 
     # CGRAM: sprite palette 8 (color indices 129-131)
-    _write_cgram(ppu, 0,   0,  0,  0)   # backdrop = black
-    _write_cgram(ppu, 129, 0, 31,  0)   # color 1 = GREEN
-    _write_cgram(ppu, 130, 31, 0,  0)   # color 2 = RED
-    _write_cgram(ppu, 131, 0,  0, 31)   # color 3 = BLUE
+    _write_cgram(ppu, 0, 0, 0, 0)  # backdrop = black
+    _write_cgram(ppu, 129, 0, 31, 0)  # color 1 = GREEN
+    _write_cgram(ppu, 130, 31, 0, 0)  # color 2 = RED
+    _write_cgram(ppu, 131, 0, 0, 31)  # color 3 = BLUE
 
     ppu.oam_tiledata_address = 0x100
     ppu.oam_base_size = 0  # 8x8 and 16x16
@@ -390,7 +396,9 @@ TILEDATA_BG = 0x4000  # BG1/2 tile data (bytes); different region from OBJ tiles
 YELLOW = (255, 255, 0)
 
 
-def _write_bg1_4bpp_solid_tile(ppu: Ppu, tile_index: int, color_index: int) -> None:
+def _write_bg1_4bpp_solid_tile(
+    ppu: Ppu, tile_index: int, color_index: int
+) -> None:
     bp0 = 0xFF if (color_index & 1) else 0x00
     bp1 = 0xFF if (color_index & 2) else 0x00
     bp2 = 0xFF if (color_index & 4) else 0x00
@@ -403,7 +411,9 @@ def _write_bg1_4bpp_solid_tile(ppu: Ppu, tile_index: int, color_index: int) -> N
         ppu.vram[addr + 16 + row * 2 + 1] = bp3
 
 
-def _setup_bg1_tile_over_sprite(ppu: Ppu, bg_priority_bit: int, sprite_priority: int) -> None:
+def _setup_bg1_tile_over_sprite(
+    ppu: Ppu, bg_priority_bit: int, sprite_priority: int
+) -> None:
     """Place a BG1 4bpp YELLOW tile and a GREEN sprite at the same pixel.
 
     BG1 tile's tilemap priority bit controls whether it's "priority 1" in SNES
@@ -502,7 +512,9 @@ def _setup_two_overlapping_sprites(
     Sprite 1 (higher OAM index) uses palette 9 → RED.
     Both share the solid color-index-1 tile (character 0).
     """
-    _setup_sprite(ppu)  # sprite 0: palette 8 (GREEN), all others hidden at y=240
+    _setup_sprite(
+        ppu
+    )  # sprite 0: palette 8 (GREEN), all others hidden at y=240
 
     # Palette 9, color 1 = RED  →  CGRAM index 9*16 + 1 = 145
     _write_cgram(ppu, 145, 31, 0, 0)

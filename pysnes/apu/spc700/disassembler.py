@@ -4,13 +4,13 @@ from .instructions_spc700 import INSTRUCTIONS
 from .opcodes_spc700 import SPC700Opcodes
 
 _OPNAMES = {
-    SPC700Opcodes.OR:  "OR",
+    SPC700Opcodes.OR: "OR",
     SPC700Opcodes.AND: "AND",
     SPC700Opcodes.EOR: "EOR",
     SPC700Opcodes.CMP: "CMP",
     SPC700Opcodes.ADC: "ADC",
     SPC700Opcodes.SBC: "SBC",
-    SPC700Opcodes.LD:  "MOV",
+    SPC700Opcodes.LD: "MOV",
     SPC700Opcodes.ASL: "ASL",
     SPC700Opcodes.LSR: "LSR",
     SPC700Opcodes.ROL: "ROL",
@@ -24,13 +24,20 @@ _OPNAMES = {
 }
 
 _BRANCH_MNEMS = {
-    0x10: "BPL", 0x30: "BMI", 0x50: "BVC", 0x70: "BVS",
-    0x90: "BCC", 0xb0: "BCS", 0xd0: "BNE", 0xf0: "BEQ", 0x2f: "BRA",
+    0x10: "BPL",
+    0x30: "BMI",
+    0x50: "BVC",
+    0x70: "BVS",
+    0x90: "BCC",
+    0xB0: "BCS",
+    0xD0: "BNE",
+    0xF0: "BEQ",
+    0x2F: "BRA",
 }
 
 _ABS_BIT_MODS = [
-    ("OR1",  "C,${a:04X}.{b}"),
-    ("OR1",  "C,/${a:04X}.{b}"),
+    ("OR1", "C,${a:04X}.{b}"),
+    ("OR1", "C,/${a:04X}.{b}"),
     ("AND1", "C,${a:04X}.{b}"),
     ("AND1", "C,/${a:04X}.{b}"),
     ("EOR1", "C,${a:04X}.{b}"),
@@ -97,9 +104,12 @@ def _build_table():
         elif name == "FlagSet":
             flag, val = args
             mnem = {
-                ("CF", False): "CLRC", ("CF", True): "SETC",
-                ("PF", False): "CLRP", ("PF", True): "SETP",
-                ("IF", True):  "EI",   ("IF", False): "DI",
+                ("CF", False): "CLRC",
+                ("CF", True): "SETC",
+                ("PF", False): "CLRP",
+                ("PF", True): "SETP",
+                ("IF", True): "EI",
+                ("IF", False): "DI",
             }[(flag, val)]
             table[opcode] = (mnem, 0, lambda pc: "")
 
@@ -151,21 +161,41 @@ def _build_table():
             table[opcode] = (mnem, 1, lambda pc, b: f"${_rel(b, pc + 2):04X}")
 
         elif name == "BranchNotYDecrement":
-            table[opcode] = ("DBNZ", 1, lambda pc, b: f"Y,${_rel(b, pc + 2):04X}")
+            table[opcode] = (
+                "DBNZ",
+                1,
+                lambda pc, b: f"Y,${_rel(b, pc + 2):04X}",
+            )
 
         elif name == "BranchNotDirect":
-            table[opcode] = ("CBNE", 2, lambda pc, d, r: f"${d:02X},${_rel(r, pc + 3):04X}")
+            table[opcode] = (
+                "CBNE",
+                2,
+                lambda pc, d, r: f"${d:02X},${_rel(r, pc + 3):04X}",
+            )
 
         elif name == "BranchNotDirectDecrement":
-            table[opcode] = ("DBNZ", 2, lambda pc, d, r: f"${d:02X},${_rel(r, pc + 3):04X}")
+            table[opcode] = (
+                "DBNZ",
+                2,
+                lambda pc, d, r: f"${d:02X},${_rel(r, pc + 3):04X}",
+            )
 
         elif name == "BranchNotDirectIndexed":
-            table[opcode] = ("CBNE", 2, lambda pc, d, r: f"${d:02X}+X,${_rel(r, pc + 3):04X}")
+            table[opcode] = (
+                "CBNE",
+                2,
+                lambda pc, d, r: f"${d:02X}+X,${_rel(r, pc + 3):04X}",
+            )
 
         elif name == "BranchBit":
             bit, match = args
             mnem = "BBS" if match else "BBC"
-            table[opcode] = (mnem, 2, lambda pc, d, r, b=bit: f"${d:02X}.{b},${_rel(r, pc + 3):04X}")
+            table[opcode] = (
+                mnem,
+                2,
+                lambda pc, d, r, b=bit: f"${d:02X}.{b},${_rel(r, pc + 3):04X}",
+            )
 
         elif name == "AbsoluteBitSet":
             bit, val = args
@@ -175,8 +205,13 @@ def _build_table():
         elif name == "AbsoluteBitModify":
             mode = args[0]
             mnem, fmt = _ABS_BIT_MODS[mode]
-            table[opcode] = (mnem, 2, lambda pc, lo, hi, _fmt=fmt, _m=mode: _fmt.format(
-                a=(hi << 8 | lo) & 0x1fff, b=(hi << 8 | lo) >> 13))
+            table[opcode] = (
+                mnem,
+                2,
+                lambda pc, lo, hi, _fmt=fmt, _m=mode: _fmt.format(
+                    a=(hi << 8 | lo) & 0x1FFF, b=(hi << 8 | lo) >> 13
+                ),
+            )
 
         elif name == "ImmediateRead":
             func, reg = args
@@ -204,7 +239,11 @@ def _build_table():
         elif name == "DirectIndexedRead":
             func, reg_t, reg_i = args
             mnem = _OPNAMES[func]
-            table[opcode] = (mnem, 1, lambda pc, d, rt=reg_t, ri=reg_i: f"{rt},${d:02X}+{ri}")
+            table[opcode] = (
+                mnem,
+                1,
+                lambda pc, d, rt=reg_t, ri=reg_i: f"{rt},${d:02X}+{ri}",
+            )
 
         elif name == "DirectIndexedModify":
             func, reg = args
@@ -213,7 +252,11 @@ def _build_table():
 
         elif name == "DirectIndexedWrite":
             reg_d, reg_i = args
-            table[opcode] = ("MOV", 1, lambda pc, d, rd=reg_d, ri=reg_i: f"${d:02X}+{ri},{rd}")
+            table[opcode] = (
+                "MOV",
+                1,
+                lambda pc, d, rd=reg_d, ri=reg_i: f"${d:02X}+{ri},{rd}",
+            )
 
         elif name == "IndexedIndirectRead":
             func, reg = args
@@ -227,11 +270,19 @@ def _build_table():
 
         elif name == "IndexedIndirectWrite":
             reg_d, reg_i = args
-            table[opcode] = ("MOV", 1, lambda pc, d, rd=reg_d, ri=reg_i: f"(${d:02X}+{ri}),{rd}")
+            table[opcode] = (
+                "MOV",
+                1,
+                lambda pc, d, rd=reg_d, ri=reg_i: f"(${d:02X}+{ri}),{rd}",
+            )
 
         elif name == "IndirectIndexedWrite":
             reg_d, reg_i = args
-            table[opcode] = ("MOV", 1, lambda pc, d, rd=reg_d, ri=reg_i: f"(${d:02X})+{ri},{rd}")
+            table[opcode] = (
+                "MOV",
+                1,
+                lambda pc, d, rd=reg_d, ri=reg_i: f"(${d:02X})+{ri},{rd}",
+            )
 
         elif name == "DirectReadWord":
             func = args[0]
@@ -271,38 +322,74 @@ def _build_table():
         elif name == "AbsoluteRead":
             func, reg = args
             mnem = _OPNAMES[func]
-            table[opcode] = (mnem, 2, lambda pc, lo, hi, r=reg: f"{r},${(hi<<8|lo):04X}")
+            table[opcode] = (
+                mnem,
+                2,
+                lambda pc, lo, hi, r=reg: f"{r},${(hi << 8 | lo):04X}",
+            )
 
         elif name == "AbsoluteModify":
             func = args[0]
             mnem = _OPNAMES[func]
-            table[opcode] = (mnem, 2, lambda pc, lo, hi: f"${(hi<<8|lo):04X}")
+            table[opcode] = (
+                mnem,
+                2,
+                lambda pc, lo, hi: f"${(hi << 8 | lo):04X}",
+            )
 
         elif name == "AbsoluteWrite":
             reg = args[0]
-            table[opcode] = ("MOV", 2, lambda pc, lo, hi, r=reg: f"${(hi<<8|lo):04X},{r}")
+            table[opcode] = (
+                "MOV",
+                2,
+                lambda pc, lo, hi, r=reg: f"${(hi << 8 | lo):04X},{r}",
+            )
 
         elif name == "AbsoluteIndexedRead":
             func, reg = args
             mnem = _OPNAMES[func]
-            table[opcode] = (mnem, 2, lambda pc, lo, hi, r=reg: f"A,${(hi<<8|lo):04X}+{r}")
+            table[opcode] = (
+                mnem,
+                2,
+                lambda pc, lo, hi, r=reg: f"A,${(hi << 8 | lo):04X}+{r}",
+            )
 
         elif name == "AbsoluteIndexedWrite":
             reg = args[0]
-            table[opcode] = ("MOV", 2, lambda pc, lo, hi, r=reg: f"${(hi<<8|lo):04X}+{r},A")
+            table[opcode] = (
+                "MOV",
+                2,
+                lambda pc, lo, hi, r=reg: f"${(hi << 8 | lo):04X}+{r},A",
+            )
 
         elif name == "TestSetBitsAbsolute":
             mnem = "TSET1" if args[0] else "TCLR1"
-            table[opcode] = (mnem, 2, lambda pc, lo, hi: f"${(hi<<8|lo):04X}")
+            table[opcode] = (
+                mnem,
+                2,
+                lambda pc, lo, hi: f"${(hi << 8 | lo):04X}",
+            )
 
         elif name == "JumpAbsolute":
-            table[opcode] = ("JMP", 2, lambda pc, lo, hi: f"${(hi<<8|lo):04X}")
+            table[opcode] = (
+                "JMP",
+                2,
+                lambda pc, lo, hi: f"${(hi << 8 | lo):04X}",
+            )
 
         elif name == "JumpIndirectX":
-            table[opcode] = ("JMP", 2, lambda pc, lo, hi: f"(${(hi<<8|lo):04X}+X)")
+            table[opcode] = (
+                "JMP",
+                2,
+                lambda pc, lo, hi: f"(${(hi << 8 | lo):04X}+X)",
+            )
 
         elif name == "CallAbsolute":
-            table[opcode] = ("JSR", 2, lambda pc, lo, hi: f"${(hi<<8|lo):04X}")
+            table[opcode] = (
+                "JSR",
+                2,
+                lambda pc, lo, hi: f"${(hi << 8 | lo):04X}",
+            )
 
         elif name == "CallPage":
             table[opcode] = ("PCALL", 1, lambda pc, d: f"${d:02X}")

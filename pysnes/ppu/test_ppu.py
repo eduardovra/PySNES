@@ -25,16 +25,16 @@ from pysnes.harness._png import write_png as _write_png
 
 pytestmark = pytest.mark.ppu
 
-REPO_ROOT     = Path(__file__).parent.parent.parent
-PPU_ROMS      = REPO_ROOT / "submodules" / "SNES" / "PPU"
+REPO_ROOT = Path(__file__).parent.parent.parent
+PPU_ROMS = REPO_ROOT / "submodules" / "SNES" / "PPU"
 LIDNARIQ_ROMS = REPO_ROOT / "submodules" / "snes-test-roms"
-ACTUALS_DIR   = REPO_ROOT / "tests" / "ppu_references"
+ACTUALS_DIR = REPO_ROOT / "tests" / "ppu_references"
 MC_PER_FRAME = 262 * 1364
-SCREEN_W     = 256
-SCREEN_H     = 224
+SCREEN_W = 256
+SCREEN_H = 224
 
 # Mesen getScreenBuffer() returns 256x239; visible 224 lines start at row 7.
-MESEN_BUF_H      = 239
+MESEN_BUF_H = 239
 MESEN_ROW_OFFSET = 7
 
 
@@ -45,6 +45,7 @@ MESEN_ROW_OFFSET = 7
 # ---------------------------------------------------------------------------
 # PySNES framebuffer capture
 # ---------------------------------------------------------------------------
+
 
 def _run_pysnes(rom_path: Path, n_frames: int) -> list:
     """Run PySNES headlessly for n_frames and return SCREEN_H×SCREEN_W (R,G,B) tuples."""
@@ -82,9 +83,11 @@ def _run_pysnes(rom_path: Path, n_frames: int) -> list:
 # Mesen oracle
 # ---------------------------------------------------------------------------
 
+
 def _mesen_bin(config) -> str:
     """Return path to Mesen binary, or pytest.skip() if not found."""
     from pysnes import settings as s  # noqa: PLC0415
+
     cfg = s.load()
     candidates = [
         os.environ.get("MESEN_BIN"),
@@ -134,18 +137,20 @@ def _run_mesen(mesen: str, rom_path: Path, n_frames: int) -> list:
         hires = count == (SCREEN_W * 2) * (MESEN_BUF_H * 2)
         if not hires and count != SCREEN_W * MESEN_BUF_H:
             pytest.fail(f"Unexpected Mesen buffer size: {count} pixels")
-        buf_w      = SCREEN_W * 2 if hires else SCREEN_W
+        buf_w = SCREEN_W * 2 if hires else SCREEN_W
         row_offset = MESEN_ROW_OFFSET * 2 if hires else MESEN_ROW_OFFSET
-        col_step   = 2 if hires else 1
-        row_step   = 2 if hires else 1
+        col_step = 2 if hires else 1
+        row_step = 2 if hires else 1
 
         pixels = []
         for row in range(SCREEN_H):
             for col in range(SCREEN_W):
-                v = pixels_u32[(row_offset + row * row_step) * buf_w + col * col_step]
+                v = pixels_u32[
+                    (row_offset + row * row_step) * buf_w + col * col_step
+                ]
                 r = (v >> 16) & 0xFF
-                g = (v >>  8) & 0xFF
-                b =  v        & 0xFF
+                g = (v >> 8) & 0xFF
+                b = v & 0xFF
                 pixels.append((r, g, b))
         return pixels
     finally:
@@ -232,7 +237,10 @@ PPU_TEST_ROMS = [
         "ppubusact",
         LIDNARIQ_ROMS / "lidnariq-ppu-bus-activity" / "ppubusact.sfc",
         20,
-        marks=pytest.mark.xfail(reason="Modes 3/4 (8BPP/OPT) and 5/6 (hi-res) not fully implemented", strict=False),
+        marks=pytest.mark.xfail(
+            reason="Modes 3/4 (8BPP/OPT) and 5/6 (hi-res) not fully implemented",
+            strict=False,
+        ),
         id="ppubusact",
     ),
 ]
@@ -241,12 +249,17 @@ PPU_TEST_ROMS = [
 @pytest.mark.parametrize(
     "test_id,rom_rel,n_frames",
     PPU_TEST_ROMS,
-    ids=[t[0] if not hasattr(t, 'id') or t.id is None else t.id for t in PPU_TEST_ROMS],
+    ids=[
+        t[0] if not hasattr(t, "id") or t.id is None else t.id
+        for t in PPU_TEST_ROMS
+    ],
 )
 def test_ppu_screenshot(request, test_id, rom_rel, n_frames):
     """Compare PySNES framebuffer against Mesen oracle at the same frame count."""
     rom_rel_path = Path(rom_rel)
-    rom_path = rom_rel_path if rom_rel_path.is_absolute() else PPU_ROMS / rom_rel
+    rom_path = (
+        rom_rel_path if rom_rel_path.is_absolute() else PPU_ROMS / rom_rel
+    )
 
     if not rom_path.exists():
         pytest.skip(f"ROM not found: {rom_path}")

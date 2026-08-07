@@ -33,10 +33,22 @@ class StubRom:
         self.rom = bytearray(size)
         self.snes_header = SimpleNamespace(mapping_mode=MappingMode.LOROM)
         self.hardware_vectors = HardwareVectors(
-            native=InterruptVectors(cop=0x8000, brk=0x8000, abort=0x8000,
-                                    nmi=0x8000, reset=0, irq=0x8000),
-            emulation=InterruptVectors(cop=0x8000, brk=0, abort=0x8000,
-                                       nmi=0x8000, reset=0x8000, irq=0x8000),
+            native=InterruptVectors(
+                cop=0x8000,
+                brk=0x8000,
+                abort=0x8000,
+                nmi=0x8000,
+                reset=0,
+                irq=0x8000,
+            ),
+            emulation=InterruptVectors(
+                cop=0x8000,
+                brk=0,
+                abort=0x8000,
+                nmi=0x8000,
+                reset=0x8000,
+                irq=0x8000,
+            ),
         )
 
     def __getitem__(self, addr):
@@ -64,26 +76,27 @@ REPEAT = 3
 CASES = [
     # (label, setup, stmt)
     # --- via __getitem__/__setitem__ (Python slot dispatch → thin wrapper → read/write) ---
-    ("low_ram_read       []",  "",  "bus.read(0x000100)"),
-    ("low_ram_write      []",  "",  "bus.__setitem__(0x000100, 0xAB)"),
-    ("rom_read           []",  "",  "bus.read(0x008010)"),
-    ("high_ram_read      []",  "",  "bus.read(0x7E3000)"),
-    ("extended_ram_read  []",  "",  "bus.read(0x7E8000)"),
-    ("rdnmi_read         []",  "",  "bus.read(0x004210)"),
-    ("hvbjoy_read        []",  "",  "bus.read(0x004212)"),
-    ("apu_port_read      []",  "",  "bus.read(0x002140)"),
+    ("low_ram_read       []", "", "bus.read(0x000100)"),
+    ("low_ram_write      []", "", "bus.__setitem__(0x000100, 0xAB)"),
+    ("rom_read           []", "", "bus.read(0x008010)"),
+    ("high_ram_read      []", "", "bus.read(0x7E3000)"),
+    ("extended_ram_read  []", "", "bus.read(0x7E8000)"),
+    ("rdnmi_read         []", "", "bus.read(0x004210)"),
+    ("hvbjoy_read        []", "", "bus.read(0x004212)"),
+    ("apu_port_read      []", "", "bus.read(0x002140)"),
     # --- via bus.read()/bus.write() (direct Python call into cfunc; inlined when called from Cython) ---
-    ("low_ram_read    .read",  "",  "bus.read(0x000100)"),
-    ("low_ram_write  .write",  "",  "bus.write(0x000100, 0xAB)"),
-    ("rom_read        .read",  "",  "bus.read(0x008010)"),
-    ("high_ram_read   .read",  "",  "bus.read(0x7E3000)"),
-    ("extended_ram    .read",  "",  "bus.read(0x7E8000)"),
-    ("rdnmi_read      .read",  "",  "bus.read(0x004210)"),
-    ("hvbjoy_read     .read",  "",  "bus.read(0x004212)"),
-    ("apu_port_read   .read",  "",  "bus.read(0x002140)"),
+    ("low_ram_read    .read", "", "bus.read(0x000100)"),
+    ("low_ram_write  .write", "", "bus.write(0x000100, 0xAB)"),
+    ("rom_read        .read", "", "bus.read(0x008010)"),
+    ("high_ram_read   .read", "", "bus.read(0x7E3000)"),
+    ("extended_ram    .read", "", "bus.read(0x7E8000)"),
+    ("rdnmi_read      .read", "", "bus.read(0x004210)"),
+    ("hvbjoy_read     .read", "", "bus.read(0x004212)"),
+    ("apu_port_read   .read", "", "bus.read(0x002140)"),
 ]
 
 COL_W = 22
+
 
 def run():
     bus = make_bus()

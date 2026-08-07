@@ -14,6 +14,7 @@ Bus-write hooks are surfaced via a poll/drain pattern — `watch_writes(lo, hi)`
 appends to an internal log; `drain_writes()` returns and clears it. This keeps
 the protocol strictly request/response, no async events.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -54,8 +55,12 @@ class _CLI:
     def clear_input(self) -> None:
         self.h.clear_input()
 
-    def tap(self, buttons: Any, hold_frames: int = 2, gap_frames: int = 1) -> dict[str, int]:
-        self.h.tap(buttons, hold_frames=int(hold_frames), gap_frames=int(gap_frames))
+    def tap(
+        self, buttons: Any, hold_frames: int = 2, gap_frames: int = 1
+    ) -> dict[str, int]:
+        self.h.tap(
+            buttons, hold_frames=int(hold_frames), gap_frames=int(gap_frames)
+        )
         return self._state()
 
     def play(self, macro: list) -> dict[str, int]:
@@ -77,7 +82,12 @@ class _CLI:
         return _b64_blob(self.h.oam())
 
     def wram(self, addr: int, length: int) -> dict[str, Any]:
-        return _b64_blob(self.h.wram(int(addr, 0) if isinstance(addr, str) else int(addr), int(length)))
+        return _b64_blob(
+            self.h.wram(
+                int(addr, 0) if isinstance(addr, str) else int(addr),
+                int(length),
+            )
+        )
 
     def cpu_state(self) -> dict[str, Any]:
         return self.h.cpu_state()
@@ -86,13 +96,21 @@ class _CLI:
         return self.h.ppu_state()
 
     def state(self) -> dict[str, Any]:
-        return {**self._state(), "cpu": self.h.cpu_state(), "ppu": self.h.ppu_state()}
+        return {
+            **self._state(),
+            "cpu": self.h.cpu_state(),
+            "ppu": self.h.ppu_state(),
+        }
 
     def set_breakpoint(self, addr: int) -> None:
-        self.h.set_breakpoint(int(addr, 0) if isinstance(addr, str) else int(addr))
+        self.h.set_breakpoint(
+            int(addr, 0) if isinstance(addr, str) else int(addr)
+        )
 
     def clear_breakpoint(self, addr: int) -> None:
-        self.h.clear_breakpoint(int(addr, 0) if isinstance(addr, str) else int(addr))
+        self.h.clear_breakpoint(
+            int(addr, 0) if isinstance(addr, str) else int(addr)
+        )
 
     def watch_writes(self, lo: int, hi: int) -> None:
         """Install a write-watch on the [lo, hi] address range. Captured writes
@@ -145,7 +163,9 @@ def _b64_blob(data: bytes) -> dict[str, Any]:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="PySNES harness RPC over NDJSON.")
+    parser = argparse.ArgumentParser(
+        description="PySNES harness RPC over NDJSON."
+    )
     parser.add_argument("--rom", required=True, help="Path to ROM file.")
     parser.add_argument("--sram", help="Optional SRAM path.", default=None)
     args = parser.parse_args(argv)
@@ -154,7 +174,9 @@ def main(argv: list[str] | None = None) -> int:
     cli = _CLI(harness)
 
     # Greet so the caller knows we're ready.
-    sys.stdout.write(json.dumps({"ok": True, "ready": True, **cli._state()}) + "\n")
+    sys.stdout.write(
+        json.dumps({"ok": True, "ready": True, **cli._state()}) + "\n"
+    )
     sys.stdout.flush()
 
     try:

@@ -15,11 +15,11 @@ class InstructionSlot:
     """
 
     def __init__(self, func, a0, a1=None, a2=None, a3=None):
-        self._func  = func
-        self._a0    = a0
-        self._a1    = a1
-        self._a2    = a2
-        self._a3    = a3
+        self._func = func
+        self._a0 = a0
+        self._a1 = a1
+        self._a2 = a2
+        self._a3 = a3
         if a3 is not None:
             self._nargs = 4
         elif a2 is not None:
@@ -41,7 +41,6 @@ class InstructionSlot:
 
 
 class Timer:
-
     def __init__(self, apu: "Apu", frequency: int) -> None:
         self.apu = apu
         self.frequency = frequency
@@ -53,8 +52,13 @@ class Timer:
         self.target = 0x00
 
     _STATE_FIELDS = (
-        "frequency", "stage0", "stage2", "stage3", "stage3_shadow",
-        "enable", "target",
+        "frequency",
+        "stage0",
+        "stage2",
+        "stage3",
+        "stage3_shadow",
+        "enable",
+        "target",
     )
 
     def dump_state(self) -> dict:
@@ -134,10 +138,10 @@ class Apu:
     def reset_registers(self):
         # Registers
         self.PC = 0xFFC0  # Program Counter (16 bit)
-        self.A =  0x00    # Accumulator (8 bit)
-        self.X =  0x00    # X Index Register (8 bit)
-        self.Y =  0x00    # Y Index Register (8 bit)
-        self.S =  0xEF    # Stack Pointer (8 bit) - always on page 1
+        self.A = 0x00  # Accumulator (8 bit)
+        self.X = 0x00  # X Index Register (8 bit)
+        self.Y = 0x00  # Y Index Register (8 bit)
+        self.S = 0xEF  # Stack Pointer (8 bit) - always on page 1
 
         # Flags stored in PSW Register
         self.NF = False  # Negative
@@ -146,7 +150,7 @@ class Apu:
         self.BF = False  # Break
         self.HF = False  # Half carry
         self.IF = False  # Interrupt enabled (unused)
-        self.ZF = True   # Zero
+        self.ZF = True  # Zero
         self.CF = False  # Carry
 
         self.timers = [Timer(self, 128), Timer(self, 128), Timer(self, 16)]
@@ -191,7 +195,7 @@ class Apu:
         self.trace_enabled = False
         self.trace_log = []
 
-        if hasattr(self, 'dsp') and self.dsp is not None:
+        if hasattr(self, "dsp") and self.dsp is not None:
             self.dsp = Dsp(self.read_ram)
 
     def allocate_memory(self):
@@ -208,7 +212,9 @@ class Apu:
         ))
         # fmt: on
 
-        self.page_0 = bytearray(0x0100)  # 0x00–0xFF; upper 16 bytes used by _io_flat mode
+        self.page_0 = bytearray(
+            0x0100
+        )  # 0x00–0xFF; upper 16 bytes used by _io_flat mode
         self.page_1 = bytearray(0x0100)
 
         # The IO Port0-4 registers have separete memory for R/W
@@ -216,14 +222,34 @@ class Apu:
         self.ports_w = bytearray(4)  # APU writes to
 
     _SCALAR_STATE = (
-        "PC", "A", "X", "Y", "S",
-        "NF", "VF", "PF", "BF", "HF", "IF", "ZF", "CF",
-        "_last_synced_mc", "_apu_mc_frac", "cycles",
+        "PC",
+        "A",
+        "X",
+        "Y",
+        "S",
+        "NF",
+        "VF",
+        "PF",
+        "BF",
+        "HF",
+        "IF",
+        "ZF",
+        "CF",
+        "_last_synced_mc",
+        "_apu_mc_frac",
+        "cycles",
         "_control_register_raw",
-        "dsp_register_address", "dsp_register_data",
-        "auxio4", "auxio5",
-        "ipl_rom_enable", "timers_disable", "ram_writable", "ram_disable",
-        "timers_enable", "external_wait_states", "internal_wait_states",
+        "dsp_register_address",
+        "dsp_register_data",
+        "auxio4",
+        "auxio5",
+        "ipl_rom_enable",
+        "timers_disable",
+        "ram_writable",
+        "ram_disable",
+        "timers_enable",
+        "external_wait_states",
+        "internal_wait_states",
     )
 
     def dump_state(self) -> dict:
@@ -239,7 +265,7 @@ class Apu:
 
     def load_state(self, d: dict) -> None:
         self.memory[:] = d["memory"]
-        self.page_0[:len(d["page_0"])] = d["page_0"]
+        self.page_0[: len(d["page_0"])] = d["page_0"]
         self.page_1[:] = d["page_1"]
         self.ports_r[:] = d["ports_r"]
         self.ports_w[:] = d["ports_w"]
@@ -256,7 +282,9 @@ class Apu:
             self.debug_symbols[opcode] = f"{addr_mode.__name__}"
             if args:
                 if hasattr(args[0], "__name__"):
-                    self.debug_symbols[opcode] += f" {args[0].__name__} {args[1:]}"
+                    self.debug_symbols[opcode] += (
+                        f" {args[0].__name__} {args[1:]}"
+                    )
                 else:
                     self.debug_symbols[opcode] += f" {args}"
             self.debug_symbols[opcode] = self.debug_symbols[opcode].ljust(30)
@@ -302,12 +330,12 @@ class Apu:
         self.ipl_rom = bytearray(spc.extra_ram)
 
         # CPU registers
-        self.PC  = spc.pc
-        self.A   = spc.a
-        self.X   = spc.x
-        self.Y   = spc.y
+        self.PC = spc.pc
+        self.A = spc.a
+        self.X = spc.x
+        self.Y = spc.y
         self.PSW = spc.psw
-        self.S   = spc.sp
+        self.S = spc.sp
 
         # DSP registers
         for addr, val in enumerate(spc.dsp_regs):
@@ -409,7 +437,9 @@ class Apu:
             if isinstance(self.ipl_rom, bytearray):
                 self.ipl_rom[addr - 0xFFC0] = value
         else:
-            raise NotImplementedError(f"Write to unmapped APU address 0x{addr:04X}")
+            raise NotImplementedError(
+                f"Write to unmapped APU address 0x{addr:04X}"
+            )
 
     def write(self, addr: int, data: int) -> None:
         self._write(addr, data)
@@ -448,11 +478,16 @@ class Apu:
             + ("Z" if self.ZF else "z")
             + ("C" if self.CF else "c")
         )
-        return "{:<24} A:{:02X} X:{:02X} Y:{:02X} S:{:02X} PSW:{:02X} {}".format(
-            disasm,
-            self.A, self.X, self.Y, self.S,
-            self.PSW,
-            flags,
+        return (
+            "{:<24} A:{:02X} X:{:02X} Y:{:02X} S:{:02X} PSW:{:02X} {}".format(
+                disasm,
+                self.A,
+                self.X,
+                self.Y,
+                self.S,
+                self.PSW,
+                flags,
+            )
         )
 
     def fetch_and_execute(self):
@@ -464,10 +499,16 @@ class Apu:
             self.trace_log.append(line)
             self.trace_log = self.trace_log[-10:]
         if self.print_debug:
-            print("\033[93mAPU 0x{:04X} 0x{:02X} {} [{:04X}] [{:02X}] {}\033[0m".format(
-                self.PC - 1, opcode, self.debug_symbols[opcode],
-                self.address, self.data, str(self),
-            ))
+            print(
+                "\033[93mAPU 0x{:04X} 0x{:02X} {} [{:04X}] [{:02X}] {}\033[0m".format(
+                    self.PC - 1,
+                    opcode,
+                    self.debug_symbols[opcode],
+                    self.address,
+                    self.data,
+                    str(self),
+                )
+            )
         self.instructions[opcode].call()
 
     # Approximate master-clock-to-APU-clock ratio (integer division)
@@ -523,7 +564,8 @@ class Apu:
 
     @property
     def PSW(self) -> int:
-        return (0
+        return (
+            0
             | self.NF << 7
             | self.VF << 6
             | self.PF << 5

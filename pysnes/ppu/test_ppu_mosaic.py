@@ -36,7 +36,9 @@ def _write_cgram(ppu: Ppu, index: int, r5: int, g5: int, b5: int) -> None:
     ppu.cgram[index * 2 + 1] = (word >> 8) & 0xFF
 
 
-def _write_4bpp_tile_horizontal_gradient(ppu: Ppu, tile_index: int, row_colors: list) -> None:
+def _write_4bpp_tile_horizontal_gradient(
+    ppu: Ppu, tile_index: int, row_colors: list
+) -> None:
     """Write a 4bpp tile where ALL 8 rows share the same horizontal gradient."""
     addr = TILEDATA + tile_index * 32
     bp0 = bp1 = bp2 = bp3 = 0
@@ -84,6 +86,7 @@ def _pixel(ppu: Ppu, x: int, y: int) -> tuple:
 # Tests
 # ---------------------------------------------------------------------------
 
+
 class TestMosaicHorizontal:
     def test_mosaic_disabled_renders_each_pixel(self):
         """Without mosaic, each of dots 0..7 shows its own gradient color."""
@@ -114,7 +117,7 @@ class TestMosaicHorizontal:
             expected = _pixel(ppu, anchor, 0)
             got = _pixel(ppu, anchor + 1, 0)
             assert got == expected, (
-                f"dot {anchor+1} should match anchor dot {anchor}: got {got} vs {expected}"
+                f"dot {anchor + 1} should match anchor dot {anchor}: got {got} vs {expected}"
             )
 
     def test_mosaic_size_4_blocks_groups_of_four(self):
@@ -132,7 +135,7 @@ class TestMosaicHorizontal:
             for offset in range(4):
                 got = _pixel(ppu, anchor + offset, 0)
                 assert got == expected, (
-                    f"dot {anchor+offset} in block@{anchor}: got {got} vs anchor {expected}"
+                    f"dot {anchor + offset} in block@{anchor}: got {got} vs anchor {expected}"
                 )
 
     def test_mosaic_disable_bit_gated_per_bg(self):

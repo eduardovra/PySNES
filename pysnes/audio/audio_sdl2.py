@@ -8,7 +8,7 @@ DSP_RATE = 32000
 CHANNELS = 2
 BUFFER_SAMPLES = 1024
 BYTES_PER_SAMPLE = CHANNELS * 2  # stereo int16 = 4 bytes per sample
-_BUSY_WAIT_HEADROOM_S = 0.001    # busy-wait the last 1 ms for precision
+_BUSY_WAIT_HEADROOM_S = 0.001  # busy-wait the last 1 ms for precision
 
 
 class AudioSDL2:
@@ -30,8 +30,8 @@ class AudioSDL2:
 
         obtained = sdl.SDL_AudioSpec(0, 0, 0, 0)
         dev_id = sdl.SDL_OpenAudioDevice(
-            None,       # default device
-            0,          # playback (not capture)
+            None,  # default device
+            0,  # playback (not capture)
             ctypes.byref(spec),
             ctypes.byref(obtained),
             sdl.SDL_AUDIO_ALLOW_FREQUENCY_CHANGE,
@@ -42,7 +42,9 @@ class AudioSDL2:
         self._dev_id = dev_id
         self._device_rate = obtained.freq if obtained.freq > 0 else DSP_RATE
         self._drain_rate = float(self._device_rate * BYTES_PER_SAMPLE)
-        self._max_queue_bytes = round(self._device_rate / 60 + 1) * BYTES_PER_SAMPLE * 4
+        self._max_queue_bytes = (
+            round(self._device_rate / 60 + 1) * BYTES_PER_SAMPLE * 4
+        )
         # Unpause to start playback
         sdl.SDL_PauseAudioDevice(dev_id, 0)
         print(
@@ -78,10 +80,14 @@ class AudioSDL2:
         data = np.ascontiguousarray(self._resample(samples), dtype=np.int16)
         queued = sdl.SDL_GetQueuedAudioSize(self._dev_id)
         if queued > self._max_queue_bytes:
-            sleep_s = (queued - self._max_queue_bytes) / self._drain_rate - _BUSY_WAIT_HEADROOM_S
+            sleep_s = (
+                queued - self._max_queue_bytes
+            ) / self._drain_rate - _BUSY_WAIT_HEADROOM_S
             if sleep_s > 0:
                 time.sleep(sleep_s)
-            while sdl.SDL_GetQueuedAudioSize(self._dev_id) > self._max_queue_bytes:
+            while (
+                sdl.SDL_GetQueuedAudioSize(self._dev_id) > self._max_queue_bytes
+            ):
                 pass  # busy-wait the last ~1 ms
         ptr = data.ctypes.data_as(ctypes.c_void_p)
         sdl.SDL_QueueAudio(self._dev_id, ptr, data.nbytes)

@@ -2,6 +2,7 @@
 PySNES Debugger — hooks into cpu._step to support breakpoints and stepping.
 Zero overhead while the emulator is running with no breakpoints set.
 """
+
 from __future__ import annotations
 
 import heapq
@@ -16,31 +17,31 @@ if TYPE_CHECKING:
 # Maps disassembler addressing-mode method names to byte lengths.
 # Variable-length modes (immediateA, immediateX) are handled separately.
 _MODE_LENGTHS: dict[str, int] = {
-    "implied":            1,
-    "immediate":          2,
-    "direct":             2,
-    "directX":            2,
-    "directY":            2,
-    "indirect":           2,
-    "indexedIndirectX":   2,
-    "indirectIndexedY":   2,
-    "indirectLong":       2,
-    "indirectLongY":      2,
-    "relative":           2,
-    "stack":              2,
-    "stackIndirect":      2,
-    "absolute":           3,
-    "absoluteX":          3,
-    "absoluteY":          3,
-    "absolutePC":         3,
-    "indirectPC":         3,
-    "indirectX":          3,
-    "relativeWord":       3,
-    "move":               3,
-    "per":                3,
-    "absoluteLong":       4,
-    "absoluteLongX":      4,
-    "indirectLongPC":     4,
+    "implied": 1,
+    "immediate": 2,
+    "direct": 2,
+    "directX": 2,
+    "directY": 2,
+    "indirect": 2,
+    "indexedIndirectX": 2,
+    "indirectIndexedY": 2,
+    "indirectLong": 2,
+    "indirectLongY": 2,
+    "relative": 2,
+    "stack": 2,
+    "stackIndirect": 2,
+    "absolute": 3,
+    "absoluteX": 3,
+    "absoluteY": 3,
+    "absolutePC": 3,
+    "indirectPC": 3,
+    "indirectX": 3,
+    "relativeWord": 3,
+    "move": 3,
+    "per": 3,
+    "absoluteLong": 4,
+    "absoluteLongX": 4,
+    "indirectLongPC": 4,
 }
 
 
@@ -60,7 +61,7 @@ class Debugger:
         self._instr_count: int = 0
 
         self._original_step = None
-        self._cmd_queue: queue.Queue = queue.Queue()   # Tkinter → emulator
+        self._cmd_queue: queue.Queue = queue.Queue()  # Tkinter → emulator
         self._notify_queue: queue.Queue = queue.Queue()  # emulator → Tkinter
         self._window = None
 
@@ -182,9 +183,11 @@ class Debugger:
         def _run():
             win = DebuggerWindow(self._cpu, self._bus, self._ppu, self)
             self._window = win
-            self._cpu.trace_enabled = True   # populate trace_log for disasm history
+            self._cpu.trace_enabled = (
+                True  # populate trace_log for disasm history
+            )
             win.root.mainloop()
-            win.root.destroy()               # destroy in daemon (Tkinter) thread
+            win.root.destroy()  # destroy in daemon (Tkinter) thread
             self._cpu.trace_enabled = False
             self._window = None
             # Force Tk object teardown on this (Tcl-owning) thread. On PyPy the

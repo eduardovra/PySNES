@@ -1,4 +1,3 @@
-
 from typing import TYPE_CHECKING
 from dataclasses import dataclass
 
@@ -11,14 +10,14 @@ _HDMA_UNIT_BYTES = [1, 2, 2, 4, 4, 4, 2, 4]
 # Register offset written per byte within a unit for each transfer mode.
 # Each sublist has one entry per byte in the unit.
 _HDMA_TARGET_OFFSETS = [
-    [0],          # mode 0: 1 byte → $21xx
-    [0, 1],       # mode 1: 2 bytes → $21xx, $21xx+1
-    [0, 0],       # mode 2: 2 bytes → $21xx, $21xx
-    [0, 0, 1, 1], # mode 3: 4 bytes → $21xx×2, $21xx+1×2
-    [0, 1, 2, 3], # mode 4: 4 bytes → $21xx, $21xx+1, $21xx+2, $21xx+3
-    [0, 1, 0, 1], # mode 5: 4 bytes → $21xx, $21xx+1 ×2
-    [0, 0],       # mode 6: same as 2
-    [0, 0, 1, 1], # mode 7: same as 3
+    [0],  # mode 0: 1 byte → $21xx
+    [0, 1],  # mode 1: 2 bytes → $21xx, $21xx+1
+    [0, 0],  # mode 2: 2 bytes → $21xx, $21xx
+    [0, 0, 1, 1],  # mode 3: 4 bytes → $21xx×2, $21xx+1×2
+    [0, 1, 2, 3],  # mode 4: 4 bytes → $21xx, $21xx+1, $21xx+2, $21xx+3
+    [0, 1, 0, 1],  # mode 5: 4 bytes → $21xx, $21xx+1 ×2
+    [0, 0],  # mode 6: same as 2
+    [0, 0, 1, 1],  # mode 7: same as 3
 ]
 
 
@@ -66,12 +65,26 @@ class Channel:
     _hdma_active: bool = False
 
     _STATE_FIELDS = (
-        "transfer_mode", "fixed_transfer", "reverse_transfer", "unused",
-        "indirect", "direction", "target_address", "source_address",
-        "source_bank", "transfer_size", "indirect_bank", "hdma_address",
-        "line_counter", "unknown", "hdma_enable",
-        "_hdma_ptr", "_hdma_bank", "_hdma_line_counter_repeat",
-        "_hdma_do_transfer", "_hdma_active",
+        "transfer_mode",
+        "fixed_transfer",
+        "reverse_transfer",
+        "unused",
+        "indirect",
+        "direction",
+        "target_address",
+        "source_address",
+        "source_bank",
+        "transfer_size",
+        "indirect_bank",
+        "hdma_address",
+        "line_counter",
+        "unknown",
+        "hdma_enable",
+        "_hdma_ptr",
+        "_hdma_bank",
+        "_hdma_line_counter_repeat",
+        "_hdma_do_transfer",
+        "_hdma_active",
     )
 
     def dump_state(self) -> dict:
@@ -95,7 +108,9 @@ class Channel:
 
         for index in range(count):
             a_bus_addr = (self.source_bank << 16) | self.source_address
-            b_bus_addr = 0x2100 | ((self.target_address + offsets[index % unit_len]) & 0xFF)
+            b_bus_addr = 0x2100 | (
+                (self.target_address + offsets[index % unit_len]) & 0xFF
+            )
 
             if self.direction == 0:
                 self.bus.write(b_bus_addr, self.bus.read(a_bus_addr))
@@ -108,11 +123,12 @@ class Channel:
         # overhead.  Also sync _last_refresh_scanline so the CPU's post-DMA
         # DRAM refresh check doesn't add a spurious 40 MC penalty.
         self.bus.scheduler.master_clock += count * 8 + 24
-        self.bus.cpu._last_refresh_scanline = self.bus.scheduler.master_clock // 1364
+        self.bus.cpu._last_refresh_scanline = (
+            self.bus.scheduler.master_clock // 1364
+        )
 
 
 class DMA:
-
     def __init__(self, bus: "Bus") -> None:
         self.channels = [Channel(bus) for _ in range(8)]
 
@@ -186,16 +202,26 @@ class DMA:
                 | ((channel.indirect & 1) << 6)
                 | ((channel.direction & 1) << 7)
             )
-        if addr == 0x4301:  return channel.target_address & 0xFF
-        if addr == 0x4302:  return channel.source_address & 0xFF
-        if addr == 0x4303:  return (channel.source_address >> 8) & 0xFF
-        if addr == 0x4304:  return channel.source_bank & 0xFF
-        if addr == 0x4305:  return channel.transfer_size & 0xFF
-        if addr == 0x4306:  return (channel.transfer_size >> 8) & 0xFF
-        if addr == 0x4307:  return channel.indirect_bank & 0xFF
-        if addr == 0x4308:  return channel.hdma_address & 0xFF
-        if addr == 0x4309:  return (channel.hdma_address >> 8) & 0xFF
-        if addr == 0x430A:  return channel.line_counter & 0xFF
+        if addr == 0x4301:
+            return channel.target_address & 0xFF
+        if addr == 0x4302:
+            return channel.source_address & 0xFF
+        if addr == 0x4303:
+            return (channel.source_address >> 8) & 0xFF
+        if addr == 0x4304:
+            return channel.source_bank & 0xFF
+        if addr == 0x4305:
+            return channel.transfer_size & 0xFF
+        if addr == 0x4306:
+            return (channel.transfer_size >> 8) & 0xFF
+        if addr == 0x4307:
+            return channel.indirect_bank & 0xFF
+        if addr == 0x4308:
+            return channel.hdma_address & 0xFF
+        if addr == 0x4309:
+            return (channel.hdma_address >> 8) & 0xFF
+        if addr == 0x430A:
+            return channel.line_counter & 0xFF
         if addr == 0x430B or addr == 0x430F:
             return channel.unknown & 0xFF
         return 0
@@ -239,7 +265,9 @@ class DMA:
 
         if ch.indirect:
             lo = ch.bus.read(ch._hdma_bank << 16 | ch._hdma_ptr)
-            hi = ch.bus.read(ch._hdma_bank << 16 | ((ch._hdma_ptr + 1) & 0xFFFF))
+            hi = ch.bus.read(
+                ch._hdma_bank << 16 | ((ch._hdma_ptr + 1) & 0xFFFF)
+            )
             ch.transfer_size = (hi << 8) | lo
             ch._hdma_ptr = (ch._hdma_ptr + 2) & 0xFFFF
 
@@ -268,17 +296,30 @@ class DMA:
             if ch._hdma_do_transfer:
                 if ch.indirect:
                     for i in range(unit_bytes):
-                        byte = ch.bus.read((data_bank << 16) | ((ch.transfer_size + i) & 0xFFFF))
-                        ch.bus.write(0x2100 | ((ch.target_address + offsets[i]) & 0xFF), byte)
+                        byte = ch.bus.read(
+                            (data_bank << 16)
+                            | ((ch.transfer_size + i) & 0xFFFF)
+                        )
+                        ch.bus.write(
+                            0x2100 | ((ch.target_address + offsets[i]) & 0xFF),
+                            byte,
+                        )
                     ch.transfer_size = (ch.transfer_size + unit_bytes) & 0xFFFF
                 else:
                     for i in range(unit_bytes):
-                        byte = ch.bus.read((data_bank << 16) | ((ch._hdma_ptr + i) & 0xFFFF))
-                        ch.bus.write(0x2100 | ((ch.target_address + offsets[i]) & 0xFF), byte)
+                        byte = ch.bus.read(
+                            (data_bank << 16) | ((ch._hdma_ptr + i) & 0xFFFF)
+                        )
+                        ch.bus.write(
+                            0x2100 | ((ch.target_address + offsets[i]) & 0xFF),
+                            byte,
+                        )
                     ch._hdma_ptr = (ch._hdma_ptr + unit_bytes) & 0xFFFF
 
             # Step 2: decrement the full counter byte.
-            ch._hdma_line_counter_repeat = (ch._hdma_line_counter_repeat - 1) & 0xFF
+            ch._hdma_line_counter_repeat = (
+                ch._hdma_line_counter_repeat - 1
+            ) & 0xFF
 
             # Step 3: DoTransfer for next scanline = bit 7 of decremented counter.
             ch._hdma_do_transfer = bool(ch._hdma_line_counter_repeat & 0x80)

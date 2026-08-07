@@ -4,6 +4,7 @@ Reads CPU/PPU/bus state directly (no copies) when the emulator is paused.
 All reads use direct Python attribute access — never bus.read() — to avoid
 hardware register side effects (e.g. OAM/CGRAM address auto-increment).
 """
+
 from __future__ import annotations
 
 import threading
@@ -27,20 +28,28 @@ _HEX_COLS = 16
 def _cpu_flags_str(cpu) -> str:
     p = cpu.P
     names = ("N", "V", "M", "X", "D", "I", "Z", "C")
-    bits  = (0x80, 0x40, 0x20, 0x10, 0x08, 0x04, 0x02, 0x01)
+    bits = (0x80, 0x40, 0x20, 0x10, 0x08, 0x04, 0x02, 0x01)
     return "".join(n if p & b else n.lower() for n, b in zip(names, bits))
 
 
 def _apu_flags_str(apu) -> str:
     flags = (
-        ("N", apu.NF), ("V", apu.VF), ("P", apu.PF), ("B", apu.BF),
-        ("H", apu.HF), ("I", apu.IF), ("Z", apu.ZF), ("C", apu.CF),
+        ("N", apu.NF),
+        ("V", apu.VF),
+        ("P", apu.PF),
+        ("B", apu.BF),
+        ("H", apu.HF),
+        ("I", apu.IF),
+        ("Z", apu.ZF),
+        ("C", apu.CF),
     )
     return "".join(n if v else n.lower() for n, v in flags)
 
 
 class DebuggerWindow:
-    def __init__(self, cpu: Cpu, bus: Bus, ppu: Ppu, debugger: Debugger) -> None:
+    def __init__(
+        self, cpu: Cpu, bus: Bus, ppu: Ppu, debugger: Debugger
+    ) -> None:
         self._cpu = cpu
         self._bus = bus
         self._ppu = ppu
@@ -73,10 +82,12 @@ class DebuggerWindow:
         reg_notebook = ttk.Notebook(top)
         reg_notebook.pack(side="left", fill="both", expand=True, padx=(0, 4))
 
-        for tab_name, attr in (("CPU", "_cpu_reg_text"),
-                                ("APU", "_apu_reg_text"),
-                                ("PPU", "_ppu_reg_text"),
-                                ("Stack", "_stack_text")):
+        for tab_name, attr in (
+            ("CPU", "_cpu_reg_text"),
+            ("APU", "_apu_reg_text"),
+            ("PPU", "_ppu_reg_text"),
+            ("Stack", "_stack_text"),
+        ):
             frame = ttk.Frame(reg_notebook)
             reg_notebook.add(frame, text=tab_name)
             t = self._make_text(frame, width=44, height=12)
@@ -96,8 +107,12 @@ class DebuggerWindow:
         ttk.Label(mem_ctrl, text="Region:").pack(side="left")
         self._region_buttons: dict[str, ttk.Radiobutton] = {}
         for r in _REGIONS:
-            btn = ttk.Radiobutton(mem_ctrl, text=r, value=r,
-                                  command=lambda region=r: self._on_mem_region_change(region))
+            btn = ttk.Radiobutton(
+                mem_ctrl,
+                text=r,
+                value=r,
+                command=lambda region=r: self._on_mem_region_change(region),
+            )
             btn.pack(side="left", padx=2)
             if r == self._mem_region_val:
                 btn.state(["selected"])
@@ -118,9 +133,15 @@ class DebuggerWindow:
         bp_frame = ttk.LabelFrame(bot, text="Breakpoints")
         bp_frame.pack(side="left", fill="both", expand=True, padx=(0, 4))
 
-        self._bp_list = tk.Listbox(bp_frame, bg="#252526", fg="#d4d4d4",
-                                   selectbackground="#094771", font=("Courier", 10),
-                                   height=5, width=12)
+        self._bp_list = tk.Listbox(
+            bp_frame,
+            bg="#252526",
+            fg="#d4d4d4",
+            selectbackground="#094771",
+            font=("Courier", 10),
+            height=5,
+            width=12,
+        )
         self._bp_list.pack(side="left", fill="both", expand=True)
 
         bp_btns = ttk.Frame(bp_frame)
@@ -131,31 +152,50 @@ class DebuggerWindow:
         self._bp_addr_entry = ttk.Entry(add_row, width=8)
         self._bp_addr_entry.pack(side="left")
         self._bp_addr_entry.bind("<Return>", lambda _e: self._cmd_add_bp())
-        ttk.Button(add_row, text="Add", command=self._cmd_add_bp).pack(side="left", padx=(2, 0))
+        ttk.Button(add_row, text="Add", command=self._cmd_add_bp).pack(
+            side="left", padx=(2, 0)
+        )
 
-        ttk.Button(bp_btns, text="Break at PC",
-                   command=self._cmd_toggle_bp_at_pc).pack(fill="x", pady=2)
-        ttk.Button(bp_btns, text="Remove selected",
-                   command=self._cmd_remove_bp).pack(fill="x", pady=2)
+        ttk.Button(
+            bp_btns, text="Break at PC", command=self._cmd_toggle_bp_at_pc
+        ).pack(fill="x", pady=2)
+        ttk.Button(
+            bp_btns, text="Remove selected", command=self._cmd_remove_bp
+        ).pack(fill="x", pady=2)
 
         ctrl = ttk.LabelFrame(bot, text="Controls")
         ctrl.pack(side="left", fill="y")
-        ttk.Button(ctrl, text="Step (N)",     command=self._cmd_step).pack(fill="x", pady=2, padx=6)
-        ttk.Button(ctrl, text="Continue (C)", command=self._cmd_continue).pack(fill="x", pady=2, padx=6)
-        ttk.Button(ctrl, text="Pause",        command=self._cmd_pause).pack(fill="x", pady=2, padx=6)
-        ttk.Button(ctrl, text="Reset",        command=self._cmd_reset).pack(fill="x", pady=2, padx=6)
+        ttk.Button(ctrl, text="Step (N)", command=self._cmd_step).pack(
+            fill="x", pady=2, padx=6
+        )
+        ttk.Button(ctrl, text="Continue (C)", command=self._cmd_continue).pack(
+            fill="x", pady=2, padx=6
+        )
+        ttk.Button(ctrl, text="Pause", command=self._cmd_pause).pack(
+            fill="x", pady=2, padx=6
+        )
+        ttk.Button(ctrl, text="Reset", command=self._cmd_reset).pack(
+            fill="x", pady=2, padx=6
+        )
 
         # ── Status bar ────────────────────────────────────────────────
         self._status_label = ttk.Label(root, text="Running", anchor="w")
         self._status_label.pack(fill="x", padx=6, pady=(0, 4))
 
     def _make_text(self, parent, **kwargs) -> tk.Text:
-        t = tk.Text(parent, bg="#1e1e1e", fg="#d4d4d4",
-                    insertbackground="#d4d4d4",
-                    font=("Courier", 10), state="disabled",
-                    relief="flat", borderwidth=1, **kwargs)
-        t.tag_configure("pc",      foreground="#569cd6", background="#094771")
-        t.tag_configure("bp",      foreground="#f44747")
+        t = tk.Text(
+            parent,
+            bg="#1e1e1e",
+            fg="#d4d4d4",
+            insertbackground="#d4d4d4",
+            font=("Courier", 10),
+            state="disabled",
+            relief="flat",
+            borderwidth=1,
+            **kwargs,
+        )
+        t.tag_configure("pc", foreground="#569cd6", background="#094771")
+        t.tag_configure("bp", foreground="#f44747")
         t.tag_configure("history", foreground="#808080")
         return t
 
@@ -282,7 +322,9 @@ class DebuggerWindow:
             byte = self._read_bank0(addr)
             prefix = "► " if i == 1 else "  "
             tag = "pc" if i == 1 else ""
-            self._stack_text.insert("end", f"{prefix}{addr:04X}: {byte:02X}\n", tag)
+            self._stack_text.insert(
+                "end", f"{prefix}{addr:04X}: {byte:02X}\n", tag
+            )
         self._stack_text.configure(state="disabled")
 
     def _read_bank0(self, addr: int) -> int:
@@ -312,7 +354,7 @@ class DebuggerWindow:
 
         for i, line in enumerate(forward):
             addr_str = line[:6]
-            is_current = (i == 0)
+            is_current = i == 0
             is_bp = int(addr_str, 16) in bps
             tag = "pc" if is_current else ("bp" if is_bp else "")
             prefix = "► " if is_current else "  "
@@ -329,10 +371,14 @@ class DebuggerWindow:
 
         lines = []
         for row in range(0, len(data), _HEX_COLS):
-            chunk = data[row:row + _HEX_COLS]
+            chunk = data[row : row + _HEX_COLS]
             hex_part = " ".join(f"{b:02X}" for b in chunk)
-            ascii_part = "".join(chr(b) if 0x20 <= b < 0x7F else "." for b in chunk)
-            lines.append(f"{region}:{base + row:06X}  {hex_part:<{_HEX_COLS * 3}}  {ascii_part}")
+            ascii_part = "".join(
+                chr(b) if 0x20 <= b < 0x7F else "." for b in chunk
+            )
+            lines.append(
+                f"{region}:{base + row:06X}  {hex_part:<{_HEX_COLS * 3}}  {ascii_part}"
+            )
 
         self._set_text(self._mem_text, "\n".join(lines))
 
@@ -424,7 +470,7 @@ class DebuggerWindow:
     def _cmd_step(self) -> None:
         done = threading.Event()
         self._debugger._cmd_queue.put(("step", done))
-        done.wait()   # blocks Tkinter thread until main thread finishes the step
+        done.wait()  # blocks Tkinter thread until main thread finishes the step
         self.refresh()
 
     def _cmd_continue(self) -> None:

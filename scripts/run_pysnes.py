@@ -17,9 +17,16 @@ import sdl2 as sdl
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Python SNES emulator.")
-    parser.add_argument('rom', nargs='?', help='Path to ROM file (.smc/.sfc)')
-    parser.add_argument('-p', '--profile', action='store_true', help='Enable profiler mode')
-    parser.add_argument('-l', '--load', action='store_true', help='Load memory dumps from bsnes to test rendering')
+    parser.add_argument("rom", nargs="?", help="Path to ROM file (.smc/.sfc)")
+    parser.add_argument(
+        "-p", "--profile", action="store_true", help="Enable profiler mode"
+    )
+    parser.add_argument(
+        "-l",
+        "--load",
+        action="store_true",
+        help="Load memory dumps from bsnes to test rendering",
+    )
     args = parser.parse_args()
 
     if args.profile:
@@ -37,6 +44,7 @@ if __name__ == "__main__":
         import cProfile
 
         import pyximport
+
         pyximport.install()
 
         from pysnes import pysnes

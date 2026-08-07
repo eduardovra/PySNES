@@ -11,6 +11,7 @@ Example settings.json:
     "rom": "roms/mygame.sfc"
 }
 """
+
 import json
 from pathlib import Path
 

@@ -20,8 +20,8 @@ _FILE_CACHE_VAL: list | None = None
 def _load_case(file_path: str, index: int) -> dict:
     global _FILE_CACHE_KEY, _FILE_CACHE_VAL
     if _FILE_CACHE_KEY != file_path:
-        with open(file_path, 'rb') as f:
-            _FILE_CACHE_VAL = list(ijson.items(f, 'item'))
+        with open(file_path, "rb") as f:
+            _FILE_CACHE_VAL = list(ijson.items(f, "item"))
         _FILE_CACHE_KEY = file_path
     return _FILE_CACHE_VAL[index]
 
@@ -46,15 +46,16 @@ def _parse_test_index(opcode_filter, max_per_opcode, mode):
         return True
 
     onlyfiles = sorted(
-        os.path.join(TESTS_PATH, f) for f in os.listdir(TESTS_PATH)
+        os.path.join(TESTS_PATH, f)
+        for f in os.listdir(TESTS_PATH)
         if os.path.isfile(os.path.join(TESTS_PATH, f)) and _include(f)
     )
 
     test_counter = defaultdict(int)
     params, test_ids = [], []
     for file_path in onlyfiles:
-        with open(file_path, 'rb') as f:
-            for i, name in enumerate(ijson.items(f, 'item.name')):
+        with open(file_path, "rb") as f:
+            for i, name in enumerate(ijson.items(f, "item.name")):
                 test_id = name.replace(" ", "_")
                 if limit > 0 and test_counter[test_id[0:4]] >= limit:
                     continue
@@ -87,7 +88,8 @@ def get_test_cases(opcode_filter=None, max_per_opcode=None, mode=None):
     # With --dist=loadgroup, all cases from one JSON file route to the same worker,
     # so the single-slot _load_case cache stays warm.
     test_cases = [
-        pytest.param(rp, marks=pytest.mark.xdist_group(rp[0])) for rp in raw_params
+        pytest.param(rp, marks=pytest.mark.xdist_group(rp[0]))
+        for rp in raw_params
     ]
     return test_cases, test_ids
 
@@ -141,22 +143,25 @@ def test_cpu(test_case):
         if value is None:
             continue
 
-        if outputs[3] == 'r':
+        if outputs[3] == "r":
             calls_expected.append(f"getitem({hex(address)}) -> {hex(value)}")
-        elif outputs[3] == 'w':
+        elif outputs[3] == "w":
             calls_expected.append(f"setitem({hex(address)}, {hex(value)})")
 
     class _BudgetExceeded(Exception):
         pass
 
     real_read = FakeBus.read
+
     def read(self, address):
         if len(calls_performed) >= len(calls_expected):
             raise _BudgetExceeded()
         value = real_read(self, address)
         calls_performed.append(f"getitem({hex(address)}) -> {hex(value)}")
         return value
+
     real_write = FakeBus.write
+
     def write(self, address, value):
         if len(calls_performed) >= len(calls_expected):
             raise _BudgetExceeded()
@@ -164,8 +169,10 @@ def test_cpu(test_case):
         return real_write(self, address, value)
 
     # mocks to track memory access
-    with patch.object(FakeBus, "read", autospec=True) as mock_getitem, \
-            patch.object(FakeBus, "write", autospec=True) as mock_setitem:
+    with (
+        patch.object(FakeBus, "read", autospec=True) as mock_getitem,
+        patch.object(FakeBus, "write", autospec=True) as mock_setitem,
+    ):
         mock_getitem.side_effect = read
         mock_setitem.side_effect = write
         try:
@@ -182,15 +189,17 @@ def test_cpu(test_case):
     assert cpu.PC.w == final["pc"], f"{hex(cpu.PC.w)} != {hex(final['pc'])}"
     assert cpu.S.w == final["s"], f"{hex(cpu.S.w)} != {hex(final['s'])}"
     assert cpu.A.w == final["a"], f"{hex(cpu.A.w)} != {hex(final['a'])}"
-    assert cpu.X.w == final['x'], f"{hex(cpu.X.w)} != {hex(final['x'])}"
-    assert cpu.Y.w == final['y'], f"{hex(cpu.Y.w)} != {hex(final['y'])}"
-    assert cpu.EF == bool(final['e'])
+    assert cpu.X.w == final["x"], f"{hex(cpu.X.w)} != {hex(final['x'])}"
+    assert cpu.Y.w == final["y"], f"{hex(cpu.Y.w)} != {hex(final['y'])}"
+    assert cpu.EF == bool(final["e"])
     assert cpu.P == final["p"], f"{hex(cpu.P)} != {hex(final['p'])}"
-    assert cpu.D.w == final['d'], f"{hex(cpu.D.w)} != {hex(final['d'])}"
-    assert cpu.DB.l == final['dbr'], f"{hex(cpu.DB.l)} != {hex(final['dbr'])}"
-    assert cpu.PC.b == final['pbr'], f"{hex(cpu.PC.b)} != {hex(final['pbr'])}"
+    assert cpu.D.w == final["d"], f"{hex(cpu.D.w)} != {hex(final['d'])}"
+    assert cpu.DB.l == final["dbr"], f"{hex(cpu.DB.l)} != {hex(final['dbr'])}"
+    assert cpu.PC.b == final["pbr"], f"{hex(cpu.PC.b)} != {hex(final['pbr'])}"
     for addr, value in final["ram"]:
-        assert cpu.bus.read(addr) == value, f"cpu.bus[{hex(addr)}] = {hex(cpu.bus.read(addr))} != {hex(value)}"
+        assert cpu.bus.read(addr) == value, (
+            f"cpu.bus[{hex(addr)}] = {hex(cpu.bus.read(addr))} != {hex(value)}"
+        )
 
     # check on read/write cycles
     assert calls_performed == calls_expected

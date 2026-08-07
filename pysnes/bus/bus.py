@@ -11,7 +11,6 @@ from ..scheduler import Scheduler
 
 
 class Bus:
-
     def __init__(
         self,
         rom: Rom,
@@ -23,7 +22,10 @@ class Bus:
     ) -> None:
         self.rom = rom  # program memory (LoROM or HiROM, selected below)
         mapping_mode = rom.snes_header.mapping_mode
-        self.is_hirom = mapping_mode == MappingMode.HIROM or mapping_mode == MappingMode.HIROM_FAST
+        self.is_hirom = (
+            mapping_mode == MappingMode.HIROM
+            or mapping_mode == MappingMode.HIROM_FAST
+        )
         # TODO: HiROM mapping is implemented but lightly tested; address mirroring and
         # SRAM window placement may diverge from hardware for some titles.
         self.cpu = cpu
@@ -48,15 +50,17 @@ class Bus:
         self._wmadd = 0
 
         # Math hardware registers ($4202-$4206 write, $4214-$4217 read)
-        self._wrmpya = 0   # $4202 multiplicand
-        self._wrdiv = 0    # $4204-$4205 dividend (16-bit)
+        self._wrmpya = 0  # $4202 multiplicand
+        self._wrdiv = 0  # $4204-$4205 dividend (16-bit)
 
     def dump_state(self) -> dict:
         return {
             "low_ram": bytes(self.low_ram),
             "high_ram": bytes(self.high_ram),
             "extended_ram": bytes(self.extended_ram),
-            "sram": bytes(self.sram[: self.sram_size]) if self.sram_size else b"",
+            "sram": bytes(self.sram[: self.sram_size])
+            if self.sram_size
+            else b"",
             "sram_dirty": bool(self.sram_dirty),
             "dma_ppu2_hw_registers": bytes(self.dma_ppu2_hw_registers),
             "hblank": bool(self.hblank),
@@ -100,7 +104,7 @@ class Bus:
         if self.sram_size == 0 or not self.sram_dirty:
             return 0
         with open(path, "wb") as f:
-            f.write(bytes(self.sram[:self.sram_size]))
+            f.write(bytes(self.sram[: self.sram_size]))
         self.sram_dirty = False
         return self.sram_size
 
@@ -153,22 +157,29 @@ class Bus:
         if self.is_hirom:
             # HiROM ROM: banks $00-$3F at $8000-$FFFF, banks $40-$7D full.
             # rom_addr = (bank & 0x3F) << 16 | addr works for both regions.
-            if ((0x00 <= bank <= 0x3F) and addr >= 0x8000) or \
-               (0x40 <= bank <= 0x7D):
+            if ((0x00 <= bank <= 0x3F) and addr >= 0x8000) or (
+                0x40 <= bank <= 0x7D
+            ):
                 rom_addr = ((bank & 0x3F) << 16) | addr
                 return self.rom.read(rom_addr)
 
             # HiROM SRAM: banks $20-$3F at $6000-$7FFF, 8KB window per bank.
             if 0x20 <= bank <= 0x3F and 0x6000 <= addr <= 0x7FFF:
                 if self.sram_size:
-                    sram_addr = (((bank - 0x20) << 13) | (addr - 0x6000)) & self.sram_mask
+                    sram_addr = (
+                        ((bank - 0x20) << 13) | (addr - 0x6000)
+                    ) & self.sram_mask
                     return self.sram[sram_addr]
                 return 0xFF
         else:
-            if ((0x00 <= bank <= 0x6F) and 0x8000 <= addr <= 0xFFFF) or \
-                ((0x40 <= bank <= 0x6F) and (0x0000 <= addr <= 0xFFFF)) or \
-                ((0x70 <= bank <= 0x7D) and (0x8000 <= addr <= 0xFFFF)):
-                rom_addr = (bank * 0x8000) + (addr - (0x8000 if addr >= 0x8000 else 0))
+            if (
+                ((0x00 <= bank <= 0x6F) and 0x8000 <= addr <= 0xFFFF)
+                or ((0x40 <= bank <= 0x6F) and (0x0000 <= addr <= 0xFFFF))
+                or ((0x70 <= bank <= 0x7D) and (0x8000 <= addr <= 0xFFFF))
+            ):
+                rom_addr = (bank * 0x8000) + (
+                    addr - (0x8000 if addr >= 0x8000 else 0)
+                )
                 return self.rom.read(rom_addr)
 
             # SRAM: LoROM banks $70-$7D, addr $0000-$7FFF (mirrored from $F0-$FD)
@@ -186,7 +197,9 @@ class Bus:
 
         if (0x00 <= bank <= 0x3F) or bank == 0x7E:
             if 0x0000 <= addr <= 0x1FFF:
-                return self.low_ram[addr & 0xFFFF]  # LowRAM, shadowed from bank $7E
+                return self.low_ram[
+                    addr & 0xFFFF
+                ]  # LowRAM, shadowed from bank $7E
 
         if 0x00 <= bank <= 0x3F:
             # Hardware registers $2100-$21FF and $4200-$44FF are mirrored
@@ -231,7 +244,10 @@ class Bus:
                 if 0x2140 <= addr <= 0x217F:
                     # 0x2140 - 0x204C == 0xF4 [addr of PORT0]
                     if 0x2140 <= addr <= 0x2143:
-                        self.apu.sync_to(self.scheduler.master_clock + (self.cpu.cycles - self.cpu.prev_cycles))
+                        self.apu.sync_to(
+                            self.scheduler.master_clock
+                            + (self.cpu.cycles - self.cpu.prev_cycles)
+                        )
                         return self.apu.ports_w[addr - 0x2140]
                     return self.apu.read_external(addr - 0x204C)
 
@@ -246,7 +262,8 @@ class Bus:
                 if addr == 0x4210:  # RDNMI - NMI Flag and 5A22 Version
                     data = (
                         self.cpu.status.nmi_line << 7
-                        | 1 << 6  # This bit is open bus, I'm setting it to satisfy the PLP test program
+                        | 1
+                        << 6  # This bit is open bus, I'm setting it to satisfy the PLP test program
                         | 0x02  # 5A22 chip version number [0-3]
                     )
                     self.cpu.status.nmi_line = False  # Reading clears the line
@@ -254,11 +271,15 @@ class Bus:
                     return data
                 if addr == 0x4211:  # TIMEUP - IRQ flag (read-and-clear)
                     data = self.cpu.status.irq_line << 7
-                    self.cpu.status.irq_line = False  # Reading clears the latched flag
+                    self.cpu.status.irq_line = (
+                        False  # Reading clears the latched flag
+                    )
                     return data
                 if addr == 0x4212:  # HVBJOY - PPU Status
                     return (
-                        (1 << 5)  # This bit is unmapped but the test program keeps reading it
+                        (
+                            1 << 5
+                        )  # This bit is unmapped but the test program keeps reading it
                         | self.hblank << 6
                         | self.vblank << 7
                     )
@@ -287,9 +308,13 @@ class Bus:
             # relies on: it gates its Character Test animation on bit 5 of a read
             # from $21C2 (expects 0x21, bit 5 set); returning 0 froze the demo.
             if (
-                0x2000 <= addr <= 0x21FF  # 0x2100-0x21FF: mapped regs handled above
+                0x2000
+                <= addr
+                <= 0x21FF  # 0x2100-0x21FF: mapped regs handled above
                 or 0x2200 <= addr <= 0x3FFF
-                or 0x4000 <= addr <= 0x41FF  # 0x4016/0x4017 already handled above
+                or 0x4000
+                <= addr
+                <= 0x41FF  # 0x4016/0x4017 already handled above
                 or 0x4500 <= addr <= 0x7FFF
             ):
                 return (addr >> 8) & 0xFF
@@ -298,7 +323,9 @@ class Bus:
                 f"Reading unmapped memory region: 0x{abs_addr:06X}"
             )
 
-        raise NotImplementedError(f"Reading unmapped memory region: 0x{abs_addr:06X}")
+        raise NotImplementedError(
+            f"Reading unmapped memory region: 0x{abs_addr:06X}"
+        )
 
     def peek(self, abs_addr: int) -> int:
         """Read without side effects — safe for debugger/disassembler use.
@@ -330,20 +357,25 @@ class Bus:
             # but the mask ROM ignores them. Dropping them here matters for
             # programs whose stack drifts into the bank-0 vector region
             # ($FFE0-$FFFF) — corrupting ROM would stomp the interrupt vectors.
-            if ((0x00 <= bank <= 0x3F) and addr >= 0x8000) or \
-               (0x40 <= bank <= 0x7D):
+            if ((0x00 <= bank <= 0x3F) and addr >= 0x8000) or (
+                0x40 <= bank <= 0x7D
+            ):
                 return
 
             if 0x20 <= bank <= 0x3F and 0x6000 <= addr <= 0x7FFF:
                 if self.sram_size:
-                    sram_addr = (((bank - 0x20) << 13) | (addr - 0x6000)) & self.sram_mask
+                    sram_addr = (
+                        ((bank - 0x20) << 13) | (addr - 0x6000)
+                    ) & self.sram_mask
                     self.sram[sram_addr] = data
                     self.sram_dirty = True
                 return
         else:
-            if ((0x00 <= bank <= 0x6F) and 0x8000 <= addr <= 0xFFFF) or \
-                ((0x40 <= bank <= 0x6F) and (0x0000 <= addr <= 0xFFFF)) or \
-                ((0x70 <= bank <= 0x7D) and (0x8000 <= addr <= 0xFFFF)):
+            if (
+                ((0x00 <= bank <= 0x6F) and 0x8000 <= addr <= 0xFFFF)
+                or ((0x40 <= bank <= 0x6F) and (0x0000 <= addr <= 0xFFFF))
+                or ((0x70 <= bank <= 0x7D) and (0x8000 <= addr <= 0xFFFF))
+            ):
                 return
 
             # SRAM: LoROM banks $70-$7D, addr $0000-$7FFF (mirrored from $F0-$FD)
@@ -380,8 +412,12 @@ class Bus:
                     return
 
                 if addr == 0x2106:  # MOSAIC
-                    self.ppu.mosaic_enabled = [bool(data & (1 << i)) for i in range(4)]
-                    self.ppu.mosaic_size = (data >> 4) + 1  # Not sure if I should add 1 here - (0=Smallest/1x1, 0Fh=Largest/16x16)
+                    self.ppu.mosaic_enabled = [
+                        bool(data & (1 << i)) for i in range(4)
+                    ]
+                    self.ppu.mosaic_size = (
+                        (data >> 4) + 1
+                    )  # Not sure if I should add 1 here - (0=Smallest/1x1, 0Fh=Largest/16x16)
                     return
 
                 if addr == 0x2105:  # BGMODE
@@ -409,7 +445,11 @@ class Bus:
                     return
 
                 if addr == 0x210D:  # BG1HOFS
-                    self.ppu.bg1.hoffset = data << 8 | (self.ppu.latch_bgofs_ppu1 & ~7) | (self.ppu.latch_bgofs_ppu2 & 7)
+                    self.ppu.bg1.hoffset = (
+                        data << 8
+                        | (self.ppu.latch_bgofs_ppu1 & ~7)
+                        | (self.ppu.latch_bgofs_ppu2 & 7)
+                    )
                     self.ppu.latch_bgofs_ppu1 = data
                     self.ppu.latch_bgofs_ppu2 = data
                     return
@@ -418,7 +458,11 @@ class Bus:
                     self.ppu.latch_bgofs_ppu1 = data
                     return
                 if addr == 0x210F:  # BG2HOFS
-                    self.ppu.bg2.hoffset = data << 8 | (self.ppu.latch_bgofs_ppu1 & ~7) | (self.ppu.latch_bgofs_ppu2 & 7)
+                    self.ppu.bg2.hoffset = (
+                        data << 8
+                        | (self.ppu.latch_bgofs_ppu1 & ~7)
+                        | (self.ppu.latch_bgofs_ppu2 & 7)
+                    )
                     self.ppu.latch_bgofs_ppu1 = data
                     self.ppu.latch_bgofs_ppu2 = data
                     return
@@ -427,7 +471,11 @@ class Bus:
                     self.ppu.latch_bgofs_ppu1 = data
                     return
                 if addr == 0x2111:  # BG3HOFS
-                    self.ppu.bg3.hoffset = data << 8 | (self.ppu.latch_bgofs_ppu1 & ~7) | (self.ppu.latch_bgofs_ppu2 & 7)
+                    self.ppu.bg3.hoffset = (
+                        data << 8
+                        | (self.ppu.latch_bgofs_ppu1 & ~7)
+                        | (self.ppu.latch_bgofs_ppu2 & 7)
+                    )
                     self.ppu.latch_bgofs_ppu1 = data
                     self.ppu.latch_bgofs_ppu2 = data
                     return
@@ -436,7 +484,11 @@ class Bus:
                     self.ppu.latch_bgofs_ppu1 = data
                     return
                 if addr == 0x2113:  # BG4HOFS
-                    self.ppu.bg4.hoffset = data << 8 | (self.ppu.latch_bgofs_ppu1 & ~7) | (self.ppu.latch_bgofs_ppu2 & 7)
+                    self.ppu.bg4.hoffset = (
+                        data << 8
+                        | (self.ppu.latch_bgofs_ppu1 & ~7)
+                        | (self.ppu.latch_bgofs_ppu2 & 7)
+                    )
                     self.ppu.latch_bgofs_ppu1 = data
                     self.ppu.latch_bgofs_ppu2 = data
                     return
@@ -564,11 +616,16 @@ class Bus:
                     return  # Not writable
 
                 if 0x2140 <= addr <= 0x2143:  # APUIO0-APUIO3 (CPU→SPC ports)
-                    self.apu.sync_to(self.scheduler.master_clock + (self.cpu.cycles - self.cpu.prev_cycles))
+                    self.apu.sync_to(
+                        self.scheduler.master_clock
+                        + (self.cpu.cycles - self.cpu.prev_cycles)
+                    )
                     self.apu.ports_r[addr - 0x2140] = data
                     return
 
-                if addr == 0x2180:  # WMDATA - write byte to WRAM at WMADD, increment
+                if (
+                    addr == 0x2180
+                ):  # WMDATA - write byte to WRAM at WMADD, increment
                     wm_addr = self._wmadd & 0x1FFFF
                     if wm_addr < 0x2000:
                         self.low_ram[wm_addr] = data
@@ -607,7 +664,9 @@ class Bus:
                 self.dma_ppu2_hw_registers[0x4214 - 0x4200] = 0
                 self.dma_ppu2_hw_registers[0x4215 - 0x4200] = 0
                 self.dma_ppu2_hw_registers[0x4216 - 0x4200] = product & 0xFF
-                self.dma_ppu2_hw_registers[0x4217 - 0x4200] = (product >> 8) & 0xFF
+                self.dma_ppu2_hw_registers[0x4217 - 0x4200] = (
+                    product >> 8
+                ) & 0xFF
                 return
 
             elif addr == 0x4204:  # WRDIVL - dividend low byte
@@ -629,9 +688,13 @@ class Bus:
                     quotient = self._wrdiv // data
                     remainder = self._wrdiv % data
                 self.dma_ppu2_hw_registers[0x4214 - 0x4200] = quotient & 0xFF
-                self.dma_ppu2_hw_registers[0x4215 - 0x4200] = (quotient >> 8) & 0xFF
+                self.dma_ppu2_hw_registers[0x4215 - 0x4200] = (
+                    quotient >> 8
+                ) & 0xFF
                 self.dma_ppu2_hw_registers[0x4216 - 0x4200] = remainder & 0xFF
-                self.dma_ppu2_hw_registers[0x4217 - 0x4200] = (remainder >> 8) & 0xFF
+                self.dma_ppu2_hw_registers[0x4217 - 0x4200] = (
+                    remainder >> 8
+                ) & 0xFF
                 return
 
             elif addr == 0x420B:  # MDMAEN
@@ -652,7 +715,8 @@ class Bus:
                     self.cpu.status.hirq_enable = bool(data & 0x10)
                     self.cpu.status.virq_enable = bool(data & 0x20)
                     self.cpu.status.irq_enable = (
-                        self.cpu.status.hirq_enable or self.cpu.status.virq_enable
+                        self.cpu.status.hirq_enable
+                        or self.cpu.status.virq_enable
                     )
                     # Disabling both H-IRQ and V-IRQ clears any latched IRQ flag.
                     if not self.cpu.status.irq_enable:
@@ -667,16 +731,24 @@ class Bus:
                     return
 
                 if addr == 0x4207:  # HTIMEL
-                    self.cpu.status.htime = (self.cpu.status.htime & 0x100) | data
+                    self.cpu.status.htime = (
+                        self.cpu.status.htime & 0x100
+                    ) | data
                     return
                 if addr == 0x4208:  # HTIMEH (only bit 0)
-                    self.cpu.status.htime = (self.cpu.status.htime & 0x0FF) | ((data & 0x01) << 8)
+                    self.cpu.status.htime = (self.cpu.status.htime & 0x0FF) | (
+                        (data & 0x01) << 8
+                    )
                     return
                 if addr == 0x4209:  # VTIMEL
-                    self.cpu.status.vtime = (self.cpu.status.vtime & 0x100) | data
+                    self.cpu.status.vtime = (
+                        self.cpu.status.vtime & 0x100
+                    ) | data
                     return
                 if addr == 0x420A:  # VTIMEH (only bit 0)
-                    self.cpu.status.vtime = (self.cpu.status.vtime & 0x0FF) | ((data & 0x01) << 8)
+                    self.cpu.status.vtime = (self.cpu.status.vtime & 0x0FF) | (
+                        (data & 0x01) << 8
+                    )
                     return
 
                 if 0x4300 <= addr <= 0x43FF:
@@ -689,9 +761,13 @@ class Bus:
             # TODO: Implement true open-bus side effects/MDR behavior instead
             # of silently dropping writes in these known system-area holes.
             if (
-                0x2000 <= addr <= 0x21FF  # 0x2100-0x21FF: mapped regs handled above
+                0x2000
+                <= addr
+                <= 0x21FF  # 0x2100-0x21FF: mapped regs handled above
                 or 0x2200 <= addr <= 0x3FFF
-                or 0x4000 <= addr <= 0x41FF  # 0x4016/0x4017 already handled above
+                or 0x4000
+                <= addr
+                <= 0x41FF  # 0x4016/0x4017 already handled above
                 or 0x4500 <= addr <= 0x7FFF
             ):
                 return
@@ -711,4 +787,3 @@ class Bus:
         raise NotImplementedError(
             f"Writting unmapped memory region: 0x{abs_addr:06X} = 0x{data:02X}"
         )
-

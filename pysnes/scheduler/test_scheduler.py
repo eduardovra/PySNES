@@ -10,6 +10,7 @@ def s():
 
 # --- add / run_to ---
 
+
 def test_single_event_fires(s):
     fired = []
     s.add(100, lambda: fired.append(1))
@@ -38,11 +39,11 @@ def test_master_clock_does_not_exceed_target(s):
 
 def test_multiple_events_fire_in_order(s):
     order = []
-    s.add(30, lambda: order.append('a'))
-    s.add(10, lambda: order.append('b'))
-    s.add(20, lambda: order.append('c'))
+    s.add(30, lambda: order.append("a"))
+    s.add(10, lambda: order.append("b"))
+    s.add(20, lambda: order.append("c"))
     s.run_to(30)
-    assert order == ['b', 'c', 'a']
+    assert order == ["b", "c", "a"]
 
 
 def test_only_events_up_to_target_fire(s):
@@ -59,12 +60,12 @@ def test_events_scheduled_by_handlers_fire_in_same_run_to(s):
     fired = []
 
     def first():
-        fired.append('first')
-        s.add(5, lambda: fired.append('second'))
+        fired.append("first")
+        s.add(5, lambda: fired.append("second"))
 
     s.add(10, first)
     s.run_to(15)
-    assert fired == ['first', 'second']
+    assert fired == ["first", "second"]
 
 
 def test_master_clock_is_correct_inside_handler(s):
@@ -76,6 +77,7 @@ def test_master_clock_is_correct_inside_handler(s):
 
 # --- simultaneous events: FIFO by insertion order ---
 
+
 def test_simultaneous_events_fire_in_insertion_order(s):
     order = []
     s.add(0, lambda: order.append(1))
@@ -86,6 +88,7 @@ def test_simultaneous_events_fire_in_insertion_order(s):
 
 
 # --- peek ---
+
 
 def test_peek_returns_next_event_time(s):
     s.add(50, lambda: None)
@@ -105,6 +108,7 @@ def test_peek_does_not_fire_event(s):
 
 
 # --- run_one ---
+
 
 def test_run_one_fires_earliest_event(s):
     fired = []
@@ -131,6 +135,7 @@ def test_run_one_leaves_remaining_events(s):
 
 # --- delay=0 (schedule for "now") ---
 
+
 def test_delay_zero_fires_at_current_clock(s):
     s.master_clock = 100
     fired = []
@@ -140,6 +145,7 @@ def test_delay_zero_fires_at_current_clock(s):
 
 
 # --- large event counts ---
+
 
 def test_many_events_all_fire(s):
     fired = []

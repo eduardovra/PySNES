@@ -42,8 +42,8 @@ def draw_mode7_scanline(ppu: Ppu) -> None:
     # v_counter is the hardware scanline (1 = first visible line).
     # The affine transform uses the hardware scanline directly; the output
     # row is 0-indexed so we subtract 1 only for the buffer write.
-    scan_y = ppu.v_counter       # hardware scanline (1-based) for transform
-    row_y = ppu.v_counter - 1    # 0-based index into main_bgs / sub_bgs
+    scan_y = ppu.v_counter  # hardware scanline (1-based) for transform
+    row_y = ppu.v_counter - 1  # 0-based index into main_bgs / sub_bgs
 
     # Sign-extend 16-bit matrix coefficients (m7_write stores them unsigned)
     a = ppu.m7a if ppu.m7a < 0x8000 else ppu.m7a - 0x10000
@@ -97,8 +97,10 @@ def draw_mode7_scanline(ppu: Ppu) -> None:
         window_masked = ppu._window_mask_buf
         ppu._build_window_mask(
             window_masked,
-            w1_enable, w1_invert,
-            w2_enable, w2_invert,
+            w1_enable,
+            w1_invert,
+            w2_enable,
+            w2_invert,
             combine_logic,
         )
 
@@ -159,7 +161,9 @@ def draw_mode7_scanline(ppu: Ppu) -> None:
                 ppu.sub_bgs[idx] = color
 
 
-def draw_background_scanline(ppu: Ppu, bg: Background, bpp: int, priority_selector: bool) -> None:
+def draw_background_scanline(
+    ppu: Ppu, bg: Background, bpp: int, priority_selector: bool
+) -> None:
     # If neither main nor sub is enabled, nothing to do at all.
     if not bg.main_screen_enable and not bg.sub_screen_enable:
         return
@@ -243,8 +247,10 @@ def draw_background_scanline(ppu: Ppu, bg: Background, bpp: int, priority_select
         window_masked = ppu._window_mask_buf
         ppu._build_window_mask(
             window_masked,
-            w1_enable, w1_invert,
-            w2_enable, w2_invert,
+            w1_enable,
+            w1_invert,
+            w2_enable,
+            w2_invert,
             combine_logic,
         )
 
@@ -259,7 +265,7 @@ def draw_background_scanline(ppu: Ppu, bg: Background, bpp: int, priority_select
             scrx = (scrx + scroll_x) % (8 * bg_size_w)
 
             offset = ((scry % 256 if bg_size_w == 64 else scry) // 8) * 32
-            offset += ((scrx % 256) // 8)
+            offset += (scrx % 256) // 8
             offset += (scrx // 256) * 0x400
             offset += (bg_size_w // 64) * ((scry // 256) * 0x800)
             tilemap_word_addr = (screen_addr + offset) * 2 & 0xFFFF
@@ -278,20 +284,30 @@ def draw_background_scanline(ppu: Ppu, bg: Background, bpp: int, priority_select
                 v_shift = i if not tilemap_v_flip else (7 - i)
                 h_shift = (7 - j) if not tilemap_h_flip else j
                 if bpp == 2:
-                    tile_address = (tiledata_addr + tile_num * 16 + v_shift * 2) & 0xFFFF
+                    tile_address = (
+                        tiledata_addr + tile_num * 16 + v_shift * 2
+                    ) & 0xFFFF
                     b_lo = vram[tile_address]
                     b_hi = vram[(tile_address + 1) & 0xFFFF]
                     v = ((b_lo >> h_shift) & 1) | (((b_hi >> h_shift) & 1) << 1)
                 elif bpp == 4:
-                    tile_address = (tiledata_addr + tile_num * 32 + v_shift * 2) & 0xFFFF
+                    tile_address = (
+                        tiledata_addr + tile_num * 32 + v_shift * 2
+                    ) & 0xFFFF
                     b_1 = vram[tile_address]
                     b_2 = vram[(tile_address + 1) & 0xFFFF]
                     b_3 = vram[(tile_address + 16) & 0xFFFF]
                     b_4 = vram[(tile_address + 17) & 0xFFFF]
-                    v = ((b_1 >> h_shift) & 1) | (((b_2 >> h_shift) & 1) << 1) | \
-                        (((b_3 >> h_shift) & 1) << 2) | (((b_4 >> h_shift) & 1) << 3)
+                    v = (
+                        ((b_1 >> h_shift) & 1)
+                        | (((b_2 >> h_shift) & 1) << 1)
+                        | (((b_3 >> h_shift) & 1) << 2)
+                        | (((b_4 >> h_shift) & 1) << 3)
+                    )
                 elif bpp == 8:
-                    tile_address = (tiledata_addr + tile_num * 64 + v_shift * 2) & 0xFFFF
+                    tile_address = (
+                        tiledata_addr + tile_num * 64 + v_shift * 2
+                    ) & 0xFFFF
                     b_1 = vram[tile_address]
                     b_2 = vram[(tile_address + 1) & 0xFFFF]
                     b_3 = vram[(tile_address + 16) & 0xFFFF]
@@ -300,14 +316,22 @@ def draw_background_scanline(ppu: Ppu, bg: Background, bpp: int, priority_select
                     b_6 = vram[(tile_address + 33) & 0xFFFF]
                     b_7 = vram[(tile_address + 48) & 0xFFFF]
                     b_8 = vram[(tile_address + 49) & 0xFFFF]
-                    v = ((b_1 >> h_shift) & 1) | (((b_2 >> h_shift) & 1) << 1) | \
-                        (((b_3 >> h_shift) & 1) << 2) | (((b_4 >> h_shift) & 1) << 3) | \
-                        (((b_5 >> h_shift) & 1) << 4) | (((b_6 >> h_shift) & 1) << 5) | \
-                        (((b_7 >> h_shift) & 1) << 6) | (((b_8 >> h_shift) & 1) << 7)
+                    v = (
+                        ((b_1 >> h_shift) & 1)
+                        | (((b_2 >> h_shift) & 1) << 1)
+                        | (((b_3 >> h_shift) & 1) << 2)
+                        | (((b_4 >> h_shift) & 1) << 3)
+                        | (((b_5 >> h_shift) & 1) << 4)
+                        | (((b_6 >> h_shift) & 1) << 5)
+                        | (((b_7 >> h_shift) & 1) << 6)
+                        | (((b_8 >> h_shift) & 1) << 7)
+                    )
                 else:
                     raise NotImplementedError(f"Invalid bpp {bpp}")
                 if v:
-                    u32_color = cgram_cache[tilemap_palette * bpp_mult + v + color_offset]
+                    u32_color = cgram_cache[
+                        tilemap_palette * bpp_mult + v + color_offset
+                    ]
                     pix_idx = row_base + dot
                     if write_main:
                         main_bgs[pix_idx] = u32_color
@@ -325,7 +349,9 @@ def draw_background_scanline(ppu: Ppu, bg: Background, bpp: int, priority_select
         # (bg_size_w >> 6) == bg_size_w // 64: 0 for 32-tile-wide, 1 for 64-tile-wide.
         scry_for_row = eff_scry % 256 if bg_size_w == 64 else eff_scry
         scry_page = eff_scry >> 8
-        scry_offset = (scry_for_row >> 3) * 32 + (bg_size_w >> 6) * (scry_page * 0x800)
+        scry_offset = (scry_for_row >> 3) * 32 + (bg_size_w >> 6) * (
+            scry_page * 0x800
+        )
 
         eff_scrx = scroll_x % (8 * bg_size_w)
         scrx_wrap = 8 * bg_size_w
@@ -339,7 +365,9 @@ def draw_background_scanline(ppu: Ppu, bg: Background, bpp: int, priority_select
             # Tilemap fetch — once per tile column.
             scrx_page = eff_scrx >> 8
             col_offset = ((eff_scrx & 0xFF) >> 3) + scrx_page * 0x400
-            tilemap_word_addr = (screen_addr + scry_offset + col_offset) * 2 & 0xFFFF
+            tilemap_word_addr = (
+                screen_addr + scry_offset + col_offset
+            ) * 2 & 0xFFFF
             low = vram[tilemap_word_addr]
             high = vram[tilemap_word_addr + 1]
             tile_num = (high & 3) << 8 | low
@@ -353,19 +381,28 @@ def draw_background_scanline(ppu: Ppu, bg: Background, bpp: int, priority_select
 
                 # Tile-data fetch — once per tile column, shared across all 8 pixels.
                 if bpp == 2:
-                    tile_address = (tiledata_addr + tile_num * 16 + v_shift * 2) & 0xFFFF
+                    tile_address = (
+                        tiledata_addr + tile_num * 16 + v_shift * 2
+                    ) & 0xFFFF
                     b_lo = vram[tile_address]
                     b_hi = vram[(tile_address + 1) & 0xFFFF]
-                    row_code = ct[(b_lo & 0xF) | ((b_hi & 0xF) << 4)] | (ct[((b_lo >> 4) & 0xF) | (b_hi & 0xF0)] << 32)
+                    row_code = ct[(b_lo & 0xF) | ((b_hi & 0xF) << 4)] | (
+                        ct[((b_lo >> 4) & 0xF) | (b_hi & 0xF0)] << 32
+                    )
                     for k in range(n_pixels):
                         current_dot = dot + k
-                        if window_masked is not None and window_masked[current_dot]:
+                        if (
+                            window_masked is not None
+                            and window_masked[current_dot]
+                        ):
                             continue
                         jj = pixel_in_tile + k
                         h_shift = (7 - jj) if not tilemap_h_flip else jj
                         v = (row_code >> (h_shift * 8)) & 0x3
                         if v:
-                            u32_color = cgram_cache[tilemap_palette * bpp_mult + v + color_offset]
+                            u32_color = cgram_cache[
+                                tilemap_palette * bpp_mult + v + color_offset
+                            ]
                             pix_idx = row_base + current_dot
                             if write_main:
                                 main_bgs[pix_idx] = u32_color
@@ -373,23 +410,36 @@ def draw_background_scanline(ppu: Ppu, bg: Background, bpp: int, priority_select
                             if write_sub:
                                 sub_bgs[pix_idx] = u32_color
                 elif bpp == 4:
-                    tile_address = (tiledata_addr + tile_num * 32 + v_shift * 2) & 0xFFFF
+                    tile_address = (
+                        tiledata_addr + tile_num * 32 + v_shift * 2
+                    ) & 0xFFFF
                     b_1 = vram[tile_address]
                     b_2 = vram[(tile_address + 1) & 0xFFFF]
                     b_3 = vram[(tile_address + 16) & 0xFFFF]
                     b_4 = vram[(tile_address + 17) & 0xFFFF]
-                    code12 = ct[(b_1 & 0xF) | ((b_2 & 0xF) << 4)] | (ct[((b_1 >> 4) & 0xF) | (b_2 & 0xF0)] << 32)
-                    code34 = ct[(b_3 & 0xF) | ((b_4 & 0xF) << 4)] | (ct[((b_3 >> 4) & 0xF) | (b_4 & 0xF0)] << 32)
+                    code12 = ct[(b_1 & 0xF) | ((b_2 & 0xF) << 4)] | (
+                        ct[((b_1 >> 4) & 0xF) | (b_2 & 0xF0)] << 32
+                    )
+                    code34 = ct[(b_3 & 0xF) | ((b_4 & 0xF) << 4)] | (
+                        ct[((b_3 >> 4) & 0xF) | (b_4 & 0xF0)] << 32
+                    )
                     for k in range(n_pixels):
                         current_dot = dot + k
-                        if window_masked is not None and window_masked[current_dot]:
+                        if (
+                            window_masked is not None
+                            and window_masked[current_dot]
+                        ):
                             continue
                         jj = pixel_in_tile + k
                         h_shift = (7 - jj) if not tilemap_h_flip else jj
                         sh = h_shift * 8
-                        v = ((code12 >> sh) & 0x3) | (((code34 >> sh) & 0x3) << 2)
+                        v = ((code12 >> sh) & 0x3) | (
+                            ((code34 >> sh) & 0x3) << 2
+                        )
                         if v:
-                            u32_color = cgram_cache[tilemap_palette * bpp_mult + v + color_offset]
+                            u32_color = cgram_cache[
+                                tilemap_palette * bpp_mult + v + color_offset
+                            ]
                             pix_idx = row_base + current_dot
                             if write_main:
                                 main_bgs[pix_idx] = u32_color
@@ -397,7 +447,9 @@ def draw_background_scanline(ppu: Ppu, bg: Background, bpp: int, priority_select
                             if write_sub:
                                 sub_bgs[pix_idx] = u32_color
                 elif bpp == 8:
-                    tile_address = (tiledata_addr + tile_num * 64 + v_shift * 2) & 0xFFFF
+                    tile_address = (
+                        tiledata_addr + tile_num * 64 + v_shift * 2
+                    ) & 0xFFFF
                     b_1 = vram[tile_address]
                     b_2 = vram[(tile_address + 1) & 0xFFFF]
                     b_3 = vram[(tile_address + 16) & 0xFFFF]
@@ -406,21 +458,38 @@ def draw_background_scanline(ppu: Ppu, bg: Background, bpp: int, priority_select
                     b_6 = vram[(tile_address + 33) & 0xFFFF]
                     b_7 = vram[(tile_address + 48) & 0xFFFF]
                     b_8 = vram[(tile_address + 49) & 0xFFFF]
-                    code12 = ct[(b_1 & 0xF) | ((b_2 & 0xF) << 4)] | (ct[((b_1 >> 4) & 0xF) | (b_2 & 0xF0)] << 32)
-                    code34 = ct[(b_3 & 0xF) | ((b_4 & 0xF) << 4)] | (ct[((b_3 >> 4) & 0xF) | (b_4 & 0xF0)] << 32)
-                    code56 = ct[(b_5 & 0xF) | ((b_6 & 0xF) << 4)] | (ct[((b_5 >> 4) & 0xF) | (b_6 & 0xF0)] << 32)
-                    code78 = ct[(b_7 & 0xF) | ((b_8 & 0xF) << 4)] | (ct[((b_7 >> 4) & 0xF) | (b_8 & 0xF0)] << 32)
+                    code12 = ct[(b_1 & 0xF) | ((b_2 & 0xF) << 4)] | (
+                        ct[((b_1 >> 4) & 0xF) | (b_2 & 0xF0)] << 32
+                    )
+                    code34 = ct[(b_3 & 0xF) | ((b_4 & 0xF) << 4)] | (
+                        ct[((b_3 >> 4) & 0xF) | (b_4 & 0xF0)] << 32
+                    )
+                    code56 = ct[(b_5 & 0xF) | ((b_6 & 0xF) << 4)] | (
+                        ct[((b_5 >> 4) & 0xF) | (b_6 & 0xF0)] << 32
+                    )
+                    code78 = ct[(b_7 & 0xF) | ((b_8 & 0xF) << 4)] | (
+                        ct[((b_7 >> 4) & 0xF) | (b_8 & 0xF0)] << 32
+                    )
                     for k in range(n_pixels):
                         current_dot = dot + k
-                        if window_masked is not None and window_masked[current_dot]:
+                        if (
+                            window_masked is not None
+                            and window_masked[current_dot]
+                        ):
                             continue
                         jj = pixel_in_tile + k
                         h_shift = (7 - jj) if not tilemap_h_flip else jj
                         sh = h_shift * 8
-                        v = ((code12 >> sh) & 0x3) | (((code34 >> sh) & 0x3) << 2) | \
-                            (((code56 >> sh) & 0x3) << 4) | (((code78 >> sh) & 0x3) << 6)
+                        v = (
+                            ((code12 >> sh) & 0x3)
+                            | (((code34 >> sh) & 0x3) << 2)
+                            | (((code56 >> sh) & 0x3) << 4)
+                            | (((code78 >> sh) & 0x3) << 6)
+                        )
                         if v:
-                            u32_color = cgram_cache[tilemap_palette * bpp_mult + v + color_offset]
+                            u32_color = cgram_cache[
+                                tilemap_palette * bpp_mult + v + color_offset
+                            ]
                             pix_idx = row_base + current_dot
                             if write_main:
                                 main_bgs[pix_idx] = u32_color
@@ -454,7 +523,14 @@ def _bg_window_config(ppu: Ppu, bg_idx: int):
     w2_invert = (sel >> 2) & 1
     w2_enable = (sel >> 3) & 1
     combine_logic = (ppu.wbglog >> (bg_idx * 2)) & 0x3
-    return window_active, w1_enable, w1_invert, w2_enable, w2_invert, combine_logic
+    return (
+        window_active,
+        w1_enable,
+        w1_invert,
+        w2_enable,
+        w2_invert,
+        combine_logic,
+    )
 
 
 def draw_hires_background_scanline(
@@ -481,8 +557,14 @@ def draw_hires_background_scanline(
     layer_tag = bg.number
     bg_idx = bg.number - 1
 
-    (window_active, w1_enable, w1_invert,
-     w2_enable, w2_invert, combine_logic) = _bg_window_config(ppu, bg_idx)
+    (
+        window_active,
+        w1_enable,
+        w1_invert,
+        w2_enable,
+        w2_invert,
+        combine_logic,
+    ) = _bg_window_config(ppu, bg_idx)
 
     if ppu._cgram_dirty:
         ppu._rebuild_cgram_cache()
@@ -491,12 +573,12 @@ def draw_hires_background_scanline(
     screen_size = bg.screen_size
     bg_size_w = 32 << (screen_size & 1)
     bg_size_h = 32 << (screen_size >> 1)
-    scroll_x = bg.hoffset            # hi-res (512-dot) units
+    scroll_x = bg.hoffset  # hi-res (512-dot) units
     scroll_y = bg.voffset
     tiledata_addr = bg.tiledata_addr
     screen_addr = bg.screen_addr & 0xFFFF
     bpp_mult = 1 << bpp
-    plane_w = 16 * bg_size_w         # plane width in hi-res dots
+    plane_w = 16 * bg_size_w  # plane width in hi-res dots
 
     orgy = ppu.v_counter - 1
     row_base = orgy * SCREEN_WIDTH
@@ -509,15 +591,19 @@ def draw_hires_background_scanline(
     eff_scry = (ppu.v_counter + scroll_y) % (8 * bg_size_h)
     i = eff_scry & 7
     scry_for_row = eff_scry % 256 if bg_size_w == 64 else eff_scry
-    scry_offset = (scry_for_row >> 3) * 32 + (bg_size_w >> 6) * ((eff_scry >> 8) * 0x800)
+    scry_offset = (scry_for_row >> 3) * 32 + (bg_size_w >> 6) * (
+        (eff_scry >> 8) * 0x800
+    )
 
     window_masked = None
     if window_active and (w1_enable or w2_enable):
         window_masked = ppu._window_mask_buf
         ppu._build_window_mask(
             window_masked,
-            w1_enable, w1_invert,
-            w2_enable, w2_invert,
+            w1_enable,
+            w1_invert,
+            w2_enable,
+            w2_invert,
             combine_logic,
         )
 
@@ -527,12 +613,14 @@ def draw_hires_background_scanline(
 
         # Main screen samples the odd hi-res dots.
         hp = (2 * dot + 1 + scroll_x) % plane_w
-        entry = hp >> 4                  # which 16-dot tilemap cell
-        cell = hp & 15                   # position within the cell (0..15)
+        entry = hp >> 4  # which 16-dot tilemap cell
+        cell = hp & 15  # position within the cell (0..15)
 
         col_page = entry >> 5
         col = entry & 31
-        tilemap_word_addr = (screen_addr + scry_offset + col + col_page * 0x400) * 2 & 0xFFFF
+        tilemap_word_addr = (
+            screen_addr + scry_offset + col + col_page * 0x400
+        ) * 2 & 0xFFFF
         low = vram[tilemap_word_addr]
         high = vram[tilemap_word_addr + 1]
         if ((high >> 5) & 1) != priority_selector:
@@ -544,7 +632,7 @@ def draw_hires_background_scanline(
 
         # h-flip mirrors the whole 16-dot cell (swaps the two sub-tiles too).
         eff_cell = (15 - cell) if tilemap_h_flip else cell
-        sub_tile = eff_cell >> 3         # 0 -> tile T, 1 -> tile T+1
+        sub_tile = eff_cell >> 3  # 0 -> tile T, 1 -> tile T+1
         h_shift = 7 - (eff_cell & 7)
         tnum = tile_num + sub_tile
         v_shift = i if not tilemap_v_flip else (7 - i)
@@ -560,8 +648,12 @@ def draw_hires_background_scanline(
             b_2 = vram[(tile_address + 1) & 0xFFFF]
             b_3 = vram[(tile_address + 16) & 0xFFFF]
             b_4 = vram[(tile_address + 17) & 0xFFFF]
-            v = ((b_1 >> h_shift) & 1) | (((b_2 >> h_shift) & 1) << 1) | \
-                (((b_3 >> h_shift) & 1) << 2) | (((b_4 >> h_shift) & 1) << 3)
+            v = (
+                ((b_1 >> h_shift) & 1)
+                | (((b_2 >> h_shift) & 1) << 1)
+                | (((b_3 >> h_shift) & 1) << 2)
+                | (((b_4 >> h_shift) & 1) << 3)
+            )
 
         if v:
             u32_color = cgram_cache[tilemap_palette * bpp_mult + v]

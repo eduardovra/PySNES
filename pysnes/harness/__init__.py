@@ -15,6 +15,7 @@ Example:
         h.screenshot("title.png")
         print("CGRAM[0..4]:", h.cgram(0, 4).hex())
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -147,7 +148,9 @@ class Harness:
         Errors if the requested scanline has already passed in this frame.
         """
         if not (0 <= v < SCANLINES_PER_FRAME):
-            raise ValueError(f"scanline {v} out of range [0, {SCANLINES_PER_FRAME})")
+            raise ValueError(
+                f"scanline {v} out of range [0, {SCANLINES_PER_FRAME})"
+            )
         if v < self.scanline:
             raise ValueError(
                 f"scanline {v} already past in current frame (now at {self.scanline})"
@@ -387,10 +390,12 @@ class Harness:
 
     def save_state(self, path: Union[str, Path]) -> None:
         from pysnes import savestate  # noqa: PLC0415
+
         savestate.save(self._pysnes, str(path))
 
     def load_state(self, path: Union[str, Path]) -> None:
         from pysnes import savestate  # noqa: PLC0415
+
         savestate.load(self._pysnes, str(path))
 
     def __enter__(self) -> "Harness":

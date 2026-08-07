@@ -15,7 +15,7 @@ _PIXEL_SEQUENCE = [7, 6, 5, 4, 3, 2, 1, 0]
 
 # 256-entry LUT: key = (plane0_nibble) | (plane1_nibble << 4).
 # Value = 4 per-pixel 2-bit color codes packed one per byte (byte p = h_shift p).
-_colorcode_table = array('I', [0] * 256)
+_colorcode_table = array("I", [0] * 256)
 for _b in range(256):
     _b1n = _b & 0xF
     _b2n = (_b >> 4) & 0xF

@@ -1,7 +1,6 @@
 import heapq
 
 
-
 class Scheduler:
     """
     Discrete Event Scheduler (DES) — the single source of time for all components.
@@ -17,7 +16,6 @@ class Scheduler:
         - 1 frame (NTSC, 262 lines)   = 357,368 master clocks
         - 1 APU clock                 ≈ 21 master clocks  (exact: 21477272/1024000)
     """
-
 
     def __init__(self) -> None:
         self._queue: list = []

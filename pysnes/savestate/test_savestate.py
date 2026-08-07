@@ -1,4 +1,5 @@
 """Smoke tests for save state. Marked @pytest.mark.harness — opt-in."""
+
 from pathlib import Path
 
 import pytest
@@ -37,7 +38,7 @@ def test_round_trip_identity(tmp_path):
         }
 
         h.save_state(path)
-        h.run_frames(60)            # mutate state
+        h.run_frames(60)  # mutate state
         assert h.frame == 120
         h.load_state(path)
         assert h.frame == pre["frame"]

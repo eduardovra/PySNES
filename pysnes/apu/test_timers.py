@@ -32,6 +32,7 @@ from .apu import Apu, Timer
 # Fixtures
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture
 def apu():
     a = Apu()
@@ -44,6 +45,7 @@ def apu():
 # ---------------------------------------------------------------------------
 # Timer enable / disable via control register ($F1)
 # ---------------------------------------------------------------------------
+
 
 def test_control_register_enables_timer0(apu: Apu):
     apu.write(0x00F1, 0x01)
@@ -98,6 +100,7 @@ def test_disable_timer_stops_counting(apu: Apu):
 # Timer target ($FA/$FB/$FC)
 # ---------------------------------------------------------------------------
 
+
 def test_timer0_target_set_via_register(apu: Apu):
     apu.write(0x00FA, 0x10)
     assert apu.timers[0].target == 0x10
@@ -116,6 +119,7 @@ def test_timer2_target_set_via_register(apu: Apu):
 # ---------------------------------------------------------------------------
 # Counter output ($FD/$FE/$FF) and clear-on-read
 # ---------------------------------------------------------------------------
+
 
 def test_counter_read_returns_stage3(apu: Apu):
     apu.timers[0].stage3 = 0x07
@@ -153,6 +157,7 @@ def test_counter_wraps_at_4_bits(apu: Apu):
 # ---------------------------------------------------------------------------
 # Counting behaviour — stage2 counts to target then stage3 increments
 # ---------------------------------------------------------------------------
+
 
 def _tick_until_overflow(apu: Apu, timer_idx: int, expected_hits: int) -> None:
     """Step the APU timer enough times to get exactly expected_hits overflows."""
@@ -201,6 +206,7 @@ def test_timer2_higher_frequency(apu: Apu):
 # Global timer gates (test register $F0 bits 0 and 3)
 # ---------------------------------------------------------------------------
 
+
 def test_timers_disable_inhibits_all(apu: Apu):
     apu.timers_disable = True
     for t in apu.timers:
@@ -230,6 +236,7 @@ def test_timers_enable_false_inhibits_all(apu: Apu):
 # ---------------------------------------------------------------------------
 # Port reset via control register bits 4 and 5
 # ---------------------------------------------------------------------------
+
 
 def test_control_bit4_resets_ports_r_01(apu: Apu):
     """Bit 4 resets CPU→APU input ports (ports_r); APU output ports (ports_w) unchanged."""

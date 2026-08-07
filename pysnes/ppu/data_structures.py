@@ -1,9 +1,7 @@
 from dataclasses import dataclass
 
 
-
 class Background:
-
     def __init__(
         self,
         number: int = 0,
@@ -31,8 +29,14 @@ class Background:
         self.color_offset_mode_0 = color_offset_mode_0
 
     _STATE_FIELDS = (
-        "screen_size", "screen_addr", "tiledata_addr", "tile_size",
-        "main_screen_enable", "sub_screen_enable", "hoffset", "voffset",
+        "screen_size",
+        "screen_addr",
+        "tiledata_addr",
+        "tile_size",
+        "main_screen_enable",
+        "sub_screen_enable",
+        "hoffset",
+        "voffset",
     )
 
     def dump_state(self) -> dict:

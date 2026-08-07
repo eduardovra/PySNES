@@ -42,6 +42,7 @@ def get_mesen():
     2. settings.json "mesen_bin" value
     """
     from pysnes import settings as s  # noqa: PLC0415
+
     cfg = s.load()
 
     candidates = [
@@ -71,6 +72,7 @@ def _collect_lines(srv, timeout=120):
     """Accept one connection and collect all newline-delimited lines. Returns list of strings."""
     lines = []
     error = []
+
     def _run():
         try:
             srv.settimeout(timeout)
@@ -84,6 +86,7 @@ def _collect_lines(srv, timeout=120):
             conn.close()
         except Exception as e:
             error.append(e)
+
     t = threading.Thread(target=_run, daemon=True)
     t.start()
     return t, lines, error
@@ -105,11 +108,14 @@ def _run_mesen(mesen, rom, lua_script, extra_env, timeout=300):
     if "DISPLAY" not in env:
         env["DISPLAY"] = _find_display()
     cmd = [mesen, "--testrunner", rom, lua_script]
-    result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, env=env)
+    result = subprocess.run(
+        cmd, capture_output=True, text=True, timeout=timeout, env=env
+    )
     return result.stdout, result.stderr, result.returncode
 
 
 # ---- Tier 1 fixtures ----
+
 
 @pytest.fixture(scope="session")
 def oracle_frames(request):
@@ -124,10 +130,15 @@ def oracle_frames(request):
     collect_t, lines, collect_err = _collect_lines(srv, timeout=120)
 
     lua_script = str(SCRIPTS_DIR / "mesen_oracle.lua")
-    stdout, stderr, rc = _run_mesen(mesen, rom, lua_script, {
-        "MESEN_PORT": str(port),
-        "MESEN_FRAMES": str(n_frames),
-    })
+    stdout, stderr, rc = _run_mesen(
+        mesen,
+        rom,
+        lua_script,
+        {
+            "MESEN_PORT": str(port),
+            "MESEN_FRAMES": str(n_frames),
+        },
+    )
     collect_t.join(timeout=30)
 
     if rc != 0:
@@ -135,7 +146,9 @@ def oracle_frames(request):
     if collect_err:
         pytest.fail(f"Socket error: {collect_err[0]}")
     if not lines:
-        pytest.fail(f"No frames received.\nstdout:\n{stdout}\nstderr:\n{stderr}")
+        pytest.fail(
+            f"No frames received.\nstdout:\n{stdout}\nstderr:\n{stderr}"
+        )
 
     frames = [json.loads(l) for l in lines]
     print(f"\nMesen oracle: {len(frames)} frames collected", flush=True)
@@ -169,40 +182,49 @@ def pysnes_frames(request):
             + bytes(pysnes.bus.extended_ram)
         )
         psw = (
-            (int(apu.NF) << 7) | (int(apu.VF) << 6) | (int(apu.PF) << 5) | (int(apu.BF) << 4)
-            | (int(apu.HF) << 3) | (int(apu.IF) << 2) | (int(apu.ZF) << 1) | int(apu.CF)
+            (int(apu.NF) << 7)
+            | (int(apu.VF) << 6)
+            | (int(apu.PF) << 5)
+            | (int(apu.BF) << 4)
+            | (int(apu.HF) << 3)
+            | (int(apu.IF) << 2)
+            | (int(apu.ZF) << 1)
+            | int(apu.CF)
         )
-        frames.append({
-            "frame": i + 1,
-            "cpu": {
-                "pc": cpu.PC.d & 0xFFFF,
-                "a": cpu.A.value,
-                "x": cpu.X.value,
-                "y": cpu.Y.value,
-                "sp": cpu.S.value,
-                "ps": cpu.P,
-                "k": (cpu.PC.d >> 16) & 0xFF,
-                "d": cpu.D.value,
-                "db": cpu.DB.value,
-                "e": int(cpu.EF),
-            },
-            "spc": {
-                "pc": apu.PC,
-                "a": apu.A,
-                "x": apu.X,
-                "y": apu.Y,
-                "sp": apu.S,
-                "ps": psw,
-            },
-            "wram_crc32": zlib.crc32(wram) & 0xFFFFFFFF,
-            "wram_head": list(wram[:16]),
-        })
+        frames.append(
+            {
+                "frame": i + 1,
+                "cpu": {
+                    "pc": cpu.PC.d & 0xFFFF,
+                    "a": cpu.A.value,
+                    "x": cpu.X.value,
+                    "y": cpu.Y.value,
+                    "sp": cpu.S.value,
+                    "ps": cpu.P,
+                    "k": (cpu.PC.d >> 16) & 0xFF,
+                    "d": cpu.D.value,
+                    "db": cpu.DB.value,
+                    "e": int(cpu.EF),
+                },
+                "spc": {
+                    "pc": apu.PC,
+                    "a": apu.A,
+                    "x": apu.X,
+                    "y": apu.Y,
+                    "sp": apu.S,
+                    "ps": psw,
+                },
+                "wram_crc32": zlib.crc32(wram) & 0xFFFFFFFF,
+                "wram_head": list(wram[:16]),
+            }
+        )
 
     print(f"\nPySNES: {len(frames)} frames captured", flush=True)
     return frames
 
 
 # ---- Tier 1 test ----
+
 
 def test_frame_divergence(oracle_frames, pysnes_frames):
     """Fail at the first frame where PySNES diverges from Mesen."""
@@ -258,6 +280,7 @@ def _spc_str(s):
 
 # ---- Tier 2 fixtures ----
 
+
 @pytest.fixture(scope="session")
 def oracle_trace_lines(request):
     """Run Mesen exec callback, collect CPU trace lines via TCP socket."""
@@ -271,10 +294,16 @@ def oracle_trace_lines(request):
     collect_t, lines, collect_err = _collect_lines(srv, timeout=300)
 
     lua_script = str(SCRIPTS_DIR / "mesen_trace.lua")
-    stdout, stderr, rc = _run_mesen(mesen, rom, lua_script, {
-        "MESEN_PORT": str(port),
-        "MESEN_INSTRUCTIONS": str(n_instructions),
-    }, timeout=600)
+    stdout, stderr, rc = _run_mesen(
+        mesen,
+        rom,
+        lua_script,
+        {
+            "MESEN_PORT": str(port),
+            "MESEN_INSTRUCTIONS": str(n_instructions),
+        },
+        timeout=600,
+    )
     collect_t.join(timeout=60)
 
     if rc != 0:
@@ -282,7 +311,9 @@ def oracle_trace_lines(request):
     if collect_err:
         pytest.fail(f"Socket error: {collect_err[0]}")
     if not lines:
-        pytest.fail(f"No trace lines received.\nstdout:\n{stdout}\nstderr:\n{stderr}")
+        pytest.fail(
+            f"No trace lines received.\nstdout:\n{stdout}\nstderr:\n{stderr}"
+        )
 
     print(f"\nMesen trace: {len(lines)} instructions", flush=True)
     return lines
@@ -325,6 +356,7 @@ def pysnes_trace_lines(request):
 
 class _LineCollector:
     """File-like object that collects lines written to it."""
+
     def __init__(self):
         self.lines = []
 
@@ -341,6 +373,7 @@ class _LineCollector:
 
 
 # ---- Tier 2 test ----
+
 
 def test_instruction_divergence(oracle_trace_lines, pysnes_trace_lines):
     """Fail at the first CPU instruction where PySNES diverges from Mesen."""

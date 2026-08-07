@@ -10,13 +10,13 @@ if TYPE_CHECKING:
 
 # CGADSUB ($2131) bit masks
 _CGADSUB_SUBTRACT = 0x80  # 0=add, 1=subtract
-_CGADSUB_HALF     = 0x40  # 0=full intensity, 1=half intensity
-_CGADSUB_BACK     = 0x20  # backdrop participates
-_CGADSUB_OBJ      = 0x10  # OBJ palettes 4-7 participate
-_CGADSUB_BG4      = 0x08
-_CGADSUB_BG3      = 0x04
-_CGADSUB_BG2      = 0x02
-_CGADSUB_BG1      = 0x01
+_CGADSUB_HALF = 0x40  # 0=full intensity, 1=half intensity
+_CGADSUB_BACK = 0x20  # backdrop participates
+_CGADSUB_OBJ = 0x10  # OBJ palettes 4-7 participate
+_CGADSUB_BG4 = 0x08
+_CGADSUB_BG3 = 0x04
+_CGADSUB_BG2 = 0x02
+_CGADSUB_BG1 = 0x01
 
 
 def draw_scanline_forced_blank(ppu: Ppu) -> None:
@@ -100,8 +100,10 @@ def composite_scanline(ppu: Ppu) -> None:
         cmath_mask = ppu._window_mask_buf
         ppu._build_window_mask(
             cmath_mask,
-            math_w1_enable, math_w1_invert,
-            math_w2_enable, math_w2_invert,
+            math_w1_enable,
+            math_w1_invert,
+            math_w2_enable,
+            math_w2_invert,
             math_logic,
         )
 
@@ -179,7 +181,9 @@ def composite_scanline(ppu: Ppu) -> None:
         ppu.main_bgs[idx] = (r << 24) | (g << 16) | (b << 8) | (m & 0xFF)
 
 
-def get_u32_color(ppu: Ppu, bpp: int, palette: int, color: int, color_offset: int = 0) -> int:
+def get_u32_color(
+    ppu: Ppu, bpp: int, palette: int, color: int, color_offset: int = 0
+) -> int:
     if ppu._cgram_dirty:
         ppu._rebuild_cgram_cache()
     if bpp == 8:

@@ -21,6 +21,7 @@ def _make_ppu() -> Ppu:
 # Item 8: NotImplementedError getter fixes
 # ---------------------------------------------------------------------------
 
+
 class TestBgmodeGetter:
     def test_bgmode_returns_mode_bits(self):
         ppu = _make_ppu()
@@ -80,13 +81,14 @@ class TestOamaddGetters:
         ppu = _make_ppu()
         ppu.oamaddl = 0x55
         ppu.oamaddh = 0x01  # set bit 8 of address
-        assert ppu.oamaddl == 0x55   # low byte unchanged
+        assert ppu.oamaddl == 0x55  # low byte unchanged
         assert ppu.oamaddh == 0x01
 
 
 # ---------------------------------------------------------------------------
 # Item 9: VRAM address remapping
 # ---------------------------------------------------------------------------
+
 
 def _write_word(ppu: Ppu, word_addr: int, low: int, high: int) -> None:
     """Set VRAM word address and write a word (low, high) triggering write_vram."""
@@ -113,7 +115,9 @@ class TestVramRemapping:
           Remapped: aaaaaaaa=0x00, ccccc=00000, BBB=111 → 0x0007
         """
         ppu = _make_ppu()
-        ppu.vmain = 0b10000100  # mode 1 (bits 3:2 = 01), increment on high write
+        ppu.vmain = (
+            0b10000100  # mode 1 (bits 3:2 = 01), increment on high write
+        )
         _write_word(ppu, 0x00E0, 0xCC, 0xDD)
         assert ppu.vram[0x0007 * 2 + 0] == 0xCC
         assert ppu.vram[0x0007 * 2 + 1] == 0xDD
@@ -137,7 +141,9 @@ class TestVramRemapping:
           Remapped: aaaaaaa=0x00, cccccc=000000, BBB=111 → 0x0007
         """
         ppu = _make_ppu()
-        ppu.vmain = 0b10001000  # mode 2 (bits 3:2 = 10), increment on high write
+        ppu.vmain = (
+            0b10001000  # mode 2 (bits 3:2 = 10), increment on high write
+        )
         _write_word(ppu, 0x01C0, 0x33, 0x44)
         assert ppu.vram[0x0007 * 2 + 0] == 0x33
         assert ppu.vram[0x0007 * 2 + 1] == 0x44
@@ -150,7 +156,9 @@ class TestVramRemapping:
           Remapped: aaaaaa=0x00, ccccccc=0000000, BBB=111 → 0x0007
         """
         ppu = _make_ppu()
-        ppu.vmain = 0b10001100  # mode 3 (bits 3:2 = 11), increment on high write
+        ppu.vmain = (
+            0b10001100  # mode 3 (bits 3:2 = 11), increment on high write
+        )
         _write_word(ppu, 0x0380, 0x55, 0x66)
         assert ppu.vram[0x0007 * 2 + 0] == 0x55
         assert ppu.vram[0x0007 * 2 + 1] == 0x66
@@ -175,6 +183,7 @@ class TestVramRemapping:
 # ---------------------------------------------------------------------------
 # VRAM read port: RDVRAML ($2139) / RDVRAMH ($213A)
 # ---------------------------------------------------------------------------
+
 
 class TestVramReadPort:
     def _seed(self, ppu: Ppu, word_addr: int, low: int, high: int) -> None:
@@ -206,7 +215,7 @@ class TestVramReadPort:
         ppu.vmaddh = 0x00
         ppu.refill_vram_prefetch()
         assert ppu.rdvraml() == 0x11
-        assert ppu.vmaddl == 0x21     # address advanced
+        assert ppu.vmaddl == 0x21  # address advanced
         assert ppu.rdvraml() == 0x11  # still the previous buffer
         assert ppu.rdvraml() == 0x33  # now the value at $0021
 
@@ -231,4 +240,4 @@ class TestVramReadPort:
         ppu.vmaddh = 0x00
         ppu.refill_vram_prefetch()
         ppu.rdvraml()
-        assert ppu.vmaddl == 0x40      # no increment on low read
+        assert ppu.vmaddl == 0x40  # no increment on low read

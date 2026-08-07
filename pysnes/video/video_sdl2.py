@@ -2,6 +2,7 @@
 SDL2-based video renderer for PySNES
 Replaces OpenGL with direct SDL2 2D rendering for better performance
 """
+
 import sdl2 as sdl
 import numpy as np
 import ctypes
@@ -29,24 +30,26 @@ class SDL2Renderer:
             self.renderer = sdl.SDL_CreateRenderer(
                 window,
                 -1,  # Use first available rendering driver
-                sdl.SDL_RENDERER_ACCELERATED | sdl.SDL_RENDERER_PRESENTVSYNC
+                sdl.SDL_RENDERER_ACCELERATED | sdl.SDL_RENDERER_PRESENTVSYNC,
             )
 
             if not self.renderer:
                 # Fallback to software renderer
                 self.renderer = sdl.SDL_CreateRenderer(
-                    window,
-                    -1,
-                    sdl.SDL_RENDERER_SOFTWARE
+                    window, -1, sdl.SDL_RENDERER_SOFTWARE
                 )
 
             if not self.renderer:
-                raise RuntimeError(f"Failed to create SDL2 renderer: {sdl.SDL_GetError().decode()}")
+                raise RuntimeError(
+                    f"Failed to create SDL2 renderer: {sdl.SDL_GetError().decode()}"
+                )
 
             # Get renderer info for debugging (stored, not printed)
             renderer_info = sdl.SDL_RendererInfo()
             sdl.SDL_GetRendererInfo(self.renderer, renderer_info)
-            self.renderer_name = renderer_info.name.decode() if renderer_info.name else "Unknown"
+            self.renderer_name = (
+                renderer_info.name.decode() if renderer_info.name else "Unknown"
+            )
 
             # Create streaming texture for game screen
             self.texture = sdl.SDL_CreateTexture(
@@ -54,11 +57,13 @@ class SDL2Renderer:
                 sdl.SDL_PIXELFORMAT_RGBA8888,  # 32-bit RGBA
                 sdl.SDL_TEXTUREACCESS_STREAMING,
                 self.width,
-                self.height
+                self.height,
             )
 
             if not self.texture:
-                raise RuntimeError(f"Failed to create SDL2 texture: {sdl.SDL_GetError().decode()}")
+                raise RuntimeError(
+                    f"Failed to create SDL2 texture: {sdl.SDL_GetError().decode()}"
+                )
 
             # Set texture blend mode for proper alpha blending
             sdl.SDL_SetTextureBlendMode(self.texture, sdl.SDL_BLENDMODE_BLEND)
@@ -81,7 +86,9 @@ class SDL2Renderer:
         # a new view object every frame.
         if self._pixel_data is None:
             n = self.width * self.height
-            self._pixel_data = np.frombuffer(texture_data, dtype=np.uint32, count=n).view(np.uint8)
+            self._pixel_data = np.frombuffer(
+                texture_data, dtype=np.uint32, count=n
+            ).view(np.uint8)
         pixel_data = self._pixel_data
 
         # Update texture with pixel data
@@ -90,7 +97,7 @@ class SDL2Renderer:
             self.texture,
             None,  # Update entire texture
             pixel_data.ctypes.data_as(ctypes.POINTER(ctypes.c_uint8)),
-            pitch
+            pitch,
         )
 
         if result != 0:
@@ -125,8 +132,14 @@ class SDL2Renderer:
         buf = np.ascontiguousarray(self._last_pixel_data)
         surface = sdl.SDL_CreateRGBSurfaceFrom(
             buf.ctypes.data_as(ctypes.c_void_p),
-            self.width, self.height, 32, self.width * 4,
-            0xFF000000, 0x00FF0000, 0x0000FF00, 0x000000FF
+            self.width,
+            self.height,
+            32,
+            self.width * 4,
+            0xFF000000,
+            0x00FF0000,
+            0x0000FF00,
+            0x000000FF,
         )
         if not surface:
             return
@@ -156,16 +169,20 @@ class SDL2Renderer:
         renderer_info = sdl.SDL_RendererInfo()
         if sdl.SDL_GetRendererInfo(self.renderer, renderer_info) == 0:
             return {
-                'name': getattr(self, 'renderer_name', 'Unknown'),
-                'flags': renderer_info.flags,
-                'accelerated': bool(renderer_info.flags & sdl.SDL_RENDERER_ACCELERATED),
-                'vsync': bool(renderer_info.flags & sdl.SDL_RENDERER_PRESENTVSYNC),
-                'texture_size': f"{self.width}x{self.height}",
-                'backend': 'SDL2'
+                "name": getattr(self, "renderer_name", "Unknown"),
+                "flags": renderer_info.flags,
+                "accelerated": bool(
+                    renderer_info.flags & sdl.SDL_RENDERER_ACCELERATED
+                ),
+                "vsync": bool(
+                    renderer_info.flags & sdl.SDL_RENDERER_PRESENTVSYNC
+                ),
+                "texture_size": f"{self.width}x{self.height}",
+                "backend": "SDL2",
             }
         else:
             return {
-                'backend': 'SDL2',
-                'texture_size': f"{self.width}x{self.height}",
-                'name': getattr(self, 'renderer_name', 'Unknown')
+                "backend": "SDL2",
+                "texture_size": f"{self.width}x{self.height}",
+                "name": getattr(self, "renderer_name", "Unknown"),
             }

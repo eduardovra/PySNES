@@ -7,9 +7,7 @@ if TYPE_CHECKING:
     from ..bus import Bus
 
 
-
 class Reg:
-
     def __init__(self, bits: int, value: int) -> None:
         self.bits = bits
         self.value = value
@@ -137,8 +135,6 @@ class InstructionSlot:
 
 
 class Cpu:
-
-
     def __init__(self, hardware_vectors: "HardwareVectors") -> None:
         self.reset_registers()
         self.load_instructions()
@@ -146,6 +142,7 @@ class Cpu:
         self.status = CpuStatus()
 
         from .wdc65816.disassembler import Disassembler
+
         self.disassembler = Disassembler(self)
         self.trace_log = []
         self.trace_enabled = False  # set True to populate trace_log (reads bus)
@@ -161,10 +158,10 @@ class Cpu:
         self.Y = Reg(16, 0x0000)  # Y Index Register
         self.D = Reg(16, 0x0000)  # Direct Page Register
         self.S = Reg(16, 0x01FF)  # Stack Pointer
-        self.P = 0x34             # Status register
+        self.P = 0x34  # Status register
         # self.PB = Reg(8, 0x00)  # Program Bank Register (removed in favor of PC.b)
-        self.DB = Reg(8, 0x00)    # Data Bank Register
-        self.PC = Reg(24, 0x00)   # self.hardware_vectors.emulation.reset
+        self.DB = Reg(8, 0x00)  # Data Bank Register
+        self.PC = Reg(24, 0x00)  # self.hardware_vectors.emulation.reset
 
         # bsnes
         # r.vector = 0xfffc;  //reset vector address
@@ -175,14 +172,18 @@ class Cpu:
         self.V = Reg(24, 0x00)
         self.W = Reg(24, 0x00)
 
-        self.Z = Reg(16, 0x0000)  # this only exists in bsnes but not in actual hardware
+        self.Z = Reg(
+            16, 0x0000
+        )  # this only exists in bsnes but not in actual hardware
 
         # Emulation flag
         self.EF: bool = True  # Starts enabled
 
         # other regs used by bsnes
         self.irq: bool = False  # IRQ pin (0 = low, 1 = trigger)
-        self.wai: bool = False  # raised during wai, cleared after interrupt triggered
+        self.wai: bool = (
+            False  # raised during wai, cleared after interrupt triggered
+        )
         self.stp: bool = False  # raised during stp, never cleared
 
         # reg to count cpu clock cycles
@@ -308,7 +309,11 @@ class Cpu:
         peeked = self.scheduler.peek()
         # When no other events are scheduled (e.g. unit tests without a PPU),
         # set next_event = master_clock so the loop exits after one instruction.
-        next_event = peeked if peeked != 0xFFFFFFFFFFFFFFFF else self.scheduler.master_clock
+        next_event = (
+            peeked
+            if peeked != 0xFFFFFFFFFFFFFFFF
+            else self.scheduler.master_clock
+        )
         while True:
             if self._nmi_pending:
                 self._nmi_pending = False
@@ -344,7 +349,7 @@ class Cpu:
         self.icycles += 1
 
     def idle2(self):
-        if (self.D.l):
+        if self.D.l:
             self.idle()
 
     def idle4(self, x: int, y: int) -> None:
@@ -389,35 +394,35 @@ class Cpu:
         #     addr = (self.D.h << 8) | ((self.D.l + address) & 0xff)
         #     return self.read(addr)
         if self.EF and self.D.l == 0:
-            return self.read(self.D.w | address & 0xff)
-        return self.read(self.D.w + address & 0xffff)
+            return self.read(self.D.w | address & 0xFF)
+        return self.read(self.D.w + address & 0xFFFF)
 
     def writeDirect(self, address: int, data: int) -> None:
         if self.EF and self.D.l == 0:
-            self.write(self.D.w | address & 0xff, data)
+            self.write(self.D.w | address & 0xFF, data)
         else:
-            self.write(self.D.w + address & 0xffff, data)
+            self.write(self.D.w + address & 0xFFFF, data)
 
     def readDirectN(self, address: int) -> int:
-        return self.read(self.D.w + address & 0xffff)
+        return self.read(self.D.w + address & 0xFFFF)
 
     def readBank(self, address: int) -> int:
-        return self.read((self.DB.l << 16) + address & 0xffffff)
+        return self.read((self.DB.l << 16) + address & 0xFFFFFF)
 
     def writeBank(self, address: int, data: int) -> None:
-        self.write((self.DB.l << 16) + address & 0xffffff, data)
+        self.write((self.DB.l << 16) + address & 0xFFFFFF, data)
 
     def readLong(self, address: int) -> int:
-        return self.read(address & 0xffffff)
+        return self.read(address & 0xFFFFFF)
 
     def writeLong(self, address: int, data: int) -> None:
-        self.write(address & 0xffffff, data)
+        self.write(address & 0xFFFFFF, data)
 
     def readStack(self, address: int) -> int:
-        return self.read(self.S.w + address & 0xffff)
+        return self.read(self.S.w + address & 0xFFFF)
 
     def writeStack(self, address: int, data: int) -> None:
-        self.write(self.S.w + address & 0xffff, data)
+        self.write(self.S.w + address & 0xFFFF, data)
 
     def fetch(self) -> int:
         data = self.read(self.PC.d)
@@ -567,7 +572,16 @@ class Cpu:
 
     @property
     def P(self) -> int:
-        return self.CFlag << 0 | self.ZFlag << 1 | self.IFlag << 2 | self.DFlag << 3 | self.XFlag << 4 | self.MFlag << 5 | self.VFlag << 6 | self.NFlag << 7
+        return (
+            self.CFlag << 0
+            | self.ZFlag << 1
+            | self.IFlag << 2
+            | self.DFlag << 3
+            | self.XFlag << 4
+            | self.MFlag << 5
+            | self.VFlag << 6
+            | self.NFlag << 7
+        )
 
     @P.setter
     def P(self, data: int) -> None:

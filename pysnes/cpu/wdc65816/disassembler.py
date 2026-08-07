@@ -27,14 +27,20 @@ class Disassembler:
         self.effective = 0
 
         bank = address & 0xFF0000
-        self.opcode   = self.read(address); address = bank | ((address + 1) & 0xFFFF)
-        self.operand0 = self.read(address); address = bank | ((address + 1) & 0xFFFF)
-        self.operand1 = self.read(address); address = bank | ((address + 1) & 0xFFFF)
-        self.operand2 = self.read(address); address = bank | ((address + 1) & 0xFFFF)
+        self.opcode = self.read(address)
+        address = bank | ((address + 1) & 0xFFFF)
+        self.operand0 = self.read(address)
+        address = bank | ((address + 1) & 0xFFFF)
+        self.operand1 = self.read(address)
+        address = bank | ((address + 1) & 0xFFFF)
+        self.operand2 = self.read(address)
+        address = bank | ((address + 1) & 0xFFFF)
 
         self.operandByte = self.operand0 << 0
         self.operandWord = self.operand0 << 0 | self.operand1 << 8
-        self.operandLong = self.operand0 << 0 | self.operand1 << 8 | self.operand2 << 16
+        self.operandLong = (
+            self.operand0 << 0 | self.operand1 << 8 | self.operand2 << 16
+        )
 
         _, name, func = self.TABLE[self.opcode]
         operand = func()
@@ -69,7 +75,7 @@ class Disassembler:
         return f"${self.operandWord:04X}"
 
     def absolutePC(self):
-        self.effective = self.pc & 0xff0000 | self.operandWord
+        self.effective = self.pc & 0xFF0000 | self.operandWord
         return f"${self.operandWord:04X}"
 
     def absoluteX(self):
@@ -97,7 +103,9 @@ class Disassembler:
         return f"${self.operandByte:02X},x"
 
     def directY(self):
-        self.effective = c_uint16(self.cpu.D.w + self.operandByte + self.cpu.Y.w).value
+        self.effective = c_uint16(
+            self.cpu.D.w + self.operandByte + self.cpu.Y.w
+        ).value
         return f"${self.operandByte:02X},y"
 
     def immediate(self):
@@ -117,7 +125,9 @@ class Disassembler:
         return ""
 
     def indexedIndirectX(self):
-        self.effective = c_uint16(self.cpu.D.w + self.operandByte + self.cpu.X.w).value
+        self.effective = c_uint16(
+            self.cpu.D.w + self.operandByte + self.cpu.X.w
+        ).value
         self.effective = self.cpu.PC.b << 16 | self.readWord(self.effective)
         return f"(${self.operandByte:02X},x)"
 
@@ -128,18 +138,22 @@ class Disassembler:
 
     def indirectPC(self):
         self.effective = self.operandWord
-        self.effective = self.pc & 0xff0000 | self.readWord(self.effective)
+        self.effective = self.pc & 0xFF0000 | self.readWord(self.effective)
         return f"(${self.operandWord:04X})"
 
     def indirectX(self):
         self.effective = self.operandWord
-        self.effective = self.pc & 0xff0000 | c_uint16(self.effective + self.cpu.X.w).value
-        self.effective = self.pc & 0xff0000 | self.readWord(self.effective)
+        self.effective = (
+            self.pc & 0xFF0000 | c_uint16(self.effective + self.cpu.X.w).value
+        )
+        self.effective = self.pc & 0xFF0000 | self.readWord(self.effective)
         return f"(${self.operandWord:04X},x)"
 
     def indirectIndexedY(self):
         self.effective = c_uint16(self.cpu.D.w + self.operandByte).value
-        self.effective = (self.cpu.PC.b << 16) + self.readWord(self.effective) + self.cpu.Y.w
+        self.effective = (
+            (self.cpu.PC.b << 16) + self.readWord(self.effective) + self.cpu.Y.w
+        )
         return f"(${self.operandByte:02X}),y"
 
     def indirectLong(self):
@@ -160,11 +174,17 @@ class Disassembler:
         return f"${self.operand0:02X}=${self.operand1:02X}"
 
     def relative(self):
-        self.effective = self.pc & 0xff0000 | c_uint16(self.pc + 2 + c_int8(self.operandByte).value).value
+        self.effective = (
+            self.pc & 0xFF0000
+            | c_uint16(self.pc + 2 + c_int8(self.operandByte).value).value
+        )
         return f"${self.effective:04X}"
 
     def relativeWord(self):
-        self.effective = self.pc & 0xff0000 | c_uint16(self.pc + 3 + c_int16(self.operandWord).value).value
+        self.effective = (
+            self.pc & 0xFF0000
+            | c_uint16(self.pc + 3 + c_int16(self.operandWord).value).value
+        )
         return f"${self.effective:04X}"
 
     def stack(self):
@@ -173,7 +193,9 @@ class Disassembler:
 
     def stackIndirect(self):
         self.effective = c_uint16(self.operandByte + self.cpu.S.w).value
-        self.effective = (self.cpu.PC.b << 16) + self.readWord(self.effective) + self.cpu.Y.w
+        self.effective = (
+            (self.cpu.PC.b << 16) + self.readWord(self.effective) + self.cpu.Y.w
+        )
         return f"(${self.operandByte:02X},s),y)"
 
     def build_table(self) -> None:

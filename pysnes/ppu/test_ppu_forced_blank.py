@@ -48,8 +48,9 @@ def test_forced_blank_mid_frame_clears_already_rendered_rows():
     for row in range(4):
         base = row * SCREEN_WIDTH
         for x in (0, 64, 128, 255):
-            assert _rgb(ppu.main_bgs[base + x]) == (0, 0, 0), \
+            assert _rgb(ppu.main_bgs[base + x]) == (0, 0, 0), (
                 f"row {row} x={x} should be black after mid-frame forced blank"
+            )
             assert _rgb(ppu.sub_bgs[base + x]) == (0, 0, 0)
             assert ppu.main_layer[base + x] == 0
 

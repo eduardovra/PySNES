@@ -33,10 +33,22 @@ class StubRom:
         self.rom = bytearray(size)
         self.snes_header = SimpleNamespace(mapping_mode=MappingMode.LOROM)
         self.hardware_vectors = HardwareVectors(
-            native=InterruptVectors(cop=0x8000, brk=0x8000, abort=0x8000,
-                                    nmi=0x8000, reset=0, irq=0x8000),
-            emulation=InterruptVectors(cop=0x8000, brk=0, abort=0x8000,
-                                       nmi=0x8000, reset=0x8000, irq=0x8000),
+            native=InterruptVectors(
+                cop=0x8000,
+                brk=0x8000,
+                abort=0x8000,
+                nmi=0x8000,
+                reset=0,
+                irq=0x8000,
+            ),
+            emulation=InterruptVectors(
+                cop=0x8000,
+                brk=0,
+                abort=0x8000,
+                nmi=0x8000,
+                reset=0x8000,
+                irq=0x8000,
+            ),
         )
 
     def read(self, addr):
@@ -61,6 +73,7 @@ def make_bus():
 # ---------------------------------------------------------------------------
 # Channel register decoding ($43x0–$43xA)
 # ---------------------------------------------------------------------------
+
 
 def test_dmap_transfer_mode():
     bus, _, cpu = make_bus()
@@ -122,6 +135,7 @@ def test_channel_select_channel_7():
 # ---------------------------------------------------------------------------
 # MDMA — transfer mode 0  (1 byte to 1 B-bus register)
 # ---------------------------------------------------------------------------
+
 
 def test_mdma_mode0_single_byte():
     """Mode 0: each byte from A bus written to the single B-bus target."""
@@ -197,6 +211,7 @@ def test_mdma_mode0_fixed_source_does_not_increment():
 # MDMA — transfer mode 1  (2 bytes alternating to $21xx / $21xx+1)
 # ---------------------------------------------------------------------------
 
+
 def test_mdma_mode1_alternates_target():
     """Mode 1 alternates writes between $21xx and $21xx+1."""
     bus, rom, cpu = make_bus()
@@ -218,11 +233,14 @@ def test_mdma_mode1_alternates_target():
 # MDMA — multi-channel
 # ---------------------------------------------------------------------------
 
+
 def test_mdma_only_enabled_channels_run():
     """MDMAEN bitmask: only channels with their bit set transfer."""
     bus, rom, cpu = make_bus()
     rom.rom[0x0000] = 0x11
-    rom.rom[0x8000] = 0x22  # ROM offset for channel 1 (bank 0, offset 0x8000 + 0x8000)
+    rom.rom[0x8000] = (
+        0x22  # ROM offset for channel 1 (bank 0, offset 0x8000 + 0x8000)
+    )
 
     # Channel 0
     bus.write(0x004300, 0x00)
@@ -252,6 +270,7 @@ def test_mdma_only_enabled_channels_run():
 # HDMA — enable register
 # ---------------------------------------------------------------------------
 
+
 def test_hdmaen_sets_channel_flags():
     bus, _, cpu = make_bus()
     bus.write(0x00420C, 0b00000101)  # enable channels 0 and 2
@@ -271,6 +290,7 @@ def test_hdmaen_clears_when_zero():
 # ---------------------------------------------------------------------------
 # HDMA scanline execution
 # ---------------------------------------------------------------------------
+
 
 def _setup_hdma_channel0(bus, rom, table_offset, table_bytes):
     """Write an HDMA table at ROM[table_offset] and configure channel 0 (mode 1, target $2126)."""
@@ -293,11 +313,11 @@ def test_hdma_non_repeat_writes_bytes_to_target():
     _setup_hdma_channel0(bus, rom, 0x0000, [0x82, 10, 200, 20, 210, 0x00])
     cpu.dma.hdma_init()
 
-    cpu.dma.hdma_scanline()           # scanline 1: WH0=10, WH1=200
+    cpu.dma.hdma_scanline()  # scanline 1: WH0=10, WH1=200
     assert bus.ppu.wh0 == 10
     assert bus.ppu.wh1 == 200
 
-    cpu.dma.hdma_scanline()           # scanline 2: WH0=20, WH1=210
+    cpu.dma.hdma_scanline()  # scanline 2: WH0=20, WH1=210
     assert bus.ppu.wh0 == 20
     assert bus.ppu.wh1 == 210
 
@@ -311,12 +331,12 @@ def test_hdma_non_repeat_end_of_table_stops():
 
     bus.ppu.wh0 = 0
     bus.ppu.wh1 = 0
-    cpu.dma.hdma_scanline()           # scanline 1: writes 50, 100
+    cpu.dma.hdma_scanline()  # scanline 1: writes 50, 100
     assert bus.ppu.wh0 == 50
     assert bus.ppu.wh1 == 100
 
-    cpu.dma.hdma_scanline()           # scanline 2: table ended, no write
-    assert bus.ppu.wh0 == 50          # unchanged
+    cpu.dma.hdma_scanline()  # scanline 2: table ended, no write
+    assert bus.ppu.wh0 == 50  # unchanged
     assert bus.ppu.wh1 == 100
 
 
@@ -332,8 +352,8 @@ def test_hdma_repeat_reuses_same_data():
         assert bus.ppu.wh0 == 30
         assert bus.ppu.wh1 == 150
 
-    cpu.dma.hdma_scanline()           # table ended, no write
-    assert bus.ppu.wh0 == 30          # unchanged
+    cpu.dma.hdma_scanline()  # table ended, no write
+    assert bus.ppu.wh0 == 30  # unchanged
 
 
 def test_hdma_multiple_entries_sequential():
@@ -345,11 +365,11 @@ def test_hdma_multiple_entries_sequential():
     _setup_hdma_channel0(bus, rom, 0x0000, [0x81, 0, 0, 0x01, 64, 192, 0x00])
     cpu.dma.hdma_init()
 
-    cpu.dma.hdma_scanline()           # entry 1: WH0=0, WH1=0
+    cpu.dma.hdma_scanline()  # entry 1: WH0=0, WH1=0
     assert bus.ppu.wh0 == 0
     assert bus.ppu.wh1 == 0
 
-    cpu.dma.hdma_scanline()           # entry 2: WH0=64, WH1=192
+    cpu.dma.hdma_scanline()  # entry 2: WH0=64, WH1=192
     assert bus.ppu.wh0 == 64
     assert bus.ppu.wh1 == 192
 
@@ -363,7 +383,7 @@ def test_hdma_disabled_channel_does_nothing():
 
     bus.ppu.wh0 = 0
     cpu.dma.hdma_scanline()
-    assert bus.ppu.wh0 == 0           # not written
+    assert bus.ppu.wh0 == 0  # not written
 
 
 # ---------------------------------------------------------------------------
@@ -373,8 +393,15 @@ def test_hdma_disabled_channel_does_nothing():
 # ---------------------------------------------------------------------------
 
 
-def _setup_hdma_indirect_channel0(bus, rom, table_offset, table_bytes,
-                                   indirect_bank, indirect_addr, indirect_bytes):
+def _setup_hdma_indirect_channel0(
+    bus,
+    rom,
+    table_offset,
+    table_bytes,
+    indirect_bank,
+    indirect_addr,
+    indirect_bytes,
+):
     """Write an indirect HDMA table plus its data block; configure channel 0."""
     for i, b in enumerate(table_bytes):
         rom.rom[table_offset + i] = b
@@ -398,7 +425,8 @@ def test_hdma_indirect_non_repeat_reads_from_pointer():
     bus, rom, cpu = make_bus()
     # Table: count=0x02 (do-not-repeat, 2 scanlines), ptr=$1234, end
     _setup_hdma_indirect_channel0(
-        bus, rom,
+        bus,
+        rom,
         table_offset=0x0000,
         table_bytes=[0x02, 0x34, 0x12, 0x00],
         indirect_bank=0x7E,
@@ -418,7 +446,8 @@ def test_hdma_indirect_repeat_advances_pointer_per_scanline():
     bus, rom, cpu = make_bus()
     # Table: count=0x83 (do-repeat, 3 scanlines), ptr=$0200, end
     _setup_hdma_indirect_channel0(
-        bus, rom,
+        bus,
+        rom,
         table_offset=0x0000,
         table_bytes=[0x83, 0x00, 0x02, 0x00],
         indirect_bank=0x7E,
@@ -442,7 +471,8 @@ def test_hdma_indirect_multiple_entries():
     # Entry 2: non-repeat, 1 scanline, ptr=$0400
     # End
     _setup_hdma_indirect_channel0(
-        bus, rom,
+        bus,
+        rom,
         table_offset=0x0000,
         table_bytes=[0x01, 0x00, 0x03, 0x01, 0x00, 0x04, 0x00],
         indirect_bank=0x7E,
@@ -519,7 +549,9 @@ def _run_mode_transfer(mode, source_bytes, target=0x26, size=None):
     writes = _record_writes(bus)
     bus.write(0x00420B, 0x01)  # trigger
 
-    seq = [(a & 0xFF, v) for (a, v) in writes if 0x2100 <= (a & 0xFFFF) <= 0x21FF]
+    seq = [
+        (a & 0xFF, v) for (a, v) in writes if 0x2100 <= (a & 0xFFFF) <= 0x21FF
+    ]
     return seq, cpu
 
 
@@ -563,11 +595,15 @@ def test_mdma_mode_pattern_repeats_for_size_greater_than_unit():
     """When size > unit_bytes the per-unit offset pattern repeats."""
     # Mode 1 unit = [0, 1]; 6 source bytes → 3 repeats of the pattern.
     seq, _ = _run_mode_transfer(
-        mode=1, source_bytes=[0x10, 0x11, 0x12, 0x13, 0x14, 0x15])
+        mode=1, source_bytes=[0x10, 0x11, 0x12, 0x13, 0x14, 0x15]
+    )
     assert seq == [
-        (0x26, 0x10), (0x27, 0x11),
-        (0x26, 0x12), (0x27, 0x13),
-        (0x26, 0x14), (0x27, 0x15),
+        (0x26, 0x10),
+        (0x27, 0x11),
+        (0x26, 0x12),
+        (0x27, 0x13),
+        (0x26, 0x14),
+        (0x27, 0x15),
     ]
 
 
@@ -594,7 +630,9 @@ def test_mdma_reverse_transfer_decrements_source():
     writes = _record_writes(bus)
     bus.write(0x00420B, 0x01)
 
-    seq = [(a & 0xFF, v) for (a, v) in writes if 0x2100 <= (a & 0xFFFF) <= 0x21FF]
+    seq = [
+        (a & 0xFF, v) for (a, v) in writes if 0x2100 <= (a & 0xFFFF) <= 0x21FF
+    ]
     # Source walks 0x8005 → 0x8004 → 0x8003 → bytes copied in that order.
     assert seq == [(0x26, 0x55), (0x26, 0x44), (0x26, 0x33)]
     assert cpu.dma.channels[0].source_address == 0x8002

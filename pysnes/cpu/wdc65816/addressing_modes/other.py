@@ -27,11 +27,11 @@ def Prefix(cpu: Cpu):
 
 
 def ExchangeBA(cpu: Cpu):
-  cpu.idle()
-  cpu.idle()
-  cpu.A.w = cpu.A.w >> 8 | cpu.A.w << 8
-  cpu.ZFlag = cpu.A.l == 0
-  cpu.NFlag = bool(cpu.A.l & 0x80)
+    cpu.idle()
+    cpu.idle()
+    cpu.A.w = cpu.A.w >> 8 | cpu.A.w << 8
+    cpu.ZFlag = cpu.A.l == 0
+    cpu.NFlag = bool(cpu.A.l & 0x80)
 
 
 @decorator_mode_8bit

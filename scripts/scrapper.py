@@ -20,7 +20,9 @@ def run():
 
     table_body = table.find("tbody")
     body_rows = table_body.find_all("tr")
-    table_rows = [[td.text.strip() for td in row.find_all("td")] for row in body_rows]
+    table_rows = [
+        [td.text.strip() for td in row.find_all("td")] for row in body_rows
+    ]
 
     with open("instructions.csv", "w") as f:
         writer = csv.writer(f)

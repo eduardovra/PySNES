@@ -19,6 +19,7 @@ Save can only be taken at frame boundaries (see pysnes.savestate.save). The
 caller (pysnes.PySNES) services F5/F9 requests after `scheduler.run_to(end)`
 returns, when the scheduler queue is in a quiescent state.
 """
+
 from __future__ import annotations
 
 import datetime
@@ -107,6 +108,7 @@ def _python_impl() -> str:
 # Save / load
 # ---------------------------------------------------------------------------
 
+
 def save(pysnes, path) -> None:
     """Snapshot the running emulator to `path`.
 
@@ -115,7 +117,10 @@ def save(pysnes, path) -> None:
     """
     rom_header = pysnes.bus.rom.snes_header
     state = {
-        "rom": {"title": rom_header.game_title, "checksum": rom_header.checksum},
+        "rom": {
+            "title": rom_header.game_title,
+            "checksum": rom_header.checksum,
+        },
         "cpu": pysnes.cpu.dump_state(),
         "bus": pysnes.bus.dump_state(),
         "ppu": pysnes.ppu.dump_state(),
@@ -200,7 +205,7 @@ def load(pysnes, path) -> None:
     if header.get("rom_checksum") != rom_header.checksum:
         raise RomMismatchError(
             f"{path}: state was made for "
-            f"{header.get('rom_title','?')!r} (checksum 0x{header.get('rom_checksum',0):04X}), "
+            f"{header.get('rom_title', '?')!r} (checksum 0x{header.get('rom_checksum', 0):04X}), "
             f"but loaded ROM is {rom_header.game_title!r} "
             f"(checksum 0x{rom_header.checksum:04X}). Refusing to load."
         )

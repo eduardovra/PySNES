@@ -5,8 +5,12 @@ from typing import Optional, TYPE_CHECKING
 
 from . import bg_renderer, color_math, obj_renderer
 from .constants import (
-    _MC_PER_SCANLINE, _HBLANK_START_MC, _VBLANK_START_LINE, _TOTAL_SCANLINES,
-    SCREEN_WIDTH, SCREEN_HEIGHT,
+    _MC_PER_SCANLINE,
+    _HBLANK_START_MC,
+    _VBLANK_START_LINE,
+    _TOTAL_SCANLINES,
+    SCREEN_WIDTH,
+    SCREEN_HEIGHT,
 )
 from .data_structures import Background
 from .oam import OAM
@@ -101,7 +105,7 @@ class Ppu:
         self.m7x = 0
         self.m7y = 0
         self.m7sel = 0
-        self.m7_extbg = False   # SETINI ($2133) bit 6
+        self.m7_extbg = False  # SETINI ($2133) bit 6
         # Hardware multiplier: product of signed16(m7a) × signed8(m7b_lo).
         # Updated on every write to $211C (M7B). Read via $2134-$2136.
         self._mpy_result = 0
@@ -110,10 +114,10 @@ class Ppu:
         self.w12sel = 0
         self.w34sel = 0
         self.wobjsel = 0
-        self.wh0 = 0   # Window 1 left
-        self.wh1 = 0   # Window 1 right
-        self.wh2 = 0   # Window 2 left
-        self.wh3 = 0   # Window 2 right
+        self.wh0 = 0  # Window 1 left
+        self.wh1 = 0  # Window 1 right
+        self.wh2 = 0  # Window 2 left
+        self.wh3 = 0  # Window 2 right
         self.wbglog = 0
         self.wobjlog = 0
 
@@ -133,12 +137,14 @@ class Ppu:
         self.mosaic_size = 0
 
         self.field = 0  # 0 for even frames, 1 for odd frames
-        self.h_counter = 0  # current dot being drawn (updated at H-Blank / scanline start)
+        self.h_counter = (
+            0  # current dot being drawn (updated at H-Blank / scanline start)
+        )
         self.v_counter = 0  # current scanline being drawn
         self.frames = 0  # total frames rendered
 
-        self.main_bgs = array('I', [0] * 256 * 262)  # 262 was 239 before
-        self.sub_bgs = array('I', [0] * 256 * 262)
+        self.main_bgs = array("I", [0] * 256 * 262)  # 262 was 239 before
+        self.sub_bgs = array("I", [0] * 256 * 262)
         # Per-pixel main-screen layer tag: 0=backdrop, 1-4=BG1-BG4, 5=OBJ.
         # Used by the color-math composite pass to know which pixels participate.
         self.main_layer = bytearray(256 * 262)
@@ -146,7 +152,7 @@ class Ppu:
         # CGRAM u32-color cache: 256 entries (one per CGRAM slot), pre-converted
         # from 15-bit SNES RGB to 32-bit RGBA. Rebuilt lazily when _cgram_dirty.
         # array.array('I') gives PyPy direct unboxed 32-bit integer access.
-        self._cgram_cache = array('I', [0] * 256)
+        self._cgram_cache = array("I", [0] * 256)
         self._cgram_dirty: bool = True
 
         # Reusable 256-byte window mask buffer — avoids per-scanline allocation.
@@ -167,25 +173,65 @@ class Ppu:
         # priority. _obj_line_color holds the packed RGBA (0 = transparent),
         # _obj_line_pri the priority (0-3), _obj_line_layer the color-math layer
         # tag (5 or 6). _obj_line_vc marks the scanline the buffers were built for.
-        self._obj_line_color = array('I', [0] * 256)
+        self._obj_line_color = array("I", [0] * 256)
         self._obj_line_pri = bytearray(256)
         self._obj_line_layer = bytearray(256)
         self._obj_line_vc = -1
 
     _SCALAR_STATE = (
-        "vmain", "vmaddl", "vmaddh", "_vmdatal", "_vmdatah", "_vram_prefetch",
-        "display_brightness", "display_disable",
-        "_oamadd", "_oamadd_reload", "_oam_priority_activation", "_oamodd", "_oamdata",
-        "oam_main_screen_enable", "oam_sub_screen_enable",
-        "oam_tiledata_address", "oam_nameselect", "oam_base_size",
-        "_bgmode", "_bgpriority",
-        "latch_bgofs_ppu1", "latch_bgofs_ppu2",
-        "_m7_latch", "m7a", "m7b", "m7c", "m7d", "m7x", "m7y", "m7sel", "m7_extbg", "_mpy_result",
-        "w12sel", "w34sel", "wobjsel", "wh0", "wh1", "wh2", "wh3",
-        "wbglog", "wobjlog", "tmw", "tsw",
-        "cgwsel", "cgadsub", "coldata_r", "coldata_g", "coldata_b",
+        "vmain",
+        "vmaddl",
+        "vmaddh",
+        "_vmdatal",
+        "_vmdatah",
+        "_vram_prefetch",
+        "display_brightness",
+        "display_disable",
+        "_oamadd",
+        "_oamadd_reload",
+        "_oam_priority_activation",
+        "_oamodd",
+        "_oamdata",
+        "oam_main_screen_enable",
+        "oam_sub_screen_enable",
+        "oam_tiledata_address",
+        "oam_nameselect",
+        "oam_base_size",
+        "_bgmode",
+        "_bgpriority",
+        "latch_bgofs_ppu1",
+        "latch_bgofs_ppu2",
+        "_m7_latch",
+        "m7a",
+        "m7b",
+        "m7c",
+        "m7d",
+        "m7x",
+        "m7y",
+        "m7sel",
+        "m7_extbg",
+        "_mpy_result",
+        "w12sel",
+        "w34sel",
+        "wobjsel",
+        "wh0",
+        "wh1",
+        "wh2",
+        "wh3",
+        "wbglog",
+        "wobjlog",
+        "tmw",
+        "tsw",
+        "cgwsel",
+        "cgadsub",
+        "coldata_r",
+        "coldata_g",
+        "coldata_b",
         "mosaic_size",
-        "field", "h_counter", "v_counter", "frames",
+        "field",
+        "h_counter",
+        "v_counter",
+        "frames",
     )
 
     def dump_state(self) -> dict:
@@ -213,7 +259,9 @@ class Ppu:
         for f, v in d["scalars"].items():
             setattr(self, f, v)
         self._cgadd = c_uint8(d["_cgadd"])
-        self._cgdata = c_uint8(d["_cgdata"]) if d["_cgdata"] is not None else None
+        self._cgdata = (
+            c_uint8(d["_cgdata"]) if d["_cgdata"] is not None else None
+        )
         self.bg1.load_state(d["bg1"])
         self.bg2.load_state(d["bg2"])
         self.bg3.load_state(d["bg3"])
@@ -225,7 +273,11 @@ class Ppu:
         # entry (wired in _vblank_start). Still missing: the same reload when
         # forced-blank (bit 7) is cleared *during* V-Blank — a rarer case.
         new_disable = (data >> 7) & 1
-        if new_disable and not self.display_disable and 0 < self.v_counter < _VBLANK_START_LINE:
+        if (
+            new_disable
+            and not self.display_disable
+            and 0 < self.v_counter < _VBLANK_START_LINE
+        ):
             # Forced blank just asserted during active display. Rows 0..v_counter-1
             # have already been rendered with display enabled; retroactively clear
             # them so stale pixels don't appear at the top of the frame.
@@ -307,17 +359,31 @@ class Ppu:
         m = self.vmain_addr_remapping
         if m == 0:
             return addr
-        elif m == 1:   # aaaaaaaaBBBccccc → aaaaaaaacccccBBB
-            return (addr & 0xFF00) | ((addr & 0x001F) << 3) | ((addr & 0x00E0) >> 5)
-        elif m == 2:   # aaaaaaaBBBcccccc → aaaaaaaccccccBBB
-            return (addr & 0xFE00) | ((addr & 0x003F) << 3) | ((addr & 0x01C0) >> 6)
-        else:          # aaaaaaBBBccccccc → aaaaaacccccccBBB
-            return (addr & 0xFC00) | ((addr & 0x007F) << 3) | ((addr & 0x0380) >> 7)
+        elif m == 1:  # aaaaaaaaBBBccccc → aaaaaaaacccccBBB
+            return (
+                (addr & 0xFF00)
+                | ((addr & 0x001F) << 3)
+                | ((addr & 0x00E0) >> 5)
+            )
+        elif m == 2:  # aaaaaaaBBBcccccc → aaaaaaaccccccBBB
+            return (
+                (addr & 0xFE00)
+                | ((addr & 0x003F) << 3)
+                | ((addr & 0x01C0) >> 6)
+            )
+        else:  # aaaaaaBBBccccccc → aaaaaacccccccBBB
+            return (
+                (addr & 0xFC00)
+                | ((addr & 0x007F) << 3)
+                | ((addr & 0x0380) >> 7)
+            )
 
     def write_vram(self) -> None:
         word_addr = (self.vmaddl | self.vmaddh << 8) & 0x7FFF
         base_addr = self._remap_vram_addr(word_addr) * 2
-        assert base_addr < len(self.vram), f"VRAM write out of bounds: 0x{base_addr:06X}"
+        assert base_addr < len(self.vram), (
+            f"VRAM write out of bounds: 0x{base_addr:06X}"
+        )
         self.vram[base_addr + 0] = self._vmdatal
         self.vram[base_addr + 1] = self._vmdatah
         self._obj_tile_dirty[base_addr >> 5] = 1
@@ -333,7 +399,9 @@ class Ppu:
     def refill_vram_prefetch(self) -> None:
         word_addr = (self.vmaddl | self.vmaddh << 8) & 0x7FFF
         base_addr = self._remap_vram_addr(word_addr) * 2
-        self._vram_prefetch = self.vram[base_addr] | (self.vram[base_addr + 1] << 8)
+        self._vram_prefetch = self.vram[base_addr] | (
+            self.vram[base_addr + 1] << 8
+        )
 
     def rdvraml(self) -> int:
         data = self._vram_prefetch & 0xFF
@@ -627,7 +695,9 @@ class Ppu:
         self._irq_check()
 
         # Schedule end of scanline / start of next
-        self.scheduler.add(_MC_PER_SCANLINE - _HBLANK_START_MC, self._scanline_end)
+        self.scheduler.add(
+            _MC_PER_SCANLINE - _HBLANK_START_MC, self._scanline_end
+        )
 
     def _irq_check(self) -> None:
         """Raise CPU IRQ line if the H/V timer match condition is satisfied.
@@ -714,71 +784,125 @@ class Ppu:
             # Each layer writes only where pixels are non-transparent, so the
             # last write at a pixel wins (= "in front").
             bg_renderer.draw_scanline_backdrop(self)
-            bg_renderer.draw_background_scanline(self, self.bg4, 2, False)     # BG4 pri 0
+            bg_renderer.draw_background_scanline(
+                self, self.bg4, 2, False
+            )  # BG4 pri 0
             obj_renderer.copy_obj_pixels_for_priority(self, priority=0)
-            bg_renderer.draw_background_scanline(self, self.bg3, 2, False)     # BG3 pri 0
+            bg_renderer.draw_background_scanline(
+                self, self.bg3, 2, False
+            )  # BG3 pri 0
             obj_renderer.copy_obj_pixels_for_priority(self, priority=1)
-            bg_renderer.draw_background_scanline(self, self.bg4, 2, True)      # BG4 pri 1
-            bg_renderer.draw_background_scanline(self, self.bg3, 2, True)      # BG3 pri 1
+            bg_renderer.draw_background_scanline(
+                self, self.bg4, 2, True
+            )  # BG4 pri 1
+            bg_renderer.draw_background_scanline(
+                self, self.bg3, 2, True
+            )  # BG3 pri 1
             obj_renderer.copy_obj_pixels_for_priority(self, priority=2)
-            bg_renderer.draw_background_scanline(self, self.bg2, 2, False)     # BG2 pri 0
-            bg_renderer.draw_background_scanline(self, self.bg1, 2, False)     # BG1 pri 0
+            bg_renderer.draw_background_scanline(
+                self, self.bg2, 2, False
+            )  # BG2 pri 0
+            bg_renderer.draw_background_scanline(
+                self, self.bg1, 2, False
+            )  # BG1 pri 0
             obj_renderer.copy_obj_pixels_for_priority(self, priority=3)
-            bg_renderer.draw_background_scanline(self, self.bg2, 2, True)      # BG2 pri 1
-            bg_renderer.draw_background_scanline(self, self.bg1, 2, True)      # BG1 pri 1
+            bg_renderer.draw_background_scanline(
+                self, self.bg2, 2, True
+            )  # BG2 pri 1
+            bg_renderer.draw_background_scanline(
+                self, self.bg1, 2, True
+            )  # BG1 pri 1
         elif self._bgmode == 1:
             # Mode 1: BG1+BG2 (4bpp), BG3 (2bpp); $2105 bit 3 moves BG3 pri-1
             # BG3 pri-1 either to the very top or behind OBJ pri-0/1.
             bg_renderer.draw_scanline_backdrop(self)
-            bg_renderer.draw_background_scanline(self, self.bg3, 2, False)     # BG3 pri 0
+            bg_renderer.draw_background_scanline(
+                self, self.bg3, 2, False
+            )  # BG3 pri 0
             obj_renderer.copy_obj_pixels_for_priority(self, priority=0)
             if self._bgpriority == 0:
-                bg_renderer.draw_background_scanline(self, self.bg3, 2, True)  # BG3 pri 1 (low)
+                bg_renderer.draw_background_scanline(
+                    self, self.bg3, 2, True
+                )  # BG3 pri 1 (low)
             obj_renderer.copy_obj_pixels_for_priority(self, priority=1)
-            bg_renderer.draw_background_scanline(self, self.bg2, 4, False)     # BG2 pri 0
-            bg_renderer.draw_background_scanline(self, self.bg1, 4, False)     # BG1 pri 0
+            bg_renderer.draw_background_scanline(
+                self, self.bg2, 4, False
+            )  # BG2 pri 0
+            bg_renderer.draw_background_scanline(
+                self, self.bg1, 4, False
+            )  # BG1 pri 0
             obj_renderer.copy_obj_pixels_for_priority(self, priority=2)
-            bg_renderer.draw_background_scanline(self, self.bg2, 4, True)      # BG2 pri 1
-            bg_renderer.draw_background_scanline(self, self.bg1, 4, True)      # BG1 pri 1
+            bg_renderer.draw_background_scanline(
+                self, self.bg2, 4, True
+            )  # BG2 pri 1
+            bg_renderer.draw_background_scanline(
+                self, self.bg1, 4, True
+            )  # BG1 pri 1
             obj_renderer.copy_obj_pixels_for_priority(self, priority=3)
             if self._bgpriority == 1:
-                bg_renderer.draw_background_scanline(self, self.bg3, 2, True)  # BG3 pri 1 (high)
+                bg_renderer.draw_background_scanline(
+                    self, self.bg3, 2, True
+                )  # BG3 pri 1 (high)
         elif self._bgmode == 2:
             # Mode 2: BG1 (4bpp) + BG2 (4bpp) with offset-per-tile via BG3.
             # OPT is not implemented; we render without per-column offsets,
             # which gets the layout approximately right (enough to boot games
             # that probe their own title/menu screens).
             bg_renderer.draw_scanline_backdrop(self)
-            bg_renderer.draw_background_scanline(self, self.bg2, 4, False)   # BG2 pri 0
+            bg_renderer.draw_background_scanline(
+                self, self.bg2, 4, False
+            )  # BG2 pri 0
             obj_renderer.copy_obj_pixels_for_priority(self, priority=0)
-            bg_renderer.draw_background_scanline(self, self.bg1, 4, False)   # BG1 pri 0
+            bg_renderer.draw_background_scanline(
+                self, self.bg1, 4, False
+            )  # BG1 pri 0
             obj_renderer.copy_obj_pixels_for_priority(self, priority=1)
-            bg_renderer.draw_background_scanline(self, self.bg2, 4, True)    # BG2 pri 1
+            bg_renderer.draw_background_scanline(
+                self, self.bg2, 4, True
+            )  # BG2 pri 1
             obj_renderer.copy_obj_pixels_for_priority(self, priority=2)
-            bg_renderer.draw_background_scanline(self, self.bg1, 4, True)    # BG1 pri 1
+            bg_renderer.draw_background_scanline(
+                self, self.bg1, 4, True
+            )  # BG1 pri 1
             obj_renderer.copy_obj_pixels_for_priority(self, priority=3)
         elif self._bgmode == 3:
             # Mode 3: BG1 (8bpp/256-color), BG2 (4bpp); $2130 may enable Direct Color on BG1.
             bg_renderer.draw_scanline_backdrop(self)
-            bg_renderer.draw_background_scanline(self, self.bg2, 4, False)   # BG2 pri 0
+            bg_renderer.draw_background_scanline(
+                self, self.bg2, 4, False
+            )  # BG2 pri 0
             obj_renderer.copy_obj_pixels_for_priority(self, priority=0)
-            bg_renderer.draw_background_scanline(self, self.bg1, 8, False)   # BG1 pri 0
+            bg_renderer.draw_background_scanline(
+                self, self.bg1, 8, False
+            )  # BG1 pri 0
             obj_renderer.copy_obj_pixels_for_priority(self, priority=1)
-            bg_renderer.draw_background_scanline(self, self.bg2, 4, True)    # BG2 pri 1
+            bg_renderer.draw_background_scanline(
+                self, self.bg2, 4, True
+            )  # BG2 pri 1
             obj_renderer.copy_obj_pixels_for_priority(self, priority=2)
-            bg_renderer.draw_background_scanline(self, self.bg1, 8, True)    # BG1 pri 1
+            bg_renderer.draw_background_scanline(
+                self, self.bg1, 8, True
+            )  # BG1 pri 1
             obj_renderer.copy_obj_pixels_for_priority(self, priority=3)
         elif self._bgmode == 4:
             # Mode 4: BG1 (4bpp) + BG2 (2bpp) with OPT (offset-per-tile, not
             # implemented — same simplification as Mode 2).
             bg_renderer.draw_scanline_backdrop(self)
-            bg_renderer.draw_background_scanline(self, self.bg2, 2, False)   # BG2 pri 0
+            bg_renderer.draw_background_scanline(
+                self, self.bg2, 2, False
+            )  # BG2 pri 0
             obj_renderer.copy_obj_pixels_for_priority(self, priority=0)
-            bg_renderer.draw_background_scanline(self, self.bg1, 4, False)   # BG1 pri 0
+            bg_renderer.draw_background_scanline(
+                self, self.bg1, 4, False
+            )  # BG1 pri 0
             obj_renderer.copy_obj_pixels_for_priority(self, priority=1)
-            bg_renderer.draw_background_scanline(self, self.bg2, 2, True)    # BG2 pri 1
+            bg_renderer.draw_background_scanline(
+                self, self.bg2, 2, True
+            )  # BG2 pri 1
             obj_renderer.copy_obj_pixels_for_priority(self, priority=2)
-            bg_renderer.draw_background_scanline(self, self.bg1, 4, True)    # BG1 pri 1
+            bg_renderer.draw_background_scanline(
+                self, self.bg1, 4, True
+            )  # BG1 pri 1
             obj_renderer.copy_obj_pixels_for_priority(self, priority=3)
         elif self._bgmode == 5:
             # Mode 5: BG1 (4bpp) + BG2 (2bpp), hi-res.
@@ -787,23 +911,35 @@ class Ppu:
             # each tilemap entry is a 16-dot cell of two adjacent tiles (T, T+1).
             # See bg_renderer.draw_hires_background_scanline.
             bg_renderer.draw_scanline_backdrop(self)
-            bg_renderer.draw_hires_background_scanline(self, self.bg2, 2, False)  # BG2 pri 0
+            bg_renderer.draw_hires_background_scanline(
+                self, self.bg2, 2, False
+            )  # BG2 pri 0
             obj_renderer.copy_obj_pixels_for_priority(self, priority=0)
-            bg_renderer.draw_hires_background_scanline(self, self.bg1, 4, False)  # BG1 pri 0
+            bg_renderer.draw_hires_background_scanline(
+                self, self.bg1, 4, False
+            )  # BG1 pri 0
             obj_renderer.copy_obj_pixels_for_priority(self, priority=1)
-            bg_renderer.draw_hires_background_scanline(self, self.bg2, 2, True)   # BG2 pri 1
+            bg_renderer.draw_hires_background_scanline(
+                self, self.bg2, 2, True
+            )  # BG2 pri 1
             obj_renderer.copy_obj_pixels_for_priority(self, priority=2)
-            bg_renderer.draw_hires_background_scanline(self, self.bg1, 4, True)   # BG1 pri 1
+            bg_renderer.draw_hires_background_scanline(
+                self, self.bg1, 4, True
+            )  # BG1 pri 1
             obj_renderer.copy_obj_pixels_for_priority(self, priority=3)
         elif self._bgmode == 6:
             # Mode 6: BG1 (4bpp) only, hi-res + OPT (OPT not implemented).
             # Same hi-res handling as Mode 5, main screen only.
             bg_renderer.draw_scanline_backdrop(self)
             obj_renderer.copy_obj_pixels_for_priority(self, priority=0)
-            bg_renderer.draw_hires_background_scanline(self, self.bg1, 4, False)  # BG1 pri 0
+            bg_renderer.draw_hires_background_scanline(
+                self, self.bg1, 4, False
+            )  # BG1 pri 0
             obj_renderer.copy_obj_pixels_for_priority(self, priority=1)
             obj_renderer.copy_obj_pixels_for_priority(self, priority=2)
-            bg_renderer.draw_hires_background_scanline(self, self.bg1, 4, True)   # BG1 pri 1
+            bg_renderer.draw_hires_background_scanline(
+                self, self.bg1, 4, True
+            )  # BG1 pri 1
             obj_renderer.copy_obj_pixels_for_priority(self, priority=3)
         else:
             # Mode 7: affine-transformed BG1 (8bpp). EXTBG BG2 written by same pass.

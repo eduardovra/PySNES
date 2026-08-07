@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+from array import array
 from typing import Tuple, TYPE_CHECKING
 
 
-from .constants import SCREEN_WIDTH, _PIXEL_SEQUENCE
-from .data_structures import Object, Tilemap
+from .constants import SCREEN_WIDTH
+from .data_structures import Object
 
 if TYPE_CHECKING:
     from .ppu import Ppu
@@ -33,45 +34,36 @@ def _decode_obj_tile(ppu: Ppu, slot: int, vram_addr: int) -> None:
     ppu._obj_tile_dirty[slot] = 0
 
 
-def draw_tiles(
-    ppu: Ppu,
-    bpp: int,
-    x_offset: int,
-    y_offset: int,
-    tile: Tilemap | Object,
-    tile_base_addr: int,
-    tile_width: int,
-    tile_height: int,
-    tile_character: int,
-) -> None:
+def _plot_obj(ppu: Ppu, obj: Object, x_offset: int, tile_base_addr: int,
+              tile_width: int, tile_height: int, cgram_cache: array) -> None:
+    """Plot one object's pixels for the current scanline into the OBJ line
+    buffers, writing only where no lower-index sprite has already claimed the
+    pixel (color_line == 0). Objects are always 4bpp."""
+    vc = ppu.v_counter
     h_tiles = tile_width // 8
     v_tiles = tile_height // 8
-    vc = ppu.v_counter
-    h_flip = tile.h_flip
-    v_flip = tile.v_flip
-    palette = tile.palette
-    vram = ppu.vram
-    main_bgs = ppu.main_bgs
-    main_layer = ppu.main_layer
-    if ppu._cgram_dirty:
-        ppu._rebuild_cgram_cache()
-    cgram_cache = ppu._cgram_cache
-    tile_size = 8 * bpp
-    palette_base = palette * (1 << bpp)
-    y_idx = (vc - 1) * SCREEN_WIDTH
+    h_flip = obj.h_flip
+    v_flip = obj.v_flip
+    palette_base = obj.palette * 16  # 4bpp: 16 colors per palette
+    pri = obj.priority
+    # OBJ palettes 4-7 (12-15 in global space) use color math (layer 5);
+    # palettes 0-3 are immune (layer 6).
+    layer = 5 if obj.palette >= 12 else 6
+    tile_character = obj.character
+    y_offset = obj.y
+    color_line = ppu._obj_line_color
+    pri_line = ppu._obj_line_pri
+    layer_line = ppu._obj_line_layer
+    obj_cache = ppu._obj_tile_cache
 
     for tile_pos_v in range(v_tiles):
-        # Compute the screen-Y of the top of this tile row (before flip).
         if v_flip:
             tile_row_y = y_offset + (v_tiles - 1 - tile_pos_v) * 8
         else:
             tile_row_y = y_offset + tile_pos_v * 8
-        # Skip the entire row if v_counter isn't within its 8-pixel span.
         if not (tile_row_y <= vc < tile_row_y + 8):
             continue
 
-        # Which VRAM row within the 8×8 tile maps to vc.
-        # v_flip reverses the tile's internal row order.
         row_in_tile = vc - tile_row_y
         i_base = ((7 - row_in_tile) if v_flip else row_in_tile) * 2
 
@@ -82,75 +74,46 @@ def draw_tiles(
                 x = x_offset + tile_pos_h * 8
 
             tile_addr = tile_character + tile_pos_h + tile_pos_v * 16
-
-            if bpp == 4:
-                # Fast path: use pre-decoded tile cache to avoid per-pixel VRAM reads.
-                tile_vram_start = (tile_base_addr + tile_addr * tile_size) & 0xFFFF
-                cache_slot = tile_vram_start >> 5
-                if ppu._obj_tile_dirty[cache_slot]:
-                    _decode_obj_tile(ppu, cache_slot, tile_vram_start)
-                obj_cache = ppu._obj_tile_cache
-                # i_base = vram_row * 2, so vram_row = i_base >> 1 (v_flip already folded in)
-                cache_base = cache_slot * 64 + (i_base >> 1) * 8
-                for col in range(8):
-                    color = obj_cache[cache_base + col]
-                    px = x + (7 - col if h_flip else col)
-                    if color and 0 <= px < SCREEN_WIDTH:
-                        u32_color = cgram_cache[palette_base + color]
-                        idx = y_idx + px
-                        main_bgs[idx] = u32_color
-                        # OBJ palettes 4-7 (12-15 in global space) use color math (layer 5).
-                        # Palettes 0-3 are immune (layer 6).
-                        main_layer[idx] = 5 if palette >= 12 else 6
-            else:
-                # General path for bpp != 4.
-                # VRAM is 64KB; mask to 16 bits to wrap correctly.
-                i = (i_base + tile_base_addr + tile_addr * tile_size) & 0xFFFF
-
-                if h_flip:
-                    x_sequence = range(x + 7, x - 1, -1)
-                else:
-                    x_sequence = range(x, x + 8)
-
-                for pixel, px in zip(_PIXEL_SEQUENCE, x_sequence):
-                    mask = 1 << pixel
-                    l = vram[i]
-                    h = vram[(i + 1) & 0xFFFF]
-                    color = (h & mask) >> pixel << 1 | (l & mask) >> pixel << 0
-                    if bpp >= 4:
-                        l = vram[(i + 16) & 0xFFFF]
-                        h = vram[(i + 17) & 0xFFFF]
-                        color |= (h & mask) >> pixel << 3 | (l & mask) >> pixel << 2
-                    if color and 0 <= px < SCREEN_WIDTH:
-                        u32_color = cgram_cache[palette_base + color]
-                        idx = y_idx + px
-                        main_bgs[idx] = u32_color
-                        main_layer[idx] = 5 if palette >= 12 else 6
+            tile_vram_start = (tile_base_addr + tile_addr * 32) & 0xFFFF
+            cache_slot = tile_vram_start >> 5
+            if ppu._obj_tile_dirty[cache_slot]:
+                _decode_obj_tile(ppu, cache_slot, tile_vram_start)
+            cache_base = cache_slot * 64 + (i_base >> 1) * 8
+            for col in range(8):
+                color = obj_cache[cache_base + col]
+                if not color:
+                    continue
+                px = x + (7 - col if h_flip else col)
+                if 0 <= px < SCREEN_WIDTH and color_line[px] == 0:
+                    color_line[px] = cgram_cache[palette_base + color]
+                    pri_line[px] = pri
+                    layer_line[px] = layer
 
 
-def draw_objects(ppu: Ppu, priority: int = -1) -> None:
-    # objects are the building blocks for sprites
-    # they can move independently from the background and always use 4bpp
-    # they can be 8x8, 16x16, 32x32 or 64x64 pixels in size
-    # oam is the memory region where the objects properties are stored. each obj uses 34 bits
-    #
-    # priority: when >= 0, only objects with obj.priority == priority are
-    # drawn. This lets the mode dispatcher interleave sprite layers with
-    # BG layers in the correct front-to-back order per SNES spec.
+def _render_obj_line(ppu: Ppu) -> None:
+    """Resolve the full OBJ layer for the current scanline into the line
+    buffers. Sprite-vs-sprite priority is by OAM index — the lowest-numbered
+    object wins each pixel regardless of priority field — so iterate index
+    0→127 and let the first writer keep the pixel."""
+    vc = ppu.v_counter
+    color_line = ppu._obj_line_color
+    for i in range(SCREEN_WIDTH):
+        color_line[i] = 0
+    ppu._obj_line_vc = vc
 
     if not ppu.oam_main_screen_enable:
         return
 
-    vc = ppu.v_counter
+    if ppu._cgram_dirty:
+        ppu._rebuild_cgram_cache()
+    cgram_cache = ppu._cgram_cache
+
     for obj in ppu.oam.objects:
-        if priority >= 0 and obj.priority != priority:
-            continue
         if obj.y == 240:  # TODO: replace with proper Y-bounds check; y=240 is the common hide convention but not the hardware rule
             continue
 
         tile_width, tile_height = get_obj_dimensions(ppu, obj.size)
-        # Skip sprites whose Y range doesn't include the current scanline,
-        # avoiding draw_tiles call overhead for the majority of objects.
+        # Skip sprites whose Y range doesn't include the current scanline.
         if not (obj.y <= vc < obj.y + tile_height):
             continue
 
@@ -163,17 +126,43 @@ def draw_objects(ppu: Ppu, priority: int = -1) -> None:
         if obj.name_select:
             tile_base_word = (tile_base_word + (ppu.oam_nameselect + 1) * 0x1000) & 0x7FFF
 
-        draw_tiles(
-            ppu,
-            bpp=4,  # Always 4bpp for objects
-            x_offset=x_screen,
-            y_offset=obj.y,
-            tile=obj,
-            tile_base_addr=tile_base_word * 2,
-            tile_width=tile_width,
-            tile_height=tile_height,
-            tile_character=obj.character,
-        )
+        _plot_obj(ppu, obj, x_screen, tile_base_word * 2,
+                  tile_width, tile_height, cgram_cache)
+
+
+def copy_obj_pixels_for_priority(ppu: Ppu, priority: int = -1) -> None:
+    # objects are the building blocks for sprites
+    # they can move independently from the background and always use 4bpp
+    # they can be 8x8, 16x16, 32x32 or 64x64 pixels in size
+    #
+    # The OBJ layer is resolved once per scanline (by OAM index) into the line
+    # buffers; this call blits the pixels whose owning sprite has the requested
+    # priority into the main screen. The mode dispatcher interleaves these
+    # per-priority blits with BG layers in the correct front-to-back order.
+    #
+    # priority: when >= 0, only pixels with that priority are drawn; -1 draws
+    # all priorities (used by tests).
+
+    if not ppu.oam_main_screen_enable:
+        return
+
+    vc = ppu.v_counter
+    if ppu._obj_line_vc != vc:
+        _render_obj_line(ppu)
+
+    color_line = ppu._obj_line_color
+    pri_line = ppu._obj_line_pri
+    layer_line = ppu._obj_line_layer
+    main_bgs = ppu.main_bgs
+    main_layer = ppu.main_layer
+    y_idx = (vc - 1) * SCREEN_WIDTH
+
+    for px in range(SCREEN_WIDTH):
+        c = color_line[px]
+        if c and (priority < 0 or pri_line[px] == priority):
+            idx = y_idx + px
+            main_bgs[idx] = c
+            main_layer[idx] = layer_line[px]
 
 
 def get_obj_dimensions(ppu: Ppu, obj_size: bool) -> Tuple[int, int]:

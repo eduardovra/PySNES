@@ -2,7 +2,7 @@
 Synthetic PPU sprite (OAM) unit tests.
 
 These bypass ROM loading entirely — they write VRAM/CGRAM/OAM directly and
-call draw_objects() to verify that sprite pixels land in main_bgs correctly.
+call copy_obj_pixels_for_priority() to verify that sprite pixels land in main_bgs correctly.
 No Mesen, no ROM files needed.
 
 Setup:
@@ -132,7 +132,7 @@ class TestSpriteRendering:
         bg_renderer.draw_scanline_backdrop(ppu)
 
         # Draw objects for this scanline
-        obj_renderer.draw_objects(ppu)
+        obj_renderer.copy_obj_pixels_for_priority(ppu)
 
         # Sprite tile row 1 (y=6 in tile coords) should be at main_bgs row 5
         for x in range(10, 18):
@@ -145,7 +145,7 @@ class TestSpriteRendering:
 
         ppu.v_counter = 6
         bg_renderer.draw_scanline_backdrop(ppu)
-        obj_renderer.draw_objects(ppu)
+        obj_renderer.copy_obj_pixels_for_priority(ppu)
 
         # Columns 9 and 18 are adjacent to the sprite — must be backdrop (black)
         assert _pixel(ppu, 9,  5) == BLACK, "Left neighbor should be backdrop"
@@ -164,7 +164,7 @@ class TestSpriteRendering:
 
         ppu.v_counter = 6
         bg_renderer.draw_scanline_backdrop(ppu)
-        obj_renderer.draw_objects(ppu)
+        obj_renderer.copy_obj_pixels_for_priority(ppu)
 
         # All pixels on the sprite scanline should remain backdrop (black)
         for x in range(10, 18):
@@ -181,7 +181,7 @@ class TestSpriteRendering:
 
         ppu.v_counter = 6
         bg_renderer.draw_scanline_backdrop(ppu)
-        obj_renderer.draw_objects(ppu)  # must not raise IndexError
+        obj_renderer.copy_obj_pixels_for_priority(ppu)  # must not raise IndexError
 
         # Only the visible part (x=0..4) should be green
         for x in range(0, 5):
@@ -201,7 +201,7 @@ class TestSpriteRendering:
 
         ppu.v_counter = 6
         bg_renderer.draw_scanline_backdrop(ppu)
-        obj_renderer.draw_objects(ppu)
+        obj_renderer.copy_obj_pixels_for_priority(ppu)
 
         for x in range(0, 5):
             assert _pixel(ppu, x, 5) == GREEN, f"Expected GREEN at ({x}, 5)"
@@ -219,7 +219,7 @@ class TestSpriteRendering:
         # Render scanline above the sprite
         ppu.v_counter = 4
         bg_renderer.draw_scanline_backdrop(ppu)
-        obj_renderer.draw_objects(ppu)
+        obj_renderer.copy_obj_pixels_for_priority(ppu)
 
         for x in range(10, 18):
             assert _pixel(ppu, x, 3) == BLACK, (
@@ -303,7 +303,7 @@ class TestMultiTileSprite:
 
         ppu.v_counter = 11  # output row = 10
         bg_renderer.draw_scanline_backdrop(ppu)
-        obj_renderer.draw_objects(ppu)
+        obj_renderer.copy_obj_pixels_for_priority(ppu)
 
         for x in range(20, 28):
             assert _pixel(ppu, x, 10) == GREEN, f"top-left at ({x},10)"
@@ -315,7 +315,7 @@ class TestMultiTileSprite:
 
         ppu.v_counter = 11
         bg_renderer.draw_scanline_backdrop(ppu)
-        obj_renderer.draw_objects(ppu)
+        obj_renderer.copy_obj_pixels_for_priority(ppu)
 
         for x in range(28, 36):
             assert _pixel(ppu, x, 10) == RED, f"top-right at ({x},10)"
@@ -327,7 +327,7 @@ class TestMultiTileSprite:
 
         ppu.v_counter = 19  # output row = 18
         bg_renderer.draw_scanline_backdrop(ppu)
-        obj_renderer.draw_objects(ppu)
+        obj_renderer.copy_obj_pixels_for_priority(ppu)
 
         for x in range(20, 28):
             assert _pixel(ppu, x, 18) == BLUE, f"bottom-left at ({x},18)"
@@ -339,7 +339,7 @@ class TestMultiTileSprite:
 
         ppu.v_counter = 19
         bg_renderer.draw_scanline_backdrop(ppu)
-        obj_renderer.draw_objects(ppu)
+        obj_renderer.copy_obj_pixels_for_priority(ppu)
 
         for x in range(28, 36):
             assert _pixel(ppu, x, 18) == GREEN, f"bottom-right at ({x},18)"
@@ -351,7 +351,7 @@ class TestMultiTileSprite:
 
         ppu.v_counter = 11
         bg_renderer.draw_scanline_backdrop(ppu)
-        obj_renderer.draw_objects(ppu)
+        obj_renderer.copy_obj_pixels_for_priority(ppu)
 
         assert _pixel(ppu, 36, 10) == BLACK, "right of 16x16 sprite"
 
@@ -362,7 +362,7 @@ class TestMultiTileSprite:
 
         ppu.v_counter = 27  # output row = 26
         bg_renderer.draw_scanline_backdrop(ppu)
-        obj_renderer.draw_objects(ppu)
+        obj_renderer.copy_obj_pixels_for_priority(ppu)
 
         for x in range(20, 36):
             assert _pixel(ppu, x, 26) == BLACK, f"below sprite at ({x},26)"
@@ -486,4 +486,79 @@ class TestSpritePriorityOrdering:
         # BG1 pri-0 is in front of sprite pri-0 → YELLOW wins.
         assert _pixel(ppu, 20, 10) == YELLOW, (
             f"BG1 pri-0 should cover sprite pri-0, got {_pixel(ppu, 20, 10)}"
+        )
+
+
+# 5-bit red: r5=31 → r8 = 255
+RED = (255, 0, 0)
+
+
+def _setup_two_overlapping_sprites(
+    ppu: Ppu, a_priority: int, b_priority: int
+) -> None:
+    """Place two 8x8 sprites at the same pixel (20, 10).
+
+    Sprite 0 (lower OAM index) uses palette 8 → GREEN.
+    Sprite 1 (higher OAM index) uses palette 9 → RED.
+    Both share the solid color-index-1 tile (character 0).
+    """
+    _setup_sprite(ppu)  # sprite 0: palette 8 (GREEN), all others hidden at y=240
+
+    # Palette 9, color 1 = RED  →  CGRAM index 9*16 + 1 = 145
+    _write_cgram(ppu, 145, 31, 0, 0)
+
+    a = ppu.oam.objects[0]
+    a.x = 20
+    a.y = 10
+    a.priority = a_priority
+
+    b = ppu.oam.objects[1]
+    b.x = 20
+    b.y = 10
+    b.character = 0
+    b.palette = 9  # +8 already applied → RED
+    b.priority = b_priority
+    b.h_flip = False
+    b.v_flip = False
+    b.size = False
+    b.name_select = False
+
+
+class TestSpriteVsSpritePriority:
+    """Sprite-vs-sprite priority is decided by OAM index — the lowest-numbered
+    object wins each pixel — regardless of the OAM priority field. The priority
+    field only chooses where that pixel sits relative to BG layers."""
+
+    def test_lower_index_wins_same_priority(self):
+        """Two overlapping sprites, equal priority: lowest OAM index on top."""
+        ppu = _make_ppu()
+        _setup_two_overlapping_sprites(ppu, a_priority=0, b_priority=0)
+        ppu.v_counter = 11
+        ppu.render_scanline()
+        assert _pixel(ppu, 20, 10) == GREEN, (
+            f"Sprite 0 (lowest index) should be on top, got {_pixel(ppu, 20, 10)}"
+        )
+
+    def test_lower_index_wins_despite_lower_priority_field(self):
+        """Regression (Super Bomberman 5 menu cursor): sprite 0 has the LOWER
+        priority field (2) than sprite 1 (3), yet still appears in front because
+        sprite-vs-sprite ordering is purely by OAM index."""
+        ppu = _make_ppu()
+        _setup_two_overlapping_sprites(ppu, a_priority=2, b_priority=3)
+        ppu.v_counter = 11
+        ppu.render_scanline()
+        assert _pixel(ppu, 20, 10) == GREEN, (
+            "Sprite 0 (index 0, priority 2) must be in front of sprite 1 "
+            f"(index 1, priority 3), got {_pixel(ppu, 20, 10)}"
+        )
+
+    def test_higher_index_higher_priority_still_loses(self):
+        """Symmetric check: sprite 1 has the HIGHER priority field (3) and a
+        higher index — it must still lose the pixel to sprite 0 (priority 0)."""
+        ppu = _make_ppu()
+        _setup_two_overlapping_sprites(ppu, a_priority=0, b_priority=3)
+        ppu.v_counter = 11
+        ppu.render_scanline()
+        assert _pixel(ppu, 20, 10) == GREEN, (
+            f"Sprite 0 (lowest index) must win the pixel, got {_pixel(ppu, 20, 10)}"
         )

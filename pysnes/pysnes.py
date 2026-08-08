@@ -90,9 +90,8 @@ class PySNES:
         # CPU trace: compare against bsnes reference
         self._trace_file = None
         self._trace_ref = None
-        self._trace_ring: deque | None = (
-            None  # ring-buffer mode; None = stream to file
-        )
+        # ring-buffer mode; None = stream to file
+        self._trace_ring: deque | None = None
         self._trace_count = 0
         self._trace_limit = 100_000
         self._trace_diverged = False
@@ -412,9 +411,8 @@ class PySNES:
         # Exact NTSC frame period: 21.477272 MHz / (262 lines * 1364 dots) ≈
         # 16.6836 ms
         FRAME_TIME_S: float = MC_PER_FRAME / 21_477_272.0
-        _FRAME_HEADROOM_S: float = (
-            0.001  # busy-wait the last 1 ms for precision
-        )
+        # busy-wait the last 1 ms for precision
+        _FRAME_HEADROOM_S: float = 0.001
         # EMA smoothing coefficient for FPS display (≈30-frame window)
         _FPS_ALPHA: float = 1.0 / 30.0
 

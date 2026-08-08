@@ -148,9 +148,8 @@ def test_toggle_breakpoint_removes_hook_when_no_breakpoints(debugger, pysnes):
 
 
 def test_hooked_step_normal_calls_original(debugger, pysnes):
-    debugger.toggle_breakpoint(
-        0x9000
-    )  # install hook but breakpoint is elsewhere
+    # install hook but breakpoint is elsewhere
+    debugger.toggle_breakpoint(0x9000)
     pysnes.cpu.PC.d = 0x8000
     before = pysnes.cpu._steps
     debugger._hooked_step()

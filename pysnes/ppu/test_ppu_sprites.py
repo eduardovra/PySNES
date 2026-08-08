@@ -105,9 +105,8 @@ def _setup_sprite(ppu: Ppu) -> None:
     obj.x = 10
     obj.y = 5
     obj.character = 0
-    obj.palette = (
-        8  # +8 already applied (matches OAM decoder in update_low_table)
-    )
+    # +8 already applied (matches OAM decoder in update_low_table)
+    obj.palette = 8
     obj.priority = 0
     obj.h_flip = False
     obj.v_flip = False
@@ -184,9 +183,8 @@ class TestSpriteRendering:
 
         ppu.v_counter = 6
         bg_renderer.draw_scanline_backdrop(ppu)
-        obj_renderer.copy_obj_pixels_for_priority(
-            ppu
-        )  # must not raise IndexError
+        # must not raise IndexError
+        obj_renderer.copy_obj_pixels_for_priority(ppu)
 
         # Only the visible part (x=0..4) should be green
         for x in range(5):
@@ -517,9 +515,8 @@ def _setup_two_overlapping_sprites(
     Sprite 1 (higher OAM index) uses palette 9 → RED.
     Both share the solid color-index-1 tile (character 0).
     """
-    _setup_sprite(
-        ppu
-    )  # sprite 0: palette 8 (GREEN), all others hidden at y=240
+    # sprite 0: palette 8 (GREEN), all others hidden at y=240
+    _setup_sprite(ppu)
 
     # Palette 9, color 1 = RED  →  CGRAM index 9*16 + 1 = 145
     _write_cgram(ppu, 145, 31, 0, 0)

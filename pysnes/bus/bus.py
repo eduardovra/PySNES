@@ -277,9 +277,8 @@ class Bus:
                     return data
                 if addr == 0x4211:  # TIMEUP - IRQ flag (read-and-clear)
                     data = self.cpu.status.irq_line << 7
-                    self.cpu.status.irq_line = (
-                        False  # Reading clears the latched flag
-                    )
+                    # Reading clears the latched flag
+                    self.cpu.status.irq_line = False
                     return data
                 if addr == 0x4212:  # HVBJOY - PPU Status
                     return (
@@ -637,9 +636,8 @@ class Bus:
                     self.apu.ports_r[addr - 0x2140] = data
                     return
 
-                if (
-                    addr == 0x2180
-                ):  # WMDATA - write byte to WRAM at WMADD, increment
+                # WMDATA - write byte to WRAM at WMADD, increment
+                if addr == 0x2180:
                     wm_addr = self._wmadd & 0x1FFFF
                     if wm_addr < 0x2000:
                         self.low_ram[wm_addr] = data

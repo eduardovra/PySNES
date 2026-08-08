@@ -134,9 +134,8 @@ class Rom:
         copying device for backup/piracy. The original .smc files produced by
         the device contained a 512 byte header.
         """
-        self.rom = bytearray(
-            0x400000
-        )  # https://en.wikibooks.org/wiki/Super_NES_Programming/SNES_memory_map
+        # https://en.wikibooks.org/wiki/Super_NES_Programming/SNES_memory_map
+        self.rom = bytearray(0x400000)
 
         print(f"Loading ROM file: {self.rom_file_path!r}")
         with open(self.rom_file_path, "rb") as f:

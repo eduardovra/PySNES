@@ -189,9 +189,8 @@ class Debugger:
         def _run():
             win = DebuggerWindow(self._cpu, self._bus, self._ppu, self)
             self._window = win
-            self._cpu.trace_enabled = (
-                True  # populate trace_log for disasm history
-            )
+            # populate trace_log for disasm history
+            self._cpu.trace_enabled = True
             win.root.mainloop()
             win.root.destroy()  # destroy in daemon (Tkinter) thread
             self._cpu.trace_enabled = False

@@ -203,9 +203,8 @@ class Apu:
         ))
         # fmt: on
 
-        self.page_0 = bytearray(
-            0x0100
-        )  # 0x00–0xFF; upper 16 bytes used by _io_flat mode
+        # 0x00–0xFF; upper 16 bytes used by _io_flat mode
+        self.page_0 = bytearray(0x0100)
         self.page_1 = bytearray(0x0100)
 
         # The IO Port0-4 registers have separete memory for R/W

@@ -72,9 +72,8 @@ def _setup_backdrop_add_bg2(ppu: Ppu) -> None:
     _write_cgram(ppu, 33, 0, 0, 31)
 
     # BG2 solid blue tile
-    _write_4bpp_solid_tile(
-        ppu, 0, 1
-    )  # tile 0 → color_index=1 → palette color 33 for BG2 pal 2
+    # tile 0 → color_index=1 → palette color 33 for BG2 pal 2
+    _write_4bpp_solid_tile(ppu, 0, 1)
 
     # Wait — for BG2 we need palette 2. Let's instead put color at palette-0
     # color-1.

@@ -116,9 +116,8 @@ class TestVramRemapping:
           Remapped: aaaaaaaa=0x00, ccccc=00000, BBB=111 → 0x0007
         """
         ppu = _make_ppu()
-        ppu.vmain = (
-            0b10000100  # mode 1 (bits 3:2 = 01), increment on high write
-        )
+        # mode 1 (bits 3:2 = 01), increment on high write
+        ppu.vmain = 0b10000100
         _write_word(ppu, 0x00E0, 0xCC, 0xDD)
         assert ppu.vram[0x0007 * 2 + 0] == 0xCC
         assert ppu.vram[0x0007 * 2 + 1] == 0xDD
@@ -142,9 +141,8 @@ class TestVramRemapping:
           Remapped: aaaaaaa=0x00, cccccc=000000, BBB=111 → 0x0007
         """
         ppu = _make_ppu()
-        ppu.vmain = (
-            0b10001000  # mode 2 (bits 3:2 = 10), increment on high write
-        )
+        # mode 2 (bits 3:2 = 10), increment on high write
+        ppu.vmain = 0b10001000
         _write_word(ppu, 0x01C0, 0x33, 0x44)
         assert ppu.vram[0x0007 * 2 + 0] == 0x33
         assert ppu.vram[0x0007 * 2 + 1] == 0x44
@@ -157,9 +155,8 @@ class TestVramRemapping:
           Remapped: aaaaaa=0x00, ccccccc=0000000, BBB=111 → 0x0007
         """
         ppu = _make_ppu()
-        ppu.vmain = (
-            0b10001100  # mode 3 (bits 3:2 = 11), increment on high write
-        )
+        # mode 3 (bits 3:2 = 11), increment on high write
+        ppu.vmain = 0b10001100
         _write_word(ppu, 0x0380, 0x55, 0x66)
         assert ppu.vram[0x0007 * 2 + 0] == 0x55
         assert ppu.vram[0x0007 * 2 + 1] == 0x66

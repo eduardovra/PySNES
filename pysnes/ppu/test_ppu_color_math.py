@@ -212,9 +212,8 @@ class TestColorMathBackdropAdd:
         # do this by leaving the right half of the tilemap pointing at a
         # transparent tile.
         ppu.bg1.screen_addr = 0
-        ppu.bg2.screen_addr = (
-            0x800  # word offset 0x800 → byte 0x1000 (different region)
-        )
+        # word offset 0x800 → byte 0x1000 (different region)
+        ppu.bg2.screen_addr = 0x800
 
         # Backdrop = black
         _write_cgram(ppu, 0, 0, 0, 0)

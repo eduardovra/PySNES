@@ -3,14 +3,15 @@ from ctypes import c_int8
 from .instructions_spc700 import INSTRUCTIONS
 from .opcodes_spc700 import SPC700Opcodes
 
+# fmt: off
 _OPNAMES = {
-    SPC700Opcodes.OR: "OR",
+    SPC700Opcodes.OR:  "OR",
     SPC700Opcodes.AND: "AND",
     SPC700Opcodes.EOR: "EOR",
     SPC700Opcodes.CMP: "CMP",
     SPC700Opcodes.ADC: "ADC",
     SPC700Opcodes.SBC: "SBC",
-    SPC700Opcodes.LD: "MOV",
+    SPC700Opcodes.LD:  "MOV",
     SPC700Opcodes.ASL: "ASL",
     SPC700Opcodes.LSR: "LSR",
     SPC700Opcodes.ROL: "ROL",
@@ -22,22 +23,19 @@ _OPNAMES = {
     SPC700Opcodes.CPW: "CMPW",
     SPC700Opcodes.LDW: "MOVW",
 }
+# fmt: on
 
+# fmt: off
 _BRANCH_MNEMS = {
-    0x10: "BPL",
-    0x30: "BMI",
-    0x50: "BVC",
-    0x70: "BVS",
-    0x90: "BCC",
-    0xB0: "BCS",
-    0xD0: "BNE",
-    0xF0: "BEQ",
-    0x2F: "BRA",
+    0x10: "BPL", 0x30: "BMI", 0x50: "BVC", 0x70: "BVS",
+    0x90: "BCC", 0xB0: "BCS", 0xD0: "BNE", 0xF0: "BEQ", 0x2F: "BRA",
 }
+# fmt: on
 
+# fmt: off
 _ABS_BIT_MODS = [
-    ("OR1", "C,${a:04X}.{b}"),
-    ("OR1", "C,/${a:04X}.{b}"),
+    ("OR1",  "C,${a:04X}.{b}"),
+    ("OR1",  "C,/${a:04X}.{b}"),
     ("AND1", "C,${a:04X}.{b}"),
     ("AND1", "C,/${a:04X}.{b}"),
     ("EOR1", "C,${a:04X}.{b}"),
@@ -45,6 +43,7 @@ _ABS_BIT_MODS = [
     ("MOV1", "${a:04X}.{b},C"),
     ("NOT1", "${a:04X}.{b}"),
 ]
+# fmt: on
 
 
 def _rel(byte, pc_after):

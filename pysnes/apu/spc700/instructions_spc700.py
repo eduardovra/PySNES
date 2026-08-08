@@ -1,6 +1,7 @@
 from .addressing_modes import SPC700AddressingModes
 from .opcodes_spc700 import SPC700Opcodes
 
+# fmt: off
 INSTRUCTIONS = (
     (0x00, SPC700AddressingModes.NoOperation),
     (0x01, SPC700AddressingModes.CallTable, 0),
@@ -54,13 +55,7 @@ INSTRUCTIONS = (
     (0x31, SPC700AddressingModes.CallTable, 3),
     (0x32, SPC700AddressingModes.AbsoluteBitSet, 1, False),
     (0x33, SPC700AddressingModes.BranchBit, 1, False),
-    (
-        0x34,
-        SPC700AddressingModes.DirectIndexedRead,
-        SPC700Opcodes.AND,
-        "A",
-        "X",
-    ),
+    (0x34, SPC700AddressingModes.DirectIndexedRead, SPC700Opcodes.AND, "A", "X"),
     (0x35, SPC700AddressingModes.AbsoluteIndexedRead, SPC700Opcodes.AND, "X"),
     (0x36, SPC700AddressingModes.AbsoluteIndexedRead, SPC700Opcodes.AND, "Y"),
     (0x37, SPC700AddressingModes.IndirectIndexedRead, SPC700Opcodes.AND, "Y"),
@@ -92,13 +87,7 @@ INSTRUCTIONS = (
     (0x51, SPC700AddressingModes.CallTable, 5),
     (0x52, SPC700AddressingModes.AbsoluteBitSet, 2, False),
     (0x53, SPC700AddressingModes.BranchBit, 2, False),
-    (
-        0x54,
-        SPC700AddressingModes.DirectIndexedRead,
-        SPC700Opcodes.EOR,
-        "A",
-        "X",
-    ),
+    (0x54, SPC700AddressingModes.DirectIndexedRead, SPC700Opcodes.EOR, "A", "X"),
     (0x55, SPC700AddressingModes.AbsoluteIndexedRead, SPC700Opcodes.EOR, "X"),
     (0x56, SPC700AddressingModes.AbsoluteIndexedRead, SPC700Opcodes.EOR, "Y"),
     (0x57, SPC700AddressingModes.IndirectIndexedRead, SPC700Opcodes.EOR, "Y"),
@@ -130,13 +119,7 @@ INSTRUCTIONS = (
     (0x71, SPC700AddressingModes.CallTable, 7),
     (0x72, SPC700AddressingModes.AbsoluteBitSet, 3, False),
     (0x73, SPC700AddressingModes.BranchBit, 3, False),
-    (
-        0x74,
-        SPC700AddressingModes.DirectIndexedRead,
-        SPC700Opcodes.CMP,
-        "A",
-        "X",
-    ),
+    (0x74, SPC700AddressingModes.DirectIndexedRead, SPC700Opcodes.CMP, "A", "X"),
     (0x75, SPC700AddressingModes.AbsoluteIndexedRead, SPC700Opcodes.CMP, "X"),
     (0x76, SPC700AddressingModes.AbsoluteIndexedRead, SPC700Opcodes.CMP, "Y"),
     (0x77, SPC700AddressingModes.IndirectIndexedRead, SPC700Opcodes.CMP, "Y"),
@@ -168,13 +151,7 @@ INSTRUCTIONS = (
     (0x91, SPC700AddressingModes.CallTable, 9),
     (0x92, SPC700AddressingModes.AbsoluteBitSet, 4, False),
     (0x93, SPC700AddressingModes.BranchBit, 4, False),
-    (
-        0x94,
-        SPC700AddressingModes.DirectIndexedRead,
-        SPC700Opcodes.ADC,
-        "A",
-        "X",
-    ),
+    (0x94, SPC700AddressingModes.DirectIndexedRead, SPC700Opcodes.ADC, "A", "X"),
     (0x95, SPC700AddressingModes.AbsoluteIndexedRead, SPC700Opcodes.ADC, "X"),
     (0x96, SPC700AddressingModes.AbsoluteIndexedRead, SPC700Opcodes.ADC, "Y"),
     (0x97, SPC700AddressingModes.IndirectIndexedRead, SPC700Opcodes.ADC, "Y"),
@@ -206,13 +183,7 @@ INSTRUCTIONS = (
     (0xB1, SPC700AddressingModes.CallTable, 11),
     (0xB2, SPC700AddressingModes.AbsoluteBitSet, 5, False),
     (0xB3, SPC700AddressingModes.BranchBit, 5, False),
-    (
-        0xB4,
-        SPC700AddressingModes.DirectIndexedRead,
-        SPC700Opcodes.SBC,
-        "A",
-        "X",
-    ),
+    (0xB4, SPC700AddressingModes.DirectIndexedRead, SPC700Opcodes.SBC, "A", "X"),
     (0xB5, SPC700AddressingModes.AbsoluteIndexedRead, SPC700Opcodes.SBC, "X"),
     (0xB6, SPC700AddressingModes.AbsoluteIndexedRead, SPC700Opcodes.SBC, "Y"),
     (0xB7, SPC700AddressingModes.IndirectIndexedRead, SPC700Opcodes.SBC, "Y"),
@@ -289,3 +260,4 @@ INSTRUCTIONS = (
     (0xFE, SPC700AddressingModes.BranchNotYDecrement),
     (0xFF, SPC700AddressingModes.Stop),
 )
+# fmt: on

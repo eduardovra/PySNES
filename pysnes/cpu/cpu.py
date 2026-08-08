@@ -178,18 +178,16 @@ class Cpu:
         self.V = Reg(24, 0x00)
         self.W = Reg(24, 0x00)
 
-        self.Z = Reg(
-            16, 0x0000
-        )  # this only exists in bsnes but not in actual hardware
+        # this only exists in bsnes but not in actual hardware
+        self.Z = Reg(16, 0x0000)
 
         # Emulation flag
         self.EF: bool = True  # Starts enabled
 
         # other regs used by bsnes
         self.irq: bool = False  # IRQ pin (0 = low, 1 = trigger)
-        self.wai: bool = (
-            False  # raised during wai, cleared after interrupt triggered
-        )
+        # raised during wai, cleared after interrupt triggered
+        self.wai: bool = False
         self.stp: bool = False  # raised during stp, never cleared
 
         # reg to count cpu clock cycles snes9x: CPU.Cycles = 182; // Or 188.

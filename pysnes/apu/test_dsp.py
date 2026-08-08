@@ -83,9 +83,8 @@ def test_brr_decode_filter0_shift12():
     d = make_dsp(mem)
     d._init_voice_for_test(0, brr_addr=0x1000)
     d._decode_brr_block(0)
-    assert (
-        d.voices[0].brr_buf[0] == 4096
-    )  # stored ×2: nibble=1, shift=12 → (1<<11)*2
+    # stored ×2: nibble=1, shift=12 → (1<<11)*2
+    assert d.voices[0].brr_buf[0] == 4096
     assert d.voices[0].brr_buf[1] == 0
 
 
@@ -99,9 +98,8 @@ def test_brr_decode_filter0_negative_nibble():
     d = make_dsp(mem)
     d._init_voice_for_test(0, brr_addr=0x2000)
     d._decode_brr_block(0)
-    assert (
-        d.voices[0].brr_buf[0] == -4096
-    )  # stored ×2: nibble=-1, shift=12 → (-1<<11)*2
+    # stored ×2: nibble=-1, shift=12 → (-1<<11)*2
+    assert d.voices[0].brr_buf[0] == -4096
 
 
 def test_brr_end_flag_sets_endx():
@@ -242,8 +240,7 @@ def test_generate_samples_produces_nonzero_with_active_voice():
     d.regs[0x01] = 0x7F  # voice 0 right vol = +127
     d.regs[0x0C] = 0x7F  # master left vol
     d.regs[0x1C] = 0x7F  # master right vol
-    d.regs[0x05] = (
-        0x80  # ADSR mode (bit7=1) so GAIN direct doesn't override env_level
-    )
+    # ADSR mode (bit7=1) so GAIN direct doesn't override env_level
+    d.regs[0x05] = 0x80
     out = d.generate_samples(10)
     assert (out != 0).any()

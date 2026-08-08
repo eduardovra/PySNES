@@ -623,9 +623,8 @@ class SPC700AddressingModes:
         self.data = self.read(self.address)
         self.ZF = (self.A - self.data) & 0xFF == 0
         self.NF = bool((self.A - self.data) & 0x80)
-        self.read(
-            self.address
-        )  # second read (dummy before write, hardware behaviour)
+        # second read (dummy before write, hardware behaviour)
+        self.read(self.address)
         self.write(
             self.address,
             self.data | self.A if bit_set else self.data & ~self.A & 0xFF,

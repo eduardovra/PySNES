@@ -60,3 +60,9 @@ ignore = ["SIM108"]
 [tool.ruff.lint.per-file-ignores]
 # Package __init__ files exist to re-export their module's public names.
 "**/__init__.py" = ["F401", "F403"]
+# Hand-aligned hardware tables (the 512-entry Gaussian interpolation table,
+# the 256-entry SPC700 opcode table). They are kept in their reference
+# layout inside `# fmt: off` blocks, which stops the formatter reflowing
+# them but does not exempt them from the line-length rule.
+"pysnes/apu/dsp.py" = ["E501"]
+"pysnes/apu/spc700/instructions_spc700.py" = ["E501"]

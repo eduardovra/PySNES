@@ -236,9 +236,8 @@ def test_mdma_only_enabled_channels_run():
     """MDMAEN bitmask: only channels with their bit set transfer."""
     bus, rom, cpu = make_bus()
     rom.rom[0x0000] = 0x11
-    rom.rom[0x8000] = (
-        0x22  # ROM offset for channel 1 (bank 0, offset 0x8000 + 0x8000)
-    )
+    # ROM offset for channel 1 (bank 0, offset 0x8000 + 0x8000)
+    rom.rom[0x8000] = 0x22
 
     # Channel 0
     bus.write(0x004300, 0x00)

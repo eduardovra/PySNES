@@ -312,9 +312,8 @@ def test_lorom_region2_read():
     # 0x80000 → returns 0 Instead use bank $40 addr $0000 with small value to
     # test routing (not OOB crash)
     rom.rom[0] = 0  # ensure clean
-    val = bus.read(
-        0x400000
-    )  # should not crash; ROM is 512KB so addr 0x200000 is OOB → 0
+    # should not crash; ROM is 512KB so addr 0x200000 is OOB → 0
+    val = bus.read(0x400000)
     assert val == 0  # StubRom returns 0 for OOB — routing reached ROM, no crash
 
 
@@ -323,9 +322,8 @@ def test_lorom_region2_boundary_bank40():
     bus, rom, *_ = make_bus()
     # Confirm it doesn't hit low_ram (which would be bank 0x00-0x3F only)
     bus.write(0x000100, 0xAB)  # write low_ram via bank $00
-    val = bus.read(
-        0x400100
-    )  # read via bank $40 addr $0100 — region 2, goes to ROM
+    # read via bank $40 addr $0100 — region 2, goes to ROM
+    val = bus.read(0x400100)
     assert val != 0xAB  # must NOT return the low_ram value
 
 

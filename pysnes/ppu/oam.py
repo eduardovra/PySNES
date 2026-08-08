@@ -62,9 +62,8 @@ class OAM:
 
         data = self.oam[addr + 3]
         obj.name_select = data & 0x01
-        obj.palette = (
-            (data >> 1) & 0x07
-        ) + 8  # Objects use the palettes present in the second half of CGRAM
+        # Objects use the palettes present in the second half of CGRAM
+        obj.palette = ((data >> 1) & 0x07) + 8
         obj.priority = (data >> 4) & 0x03
         obj.h_flip = data & 0x40
         obj.v_flip = data & 0x80

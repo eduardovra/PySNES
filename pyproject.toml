@@ -25,3 +25,44 @@ dependencies = [
 
 [project.scripts]
 pysnes = "pysnes.pysnes:main"
+
+[dependency-groups]
+dev = [
+    # Pinned exactly: a floating formatter version makes CI and local
+    # checkouts disagree about what "formatted" means.
+    "ruff==0.16.2",
+]
+
+[tool.ruff]
+line-length = 80
+target-version = "py310"
+# Third-party checkouts (Mesen2, the SingleStepTests suites). Markdown is
+# excluded too: ruff formats Python blocks inside .md, which would rewrite
+# the hand-tuned examples in AGENTS.md.
+extend-exclude = ["submodules", "*.md"]
+
+[tool.ruff.lint]
+# E/W (pycodestyle), F (pyflakes), I (isort), UP (pyupgrade), B (bugbear),
+# SIM (flake8-simplify), C4 (comprehensions), PT (pytest-style),
+# PIE/RET/G (misc + return + logging), ISC/LOG (ratchets, today clean).
+# TID is deliberately out: pysnes is a single package and relative imports
+# between its modules are the house style.
+select = [
+    "E", "W", "F", "I", "UP", "B",
+    "SIM", "C4", "PT", "PIE", "RET", "G", "ISC", "LOG",
+]
+
+# SIM108 pushes if/else blocks into ternaries, but a ternary long enough to
+# exceed 80 columns gets wrapped by the formatter into a multi-line ternary,
+# which is harder to read than the if/else it replaced. House rule wins.
+ignore = ["SIM108"]
+
+[tool.ruff.lint.per-file-ignores]
+# Package __init__ files exist to re-export their module's public names.
+"**/__init__.py" = ["F401", "F403"]
+# Hand-aligned hardware tables (the 512-entry Gaussian interpolation table,
+# the 256-entry SPC700 opcode table). They are kept in their reference
+# layout inside `# fmt: off` blocks, which stops the formatter reflowing
+# them but does not exempt them from the line-length rule.
+"pysnes/apu/dsp.py" = ["E501"]
+"pysnes/apu/spc700/instructions_spc700.py" = ["E501"]

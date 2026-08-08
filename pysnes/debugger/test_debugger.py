@@ -4,16 +4,17 @@ Tests for Debugger logic — covers the code paths triggered by every UI button.
 Buttons enqueue commands via _cmd_queue; drain_commands() is the consumer.
 These tests drive drain_commands() directly, so no Tkinter display is needed.
 """
+
 import threading
 
 import pytest
 
-from .debugger import Debugger, BreakpointHit
-
+from .debugger import BreakpointHit, Debugger
 
 # ---------------------------------------------------------------------------
 # Minimal stubs
 # ---------------------------------------------------------------------------
+
 
 class _PC:
     def __init__(self, addr: int = 0x008000):
@@ -34,6 +35,7 @@ class _Cpu:
 
 class _Scheduler:
     """Minimal scheduler: run_one() calls cpu._step() once."""
+
     def __init__(self, cpu: _Cpu):
         self._cpu = cpu
         self.master_clock = 0
@@ -51,6 +53,7 @@ class _RealisticScheduler:
     scheduled its next step, the event in the queue still holds _original_step,
     so the first run_one() fires it directly, bypassing the hook.
     """
+
     def __init__(self):
         self._queue: list = []
         self.master_clock: int = 0
@@ -64,9 +67,6 @@ class _RealisticScheduler:
         self.master_clock = t
         fn()
 
-    def peek_fn(self):
-        return self._queue[0][1] if self._queue else None
-
 
 class _RealisticCpu:
     """
@@ -74,6 +74,7 @@ class _RealisticCpu:
     The key line is `scheduler.add(mc, self._step)` — `self._step` is evaluated
     at call time and captures the current instance attribute.
     """
+
     def __init__(self, scheduler: _RealisticScheduler):
         self._sched = scheduler
         self.PC = _PC()
@@ -101,6 +102,7 @@ class _PySNES:
 # Fixture
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture
 def pysnes():
     return _PySNES()
@@ -116,6 +118,7 @@ def debugger(pysnes):
 # ---------------------------------------------------------------------------
 # toggle_breakpoint
 # ---------------------------------------------------------------------------
+
 
 def test_toggle_breakpoint_adds(debugger):
     debugger.toggle_breakpoint(0x8000)
@@ -143,8 +146,10 @@ def test_toggle_breakpoint_removes_hook_when_no_breakpoints(debugger, pysnes):
 # _hooked_step — normal execution (no breakpoint, no step mode)
 # ---------------------------------------------------------------------------
 
+
 def test_hooked_step_normal_calls_original(debugger, pysnes):
-    debugger.toggle_breakpoint(0x9000)  # install hook but breakpoint is elsewhere
+    # install hook but breakpoint is elsewhere
+    debugger.toggle_breakpoint(0x9000)
     pysnes.cpu.PC.d = 0x8000
     before = pysnes.cpu._steps
     debugger._hooked_step()
@@ -155,6 +160,7 @@ def test_hooked_step_normal_calls_original(debugger, pysnes):
 # ---------------------------------------------------------------------------
 # _hooked_step — breakpoint hit
 # ---------------------------------------------------------------------------
+
 
 def test_breakpoint_hit_raises(debugger, pysnes):
     debugger.toggle_breakpoint(0x8000)
@@ -194,6 +200,7 @@ def test_breakpoint_hit_notifies_window(debugger):
 # step_one_instruction
 # ---------------------------------------------------------------------------
 
+
 def test_step_one_instruction_advances_instr_count(debugger):
     before = debugger._instr_count
     debugger.step_one_instruction()
@@ -207,7 +214,8 @@ def test_step_one_instruction_calls_cpu_step(debugger, pysnes):
 
 
 def test_step_one_instruction_does_not_install_hook(debugger, pysnes):
-    """step_one_instruction no longer uses the hook mechanism — cpu._step stays as original."""
+    """step_one_instruction no longer uses the hook mechanism — cpu._step stays
+    as original."""
     debugger.step_one_instruction()
     assert pysnes.cpu._step == debugger._original_step
 
@@ -215,6 +223,7 @@ def test_step_one_instruction_does_not_install_hook(debugger, pysnes):
 # ---------------------------------------------------------------------------
 # drain_commands — "pause" button
 # ---------------------------------------------------------------------------
+
 
 def test_drain_pause_sets_paused(debugger, pysnes):
     debugger._cmd_queue.put(("pause",))
@@ -233,6 +242,7 @@ def test_drain_pause_notifies(debugger):
 # drain_commands — "continue" button
 # ---------------------------------------------------------------------------
 
+
 def test_drain_continue_clears_paused(debugger, pysnes):
     pysnes.paused = True
     debugger._cmd_queue.put(("continue",))
@@ -243,6 +253,7 @@ def test_drain_continue_clears_paused(debugger, pysnes):
 # ---------------------------------------------------------------------------
 # drain_commands — "step" button
 # ---------------------------------------------------------------------------
+
 
 def test_drain_step_advances_instr_count(debugger):
     before = debugger._instr_count
@@ -262,6 +273,7 @@ def test_drain_step_sets_event(debugger):
 # ---------------------------------------------------------------------------
 # drain_commands — "toggle_bp" (Break at PC / Remove selected buttons)
 # ---------------------------------------------------------------------------
+
 
 def test_drain_toggle_bp_adds_breakpoint(debugger):
     debugger._cmd_queue.put(("toggle_bp", 0x8010))
@@ -287,6 +299,7 @@ def test_drain_toggle_bp_notifies(debugger):
 # drain_commands — multiple commands processed in one call
 # ---------------------------------------------------------------------------
 
+
 def test_drain_processes_all_queued_commands(debugger, pysnes):
     debugger._cmd_queue.put(("pause",))
     debugger._cmd_queue.put(("continue",))
@@ -298,8 +311,10 @@ def test_drain_processes_all_queued_commands(debugger, pysnes):
 # BreakpointHit propagates through a scheduler loop
 # ---------------------------------------------------------------------------
 
+
 def test_breakpoint_exits_scheduler_run_to(pysnes):
-    """Simulate the main loop: BreakpointHit raised inside scheduler.run_to()."""
+    """Simulate the main loop: BreakpointHit raised inside
+    scheduler.run_to()."""
     dbg = Debugger(pysnes)
     dbg.attach()
     dbg.toggle_breakpoint(0x8000)
@@ -329,7 +344,8 @@ def test_breakpoint_exits_scheduler_run_to(pysnes):
 # one instruction even when the queued event was captured before hook install
 # ---------------------------------------------------------------------------
 
-def test_step_one_instruction_executes_exactly_one_instruction_with_realistic_scheduler():
+
+def test_step_one_instruction_runs_exactly_one_with_real_scheduler():
     """
     Reproduces the real-world bug: when step_one_instruction() is called, the
     scheduler queue already holds a reference to _original_step (captured while
@@ -360,6 +376,7 @@ def test_step_one_instruction_executes_exactly_one_instruction_with_realistic_sc
     dbg.step_one_instruction()
 
     assert cpu._steps - steps_before == 1, (
-        f"step_one_instruction() executed {cpu._steps - steps_before} instructions; "
+        f"step_one_instruction() executed {cpu._steps - steps_before} "
+        "instructions; "
         f"expected exactly 1"
     )

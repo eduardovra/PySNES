@@ -1,4 +1,4 @@
-from typing import Callable
+from collections.abc import Callable
 from ctypes import c_int16
 
 from ...cpu import Cpu, Reg
@@ -27,11 +27,11 @@ def Prefix(cpu: Cpu):
 
 
 def ExchangeBA(cpu: Cpu):
-  cpu.idle()
-  cpu.idle()
-  cpu.A.w = cpu.A.w >> 8 | cpu.A.w << 8
-  cpu.ZFlag = cpu.A.l == 0
-  cpu.NFlag = bool(cpu.A.l & 0x80)
+    cpu.idle()
+    cpu.idle()
+    cpu.A.w = cpu.A.w >> 8 | cpu.A.w << 8
+    cpu.ZFlag = cpu.A.l == 0
+    cpu.NFlag = bool(cpu.A.l & 0x80)
 
 
 @decorator_mode_8bit
@@ -55,7 +55,8 @@ def BlockMove(cpu: Cpu, mode_8bit: bool, adjust: int):
         cpu.A.w -= 1
         if not a_old:
             break
-        # Loop: hardware re-fetches the opcode and both operand bytes each iteration.
+        # Loop: hardware re-fetches the opcode and both operand bytes each
+        # iteration.
         cpu.PC.w -= 3
         cpu.fetch()  # opcode re-fetch (value discarded)
         dest_bank = cpu.fetch()

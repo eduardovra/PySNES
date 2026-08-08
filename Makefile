@@ -1,4 +1,4 @@
-.PHONY: build clean run install test benchmark docs
+.PHONY: build clean run install test benchmark docs lint format
 
 PY ?= --python pypy@3.10
 
@@ -38,3 +38,13 @@ profile: build
 tests: build
 	@echo "Running tests..."
 	uv run ${PY} pytest
+
+lint:
+	@echo "Linting PySNES..."
+	uv run ${PY} ruff check .
+	uv run ${PY} ruff format --check .
+
+format:
+	@echo "Formatting PySNES..."
+	uv run ${PY} ruff check --fix .
+	uv run ${PY} ruff format .

@@ -1,5 +1,6 @@
 """
-Color-math windowing ($2130 CGWSEL bits 5-4, $2125 WOBJSEL bits 4-7, $212C WOBJLOG bits 2-3).
+Color-math windowing ($2130 CGWSEL bits 5-4, $2125 WOBJSEL bits 4-7, $212C
+WOBJLOG bits 2-3).
 
 CGWSEL bits 5-4 gate WHEN color math is applied:
   00 = Always
@@ -18,7 +19,6 @@ Run:
     uv run --python pypy3.10 pytest pysnes/ppu/test_ppu_color_math_window.py -v
 """
 
-import pytest
 from pysnes.ppu.ppu import Ppu
 
 SCREEN_W = 256
@@ -59,7 +59,8 @@ def _main_pixel(ppu: Ppu, x: int, y: int) -> tuple:
 
 
 def _setup_backdrop_add_bg2(ppu: Ppu) -> None:
-    """Mirror SMW title: BG1 main (sparse), BG2 sub (blue), CGADSUB=0x20 (backdrop ADD).
+    """Mirror SMW title: BG1 main (sparse), BG2 sub (blue), CGADSUB=0x20
+    (backdrop ADD).
 
     BG1 has no opaque tiles so the whole main scanline is backdrop. BG2 fills
     sub-screen with blue. Where color math fires, main = backdrop + blue = blue.
@@ -71,9 +72,11 @@ def _setup_backdrop_add_bg2(ppu: Ppu) -> None:
     _write_cgram(ppu, 33, 0, 0, 31)
 
     # BG2 solid blue tile
-    _write_4bpp_solid_tile(ppu, 0, 1)  # tile 0 → color_index=1 → palette color 33 for BG2 pal 2
+    # tile 0 → color_index=1 → palette color 33 for BG2 pal 2
+    _write_4bpp_solid_tile(ppu, 0, 1)
 
-    # Wait — for BG2 we need palette 2. Let's instead put color at palette-0 color-1.
+    # Wait — for BG2 we need palette 2. Let's instead put color at palette-0
+    # color-1.
     _write_cgram(ppu, 1, 0, 0, 31)  # BG2 pal 0 color 1 = blue
 
     # BG1 tilemap: transparent (tile with bitplanes = 0 never gets drawn)
@@ -138,7 +141,8 @@ class TestColorMathWindowMode11_Never:
         # Color math fires nowhere → all backdrop pixels stay black.
         for x in (0, 64, 128, 192, 255):
             assert _main_pixel(ppu, x, 0) == (0, 0, 0), (
-                f"never mode: pixel ({x},0) should stay backdrop, got {_main_pixel(ppu, x, 0)}"
+                f"never mode: pixel ({x},0) should stay backdrop, got "
+                f"{_main_pixel(ppu, x, 0)}"
             )
 
 
@@ -146,7 +150,8 @@ class TestColorMathWindowMode01_Inside:
     """CGWSEL bits 5:4 = 01 → color math only inside color window."""
 
     def test_empty_math_window_blocks_color_math_everywhere(self):
-        """Match SMW f310 config: CGWSEL inside + WH0=255/WH1=0 (empty) + math W1 enabled."""
+        """Match SMW f310 config: CGWSEL inside + WH0=255/WH1=0 (empty) + math
+        W1 enabled."""
         ppu = _make_ppu()
         _setup_backdrop_add_bg2(ppu)
         ppu.cgwsel = (ppu.cgwsel & ~0x30) | 0x10  # inside window only
@@ -159,7 +164,8 @@ class TestColorMathWindowMode01_Inside:
         # Empty window, "inside only" → color math fires nowhere.
         for x in (0, 64, 128, 192, 255):
             assert _main_pixel(ppu, x, 0) == (0, 0, 0), (
-                f"empty inside-window: ({x},0) should stay backdrop, got {_main_pixel(ppu, x, 0)}"
+                f"empty inside-window: ({x},0) should stay backdrop, got "
+                f"{_main_pixel(ppu, x, 0)}"
             )
 
     def test_narrow_math_window_limits_color_math_region(self):

@@ -1,7 +1,6 @@
-from typing import Callable
+from collections.abc import Callable
 
 from ...cpu import Cpu, Reg
-
 from .decorator import decorator_mode_8bit
 
 # Shared read-only zero register used as the "no index" offset (i.w == 0).
@@ -11,10 +10,12 @@ _ZERO = Reg(16, 0)
 
 
 """
-//both the accumulator and index registers can independently be in either 8-bit or 16-bit mode.
-//controlled via the M/X flags, this changes the execution details of various instructions.
-//rather than implement four instruction tables for all possible combinations of these bits,
-//instead use macro abuse to generate all four tables based off of a single template table.
+//both the accumulator and index registers can independently be in either
+//8-bit or 16-bit mode. controlled via the M/X flags, this changes the
+//execution details of various instructions. rather than implement four
+//instruction tables for all possible combinations of these bits, instead
+//use macro abuse to generate all four tables based off of a single
+//template table.
 auto WDC65816::instruction() -> void {
   //a = instructions unaffected by M/X flags
   //m = instructions affected by M flag (1 = 8-bit; 0 = 16-bit)

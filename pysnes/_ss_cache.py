@@ -16,7 +16,6 @@ import hashlib
 import os
 import pickle
 
-
 CACHE_DIR = ".pytest_cache"
 
 
@@ -31,7 +30,9 @@ def _dir_fingerprint(tests_path):
 
 
 def _cache_key(suite_name, tests_path, filter_args):
-    blob = repr((suite_name, filter_args, _dir_fingerprint(tests_path))).encode()
+    blob = repr(
+        (suite_name, filter_args, _dir_fingerprint(tests_path))
+    ).encode()
     return hashlib.sha1(blob).hexdigest()[:16]
 
 
@@ -62,10 +63,11 @@ def _atomic_write(path, key, params, ids):
 
 
 def get_or_build(suite_name, tests_path, filter_args, parse_fn):
-    """Return (params, ids). params is [(file_path, index), ...]; ids are pytest IDs.
+    """Return (params, ids), where params is [(file_path, index), ...] and
+    ids are pytest IDs.
 
-    On cache hit: read pickle, return.
-    On cache miss: acquire exclusive flock, re-check, call parse_fn(), write, return.
+    On cache hit: read pickle, return. On cache miss: acquire exclusive flock,
+    re-check, call parse_fn(), write, return.
     """
     os.makedirs(CACHE_DIR, exist_ok=True)
     key = _cache_key(suite_name, tests_path, filter_args)

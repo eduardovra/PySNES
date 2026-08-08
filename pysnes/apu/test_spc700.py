@@ -12,13 +12,14 @@ Test data: submodules/SingleStepTests_spc700/v1/
 """
 
 import os
-import ijson
-import pytest
 from collections import defaultdict
 
-from .apu import Apu
+import ijson
+import pytest
+
 from pysnes._ss_cache import get_or_build
 
+from .apu import Apu
 
 TESTS_PATH = "submodules/SingleStepTests_spc700/v1"
 
@@ -28,9 +29,9 @@ _FILE_CACHE_VAL: list | None = None
 
 def _load_case(file_path: str, index: int) -> dict:
     global _FILE_CACHE_KEY, _FILE_CACHE_VAL
-    if _FILE_CACHE_KEY != file_path:
-        with open(file_path, 'rb') as f:
-            _FILE_CACHE_VAL = list(ijson.items(f, 'item'))
+    if file_path != _FILE_CACHE_KEY:
+        with open(file_path, "rb") as f:
+            _FILE_CACHE_VAL = list(ijson.items(f, "item"))
         _FILE_CACHE_KEY = file_path
     return _FILE_CACHE_VAL[index]
 
@@ -74,8 +75,8 @@ def _parse_test_index(opcode_filter, max_per_opcode, mode):
     params, test_ids = [], []
 
     for file_path in onlyfiles:
-        with open(file_path, 'rb') as f:
-            for i, name in enumerate(ijson.items(f, 'item.name')):
+        with open(file_path, "rb") as f:
+            for i, name in enumerate(ijson.items(f, "item.name")):
                 test_id = name.replace(" ", "_")
                 if limit > 0 and test_counter[test_id[:2]] >= limit:
                     continue
@@ -106,7 +107,8 @@ def get_test_cases(opcode_filter=None, max_per_opcode=None, mode=None):
         lambda: _parse_test_index(opcode_filter, max_per_opcode, mode),
     )
     test_cases = [
-        pytest.param(rp, marks=pytest.mark.xdist_group(rp[0])) for rp in raw_params
+        pytest.param(rp, marks=pytest.mark.xdist_group(rp[0]))
+        for rp in raw_params
     ]
     return test_cases, test_ids
 
@@ -122,18 +124,18 @@ def test_spc700(test_case):
         _write_mem(apu, addr, value)
 
     apu.PC = initial["pc"]
-    apu.A  = initial["a"]
-    apu.X  = initial["x"]
-    apu.Y  = initial["y"]
-    apu.S  = initial["sp"]
+    apu.A = initial["a"]
+    apu.X = initial["x"]
+    apu.Y = initial["y"]
+    apu.S = initial["sp"]
     apu.PSW = initial["psw"]
 
     # ── Build expected cycle sequence ────────────────────────────────────
-    # Cycles: [address, value, "read"/"write"/"wait"]
-    # "wait" entries are internal cycles (no memory transaction).
-    # Entries with null value are ghost reads the hardware performs but whose
-    # value is discarded; they count toward the cycle total but are excluded
-    # from the memory-access sequence check (same convention as the 65816 tests).
+    # Cycles: [address, value, "read"/"write"/"wait"] "wait" entries are
+    # internal cycles (no memory transaction). Entries with null value are ghost
+    # reads the hardware performs but whose value is discarded; they count
+    # toward the cycle total but are excluded from the memory-access sequence
+    # check (same convention as the 65816 tests).
     expected_cycles = test_case["cycles"]
     expected_mem = [
         (addr, value, kind)
@@ -150,12 +152,14 @@ def test_spc700(test_case):
 
     # ── Verify final register state ───────────────────────────────────────
     final = test_case["final"]
-    assert apu.PC  == final["pc"],  f"PC:  {hex(apu.PC)}  != {hex(final['pc'])}"
-    assert apu.A   == final["a"],   f"A:   {hex(apu.A)}   != {hex(final['a'])}"
-    assert apu.X   == final["x"],   f"X:   {hex(apu.X)}   != {hex(final['x'])}"
-    assert apu.Y   == final["y"],   f"Y:   {hex(apu.Y)}   != {hex(final['y'])}"
-    assert apu.S   == final["sp"],  f"SP:  {hex(apu.S)}   != {hex(final['sp'])}"
-    assert apu.PSW == final["psw"], f"PSW: {hex(apu.PSW)} != {hex(final['psw'])}"
+    assert final["pc"] == apu.PC, f"PC:  {hex(apu.PC)}  != {hex(final['pc'])}"
+    assert final["a"] == apu.A, f"A:   {hex(apu.A)}   != {hex(final['a'])}"
+    assert final["x"] == apu.X, f"X:   {hex(apu.X)}   != {hex(final['x'])}"
+    assert final["y"] == apu.Y, f"Y:   {hex(apu.Y)}   != {hex(final['y'])}"
+    assert final["sp"] == apu.S, f"SP:  {hex(apu.S)}   != {hex(final['sp'])}"
+    assert final["psw"] == apu.PSW, (
+        f"PSW: {hex(apu.PSW)} != {hex(final['psw'])}"
+    )
 
     for addr, value in final["ram"]:
         # 0xFD-0xFF are timer counters that clear on read; use the shadow
@@ -175,5 +179,6 @@ def test_spc700(test_case):
     # apu.cycles is incremented by every __getitem__, __setitem__, and idle()
     # call, giving the full instruction cycle count including internal waits.
     assert actual_cycle_count == expected_cycle_count, (
-        f"Cycle count: got {actual_cycle_count}, expected {expected_cycle_count}"
+        f"Cycle count: got {actual_cycle_count}, expected "
+        f"{expected_cycle_count}"
     )

@@ -1,5 +1,4 @@
 from ...cpu import Cpu, Reg
-
 from .decorator import decorator_mode_8bit
 
 # Shared read-only zero register used as the "no index" offset (i.w == 0).

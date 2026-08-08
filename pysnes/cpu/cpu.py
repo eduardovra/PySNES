@@ -1,26 +1,26 @@
 from __future__ import annotations
-from typing import Any, TYPE_CHECKING
 
-from rich import print
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from ..bus import Bus
-
+    from ..rom import HardwareVectors
 
 
 class Reg:
-
     def __init__(self, bits: int, value: int) -> None:
         self.bits = bits
         self.value = value
 
+    # `l`/`h` mirror the 65816's low/high byte accessor names; E743 objects
+    # to `l` as ambiguous, but renaming would break the register vocabulary.
     @property
-    def l(self) -> int:
+    def l(self) -> int:  # noqa: E743
         """Low byte getter"""
         return self.value & 0xFF
 
     @l.setter
-    def l(self, value: int) -> None:
+    def l(self, value: int) -> None:  # noqa: E743
         """Low byte setter"""
         self.value &= 0xFFFF00
         self.value |= value & 0xFF
@@ -70,11 +70,11 @@ class Reg:
 
 
 class CpuStatus:
-    # nmi_line: set to True at V-Blank start by bus.raise_nmi(); read by bus at $4210
-    # irq_line: set by PPU when H/V match condition is satisfied; cleared by
-    # reading $4211 (TIMEUP) or by disabling both H-IRQ and V-IRQ via $4200.
-    # H/V IRQ target registers ($4207-$420A). 9-bit each.
-    # MEMSEL ($420D) bit 0: 1 = FastROM (banks $80-$BF and $C0-$FF use 6 MC instead of 8)
+    # nmi_line: set to True at V-Blank start by bus.raise_nmi(); read by bus at
+    # $4210 irq_line: set by PPU when H/V match condition is satisfied; cleared
+    # by reading $4211 (TIMEUP) or by disabling both H-IRQ and V-IRQ via $4200.
+    # H/V IRQ target registers ($4207-$420A). 9-bit each. MEMSEL ($420D) bit 0:
+    # 1 = FastROM (banks $80-$BF and $C0-$FF use 6 MC instead of 8)
 
     def __init__(self):
         self.hirq_enable = False
@@ -137,22 +137,25 @@ class InstructionSlot:
 
 
 class Cpu:
-
-
-    def __init__(self, hardware_vectors: "HardwareVectors") -> None:
+    def __init__(self, hardware_vectors: HardwareVectors) -> None:
         self.reset_registers()
         self.load_instructions()
 
         self.status = CpuStatus()
 
         from .wdc65816.disassembler import Disassembler
+
         self.disassembler = Disassembler(self)
         self.trace_log = []
         self.trace_enabled = False  # set True to populate trace_log (reads bus)
         self.scheduler = None
 
     def __str__(self) -> str:
-        return f"A:{self.A.w:04X} X:{self.X.w:04X} Y:{self.Y.w:04X} D:{self.D.w:04X} S:{self.S.w:04X} P:{self.P:02X} DB:{self.DB.l:02X} PB:{self.PC.b:02X} PC:{self.PC.w:06X}"
+        return (
+            f"A:{self.A.w:04X} X:{self.X.w:04X} Y:{self.Y.w:04X} "
+            f"D:{self.D.w:04X} S:{self.S.w:04X} P:{self.P:02X} "
+            f"DB:{self.DB.l:02X} PB:{self.PC.b:02X} PC:{self.PC.w:06X}"
+        )
 
     def reset_registers(self):
         # Registers
@@ -161,10 +164,10 @@ class Cpu:
         self.Y = Reg(16, 0x0000)  # Y Index Register
         self.D = Reg(16, 0x0000)  # Direct Page Register
         self.S = Reg(16, 0x01FF)  # Stack Pointer
-        self.P = 0x34             # Status register
-        # self.PB = Reg(8, 0x00)  # Program Bank Register (removed in favor of PC.b)
-        self.DB = Reg(8, 0x00)    # Data Bank Register
-        self.PC = Reg(24, 0x00)   # self.hardware_vectors.emulation.reset
+        self.P = 0x34  # Status register
+        # The Program Bank Register lives in PC.b, not a separate Reg.
+        self.DB = Reg(8, 0x00)  # Data Bank Register
+        self.PC = Reg(24, 0x00)  # self.hardware_vectors.emulation.reset
 
         # bsnes
         # r.vector = 0xfffc;  //reset vector address
@@ -175,18 +178,20 @@ class Cpu:
         self.V = Reg(24, 0x00)
         self.W = Reg(24, 0x00)
 
-        self.Z = Reg(16, 0x0000)  # this only exists in bsnes but not in actual hardware
+        # this only exists in bsnes but not in actual hardware
+        self.Z = Reg(16, 0x0000)
 
         # Emulation flag
         self.EF: bool = True  # Starts enabled
 
         # other regs used by bsnes
         self.irq: bool = False  # IRQ pin (0 = low, 1 = trigger)
-        self.wai: bool = False  # raised during wai, cleared after interrupt triggered
+        # raised during wai, cleared after interrupt triggered
+        self.wai: bool = False
         self.stp: bool = False  # raised during stp, never cleared
 
-        # reg to count cpu clock cycles
-        # snes9x: CPU.Cycles = 182; // Or 188. This is the cycle count just after the jump to the Reset Vector.
+        # reg to count cpu clock cycles snes9x: CPU.Cycles = 182; // Or 188.
+        # This is the cycle count just after the jump to the Reset Vector.
         self.cycles: int = 182
         self.prev_cycles = self.cycles
 
@@ -266,13 +271,14 @@ class Cpu:
 
         self.instructions: Any = [None] * 256
 
-        # build_instructions binds the opcode table to this CPU's live Reg objects
-        # (cpu.X, cpu.A, ...) so the hot addressing-mode functions need no per-call
-        # getattr(cpu, name). The reset path rebuilds the table after
-        # reset_registers() makes new Reg objects.
+        # build_instructions binds the opcode table to this CPU's live Reg
+        # objects (cpu.X, cpu.A, ...) so the hot addressing-mode functions need
+        # no per-call getattr(cpu, name). The reset path rebuilds the table
+        # after reset_registers() makes new Reg objects.
         for opcode, addr_mode, *args in build_instructions(self):
-            # InstructionSlot stores addr_mode + extra args; cpu is passed at call time.
-            # This replaces functools.partial — see InstructionSlot.call().
+            # InstructionSlot stores addr_mode + extra args; cpu is passed at
+            # call time. This replaces functools.partial — see
+            # InstructionSlot.call().
             if len(args) == 0:
                 slot = InstructionSlot(addr_mode, nargs=0)
             elif len(args) == 1:
@@ -292,7 +298,8 @@ class Cpu:
     # ------------------------------------------------------------------
 
     def start(self, scheduler) -> None:
-        """Register the CPU with the scheduler. Call once before the main loop."""
+        """Register the CPU with the scheduler. Call once before the main
+        loop."""
         self.scheduler = scheduler
         self.scheduler.add(0, self._step)
 
@@ -308,7 +315,10 @@ class Cpu:
         peeked = self.scheduler.peek()
         # When no other events are scheduled (e.g. unit tests without a PPU),
         # set next_event = master_clock so the loop exits after one instruction.
-        next_event = peeked if peeked != 0xFFFFFFFFFFFFFFFF else self.scheduler.master_clock
+        if peeked != 0xFFFFFFFFFFFFFFFF:
+            next_event = peeked
+        else:
+            next_event = self.scheduler.master_clock
         while True:
             if self._nmi_pending:
                 self._nmi_pending = False
@@ -344,7 +354,7 @@ class Cpu:
         self.icycles += 1
 
     def idle2(self):
-        if (self.D.l):
+        if self.D.l:
             self.idle()
 
     def idle4(self, x: int, y: int) -> None:
@@ -381,43 +391,40 @@ class Cpu:
         return data
 
     def readDirect(self, address: int) -> int:
-        # this is not part of bsnes implementation but it seems
-        # tests expect the page to wrap around when in emulation mode
-        # even if self.D.l is not zero
-        # NOTE commenting because of test for instruction 46 DirectModify LSR
-        # if self.EF:
-        #     addr = (self.D.h << 8) | ((self.D.l + address) & 0xff)
-        #     return self.read(addr)
+        # Not part of the bsnes implementation, but the tests expect the page
+        # to wrap in emulation mode even when D.l is non-zero. Wrapping
+        # unconditionally breaks the DirectModify LSR test for opcode $46, so
+        # the wrap stays gated on D.l == 0.
         if self.EF and self.D.l == 0:
-            return self.read(self.D.w | address & 0xff)
-        return self.read(self.D.w + address & 0xffff)
+            return self.read(self.D.w | address & 0xFF)
+        return self.read(self.D.w + address & 0xFFFF)
 
     def writeDirect(self, address: int, data: int) -> None:
         if self.EF and self.D.l == 0:
-            self.write(self.D.w | address & 0xff, data)
+            self.write(self.D.w | address & 0xFF, data)
         else:
-            self.write(self.D.w + address & 0xffff, data)
+            self.write(self.D.w + address & 0xFFFF, data)
 
     def readDirectN(self, address: int) -> int:
-        return self.read(self.D.w + address & 0xffff)
+        return self.read(self.D.w + address & 0xFFFF)
 
     def readBank(self, address: int) -> int:
-        return self.read((self.DB.l << 16) + address & 0xffffff)
+        return self.read((self.DB.l << 16) + address & 0xFFFFFF)
 
     def writeBank(self, address: int, data: int) -> None:
-        self.write((self.DB.l << 16) + address & 0xffffff, data)
+        self.write((self.DB.l << 16) + address & 0xFFFFFF, data)
 
     def readLong(self, address: int) -> int:
-        return self.read(address & 0xffffff)
+        return self.read(address & 0xFFFFFF)
 
     def writeLong(self, address: int, data: int) -> None:
-        self.write(address & 0xffffff, data)
+        self.write(address & 0xFFFFFF, data)
 
     def readStack(self, address: int) -> int:
-        return self.read(self.S.w + address & 0xffff)
+        return self.read(self.S.w + address & 0xFFFF)
 
     def writeStack(self, address: int, data: int) -> None:
-        self.write(self.S.w + address & 0xffff, data)
+        self.write(self.S.w + address & 0xFFFF, data)
 
     def fetch(self) -> int:
         data = self.read(self.PC.d)
@@ -466,38 +473,44 @@ class Cpu:
 
         # https://wiki.superfamicom.org/timing#clocks-and-refresh-10
 
-        # A CPU internal operation (an IO cycle) takes 6 master cycles.
-        # A memory access cycle takes 6, 8, or 12 master cycles,
-        # depending on the memory region accessed and bit 0 of CPU register $420D.
+        # A CPU internal operation (an IO cycle) takes 6 master cycles. A memory
+        # access cycle takes 6, 8, or 12 master cycles, depending on the memory
+        # region accessed and bit 0 of CPU register $420D.
 
-        # The SNES runs 1 scanline every 1364 master cycles, except in non-interlace mode scanline
-        # $F0 of every other frame (those with $213F.7=1) is only 1360 cycles. Frames are 262 scanlines
-        # in non-interlace mode, while in interlace mode frames with $213F.7=0 are 263 scanlines.
-        # "V-Blank" runs from either scanline $E1 or $F0 until the end of the frame.
+        # The SNES runs 1 scanline every 1364 master cycles, except in
+        # non-interlace mode scanline $F0 of every other frame (those with
+        # $213F.7=1) is only 1360 cycles. Frames are 262 scanlines in
+        # non-interlace mode, while in interlace mode frames with $213F.7=0 are
+        # 263 scanlines. "V-Blank" runs from either scanline $E1 or $F0 until
+        # the end of the frame.
 
-        # The CPU is paused for 40 cycles beginning about 536 cycles after the start of each scanline.
-        # Current theory is that this is used for WRAM Refresh. The exact timing is that the refresh pause
-        # begins at 538 cycles into the first scanline of the first frame, and thereafter some multiple of
-        # 8 cycles after the previous pause that comes closest to 536.
+        # The CPU is paused for 40 cycles beginning about 536 cycles after the
+        # start of each scanline. Current theory is that this is used for WRAM
+        # Refresh. The exact timing is that the refresh pause begins at 538
+        # cycles into the first scanline of the first frame, and thereafter some
+        # multiple of 8 cycles after the previous pause that comes closest to
+        # 536.
 
         return self.cycles - self.prev_cycles
 
     def get_clock_cycles(self, addr: int) -> int:
         """Returns the number of clock cycles to perform IO on a given address
 
-        The 'Speed' column indicates the memory access speed for that area of memory.
-        The SNES master clock runs at about 21MHz (probably as close to 1.89e9/88 Hz as possible).
-        Internal operation CPU cycles always take 6 master cycles. Fast memory access cycles also
-        take 6 master cycles, Slow memory access cycles take 8 master cycles, and XSlow memory access cycles take 12 master cycles.
+        The 'Speed' column indicates the memory access speed for that area of
+        memory. The SNES master clock runs at about 21MHz (probably as close to
+        1.89e9/88 Hz as possible). Internal operation CPU cycles always take 6
+        master cycles. Fast memory access cycles also take 6 master cycles, Slow
+        memory access cycles take 8 master cycles, and XSlow memory access
+        cycles take 12 master cycles.
 
         Banks   |  Addresses  | Speed | Mapping
         --------+-------------+-------+---------
-        $00-$3F | $0000-$1FFF | Slow  | Address Bus A + /WRAM (mirror $7E:0000-$1FFF)
+        $00-$3F | $0000-$1FFF | Slow  | Address Bus A + /WRAM (mirror of $7E)
                 | $2000-$20FF | Fast  | Address Bus A
                 | $2100-$21FF | Fast  | Address Bus B
                 | $2200-$3FFF | Fast  | Address Bus A
-                | $4000-$41FF | XSlow | Internal CPU registers (see Note 1 below)
-                | $4200-$43FF | Fast  | Internal CPU registers (see Note 1 below)
+                | $4000-$41FF | XSlow | Internal CPU registers (Note 1)
+                | $4200-$43FF | Fast  | Internal CPU registers (Note 1)
                 | $4400-$5FFF | Fast  | Address Bus A
                 | $6000-$7FFF | Slow  | Address Bus A
                 | $8000-$FFFF | Slow  | Address Bus A + /CART
@@ -506,32 +519,35 @@ class Cpu:
         --------+-------------+-------+---------
         $7E-$7F | $0000-$FFFF | Slow  | Address Bus A + /WRAM
         --------+-------------+-------+---------
-        $80-$BF | $0000-$1FFF | Slow  | Address Bus A + /WRAM (mirror $7E:0000-$1FFF)
+        $80-$BF | $0000-$1FFF | Slow  | Address Bus A + /WRAM (mirror of $7E)
                 | $2000-$20FF | Fast  | Address Bus A
                 | $2100-$21FF | Fast  | Address Bus B
                 | $2200-$3FFF | Fast  | Address Bus A
-                | $4000-$41FF | XSlow | Internal CPU registers (see Note 1 below)
-                | $4200-$43FF | Fast  | Internal CPU registers (see Note 1 below)
+                | $4000-$41FF | XSlow | Internal CPU registers (Note 1)
+                | $4200-$43FF | Fast  | Internal CPU registers (Note 1)
                 | $4400-$5FFF | Fast  | Address Bus A
                 | $6000-$7FFF | Slow  | Address Bus A
                 | $8000-$FFFF | Note2 | Address Bus A + /CART
         --------+-------------+-------+---------
         $C0-$FF | $0000-$FFFF | Note2 | Address Bus A + /CART
 
-        Note 2: If bit 1 of CPU register $420D is set, the speed is Fast, otherwise it is Slow.
+        Note 2: If bit 1 of CPU register $420D is set, the speed is Fast,
+        otherwise it is Slow.
         """
 
         """
         https://board.zsnes.com/phpBB3/viewtopic.php?t=12711
 
         Hard to say exactly. The core clocks runs at 21.477MHz.
-        Each cycle can take 6, 8 or 12 clocks, let's assume 8 on average (12 is very rare.)
+        Each cycle can take 6, 8 or 12 clocks, let's assume 8 on
+        average (12 is very rare.)
         Each opcode takes 2-6 cycles, so let's say 4 on average.
         21,477,272/32=~671,164 opcodes/second.
 
         https://forums.nesdev.org/viewtopic.php?p=175515&sid=e26b9af85c521bb4c8fa1e905af2157c#p175515
-        Right. Every CPU instruction takes some number of CPU cycles; each CPU cycle in turn takes
-        6, 8, or 12 master clock cycles depending on which memory it's accessing.
+        Right. Every CPU instruction takes some number of CPU cycles;
+        each CPU cycle in turn takes 6, 8, or 12 master clock cycles
+        depending on which memory it's accessing.
         """
 
         fast, slow, xslow = 6, 8, 12
@@ -567,11 +583,19 @@ class Cpu:
 
     @property
     def P(self) -> int:
-        return self.CFlag << 0 | self.ZFlag << 1 | self.IFlag << 2 | self.DFlag << 3 | self.XFlag << 4 | self.MFlag << 5 | self.VFlag << 6 | self.NFlag << 7
+        return (
+            self.CFlag << 0
+            | self.ZFlag << 1
+            | self.IFlag << 2
+            | self.DFlag << 3
+            | self.XFlag << 4
+            | self.MFlag << 5
+            | self.VFlag << 6
+            | self.NFlag << 7
+        )
 
     @P.setter
     def P(self, data: int) -> None:
-        # assert 0 <= data <= 0xFF, f"Invalid value for P register: {hex(data)}"
         self.CFlag = data & 0x01 > 0
         self.ZFlag = data & 0x02 > 0
         self.IFlag = data & 0x04 > 0
@@ -582,7 +606,8 @@ class Cpu:
         self.NFlag = data & 0x80 > 0
 
     def interrupt(self, vector: int) -> int:
-        """NMI/IRQ handler. Returns elapsed master-clock cycles for the scheduler."""
+        """NMI/IRQ handler. Returns elapsed master-clock cycles for the
+        scheduler."""
         self.prev_cycles = self.cycles
         self.idle()
         self.idle()

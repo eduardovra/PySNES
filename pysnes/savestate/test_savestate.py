@@ -1,4 +1,5 @@
 """Smoke tests for save state. Marked @pytest.mark.harness — opt-in."""
+
 from pathlib import Path
 
 import pytest
@@ -37,7 +38,7 @@ def test_round_trip_identity(tmp_path):
         }
 
         h.save_state(path)
-        h.run_frames(60)            # mutate state
+        h.run_frames(60)  # mutate state
         assert h.frame == 120
         h.load_state(path)
         assert h.frame == pre["frame"]
@@ -108,8 +109,9 @@ def test_file_format_version_mismatch(tmp_path):
     """Bumping the file_format_version byte makes load refuse."""
     _require_smw()
     import struct
+
     from pysnes.harness import Harness
-    from pysnes.savestate import IncompatibleStateError, MAGIC
+    from pysnes.savestate import MAGIC, IncompatibleStateError
 
     path = tmp_path / "v.state"
     with Harness(SMW_ROM) as h:
@@ -125,17 +127,18 @@ def test_file_format_version_mismatch(tmp_path):
     blob[o : o + 4] = struct.pack("<I", cur + 99)
     path.write_bytes(bytes(blob))
 
-    with Harness(SMW_ROM) as h:
-        with pytest.raises(IncompatibleStateError):
-            h.load_state(path)
+    with Harness(SMW_ROM) as h, pytest.raises(IncompatibleStateError):
+        h.load_state(path)
 
 
 def test_compat_hash_mismatch(tmp_path):
     """Flipping a byte of the embedded compat_hash makes load refuse."""
     _require_smw()
-    import json, struct
+    import json
+    import struct
+
     from pysnes.harness import Harness
-    from pysnes.savestate import IncompatibleStateError, MAGIC
+    from pysnes.savestate import MAGIC, IncompatibleStateError
 
     path = tmp_path / "h.state"
     with Harness(SMW_ROM) as h:

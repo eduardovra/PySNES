@@ -7,13 +7,13 @@ from .apu.spc_file import SpcFile
 from .audio import AudioSDL2
 
 # APU runs at ~1.024 MHz; DSP generates one sample every 32 APU clocks → 32 kHz.
-_APU_HZ   = 1_024_000
-_DSP_DIV  = 32            # APU clocks per DSP (audio) sample
+_APU_HZ = 1_024_000
+_DSP_DIV = 32  # APU clocks per DSP (audio) sample
 _AUDIO_HZ = _APU_HZ // _DSP_DIV  # 32 000 Hz
 
 # Target 60 "frames" per second for audio chunking.
-_FPS            = 60
-_APU_PER_FRAME  = _APU_HZ // _FPS          # ~17 067 APU clocks per frame
+_FPS = 60
+_APU_PER_FRAME = _APU_HZ // _FPS  # ~17 067 APU clocks per frame
 _SAMPLES_PER_FRAME = _APU_PER_FRAME // _DSP_DIV  # ~533 samples per frame
 
 
@@ -27,26 +27,31 @@ class SpcPlayer:
     def _init_sdl(self) -> None:
         result = sdl.SDL_Init(sdl.SDL_INIT_AUDIO | sdl.SDL_INIT_VIDEO)
         if result != 0:
-            raise RuntimeError(f"SDL_Init failed: {sdl.SDL_GetError().decode()}")
+            raise RuntimeError(
+                f"SDL_Init failed: {sdl.SDL_GetError().decode()}"
+            )
 
         title = self.spc.song_name or "SPC Player"
         if self.spc.game_name:
             title = f"{self.spc.game_name} — {title}"
         self._window = sdl.SDL_CreateWindow(
             title.encode(),
-            sdl.SDL_WINDOWPOS_CENTERED, sdl.SDL_WINDOWPOS_CENTERED,
-            400, 100,
+            sdl.SDL_WINDOWPOS_CENTERED,
+            sdl.SDL_WINDOWPOS_CENTERED,
+            400,
+            100,
             sdl.SDL_WINDOW_SHOWN,
         )
 
     def _process_events(self) -> None:
         event = sdl.SDL_Event()
         while sdl.SDL_PollEvent(event):
-            if event.type == sdl.SDL_QUIT:
+            escape_pressed = (
+                event.type == sdl.SDL_KEYDOWN
+                and event.key.keysym.sym == sdl.SDLK_ESCAPE
+            )
+            if event.type == sdl.SDL_QUIT or escape_pressed:
                 self.running = False
-            elif event.type == sdl.SDL_KEYDOWN:
-                if event.key.keysym.sym == sdl.SDLK_ESCAPE:
-                    self.running = False
 
     def run(self) -> None:
         self._init_sdl()

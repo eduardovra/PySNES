@@ -2,6 +2,7 @@
 PySNES Debugger — hooks into cpu._step to support breakpoints and stepping.
 Zero overhead while the emulator is running with no breakpoints set.
 """
+
 from __future__ import annotations
 
 import heapq
@@ -16,31 +17,31 @@ if TYPE_CHECKING:
 # Maps disassembler addressing-mode method names to byte lengths.
 # Variable-length modes (immediateA, immediateX) are handled separately.
 _MODE_LENGTHS: dict[str, int] = {
-    "implied":            1,
-    "immediate":          2,
-    "direct":             2,
-    "directX":            2,
-    "directY":            2,
-    "indirect":           2,
-    "indexedIndirectX":   2,
-    "indirectIndexedY":   2,
-    "indirectLong":       2,
-    "indirectLongY":      2,
-    "relative":           2,
-    "stack":              2,
-    "stackIndirect":      2,
-    "absolute":           3,
-    "absoluteX":          3,
-    "absoluteY":          3,
-    "absolutePC":         3,
-    "indirectPC":         3,
-    "indirectX":          3,
-    "relativeWord":       3,
-    "move":               3,
-    "per":                3,
-    "absoluteLong":       4,
-    "absoluteLongX":      4,
-    "indirectLongPC":     4,
+    "implied": 1,
+    "immediate": 2,
+    "direct": 2,
+    "directX": 2,
+    "directY": 2,
+    "indirect": 2,
+    "indexedIndirectX": 2,
+    "indirectIndexedY": 2,
+    "indirectLong": 2,
+    "indirectLongY": 2,
+    "relative": 2,
+    "stack": 2,
+    "stackIndirect": 2,
+    "absolute": 3,
+    "absoluteX": 3,
+    "absoluteY": 3,
+    "absolutePC": 3,
+    "indirectPC": 3,
+    "indirectX": 3,
+    "relativeWord": 3,
+    "move": 3,
+    "per": 3,
+    "absoluteLong": 4,
+    "absoluteLongX": 4,
+    "indirectLongPC": 4,
 }
 
 
@@ -60,7 +61,7 @@ class Debugger:
         self._instr_count: int = 0
 
         self._original_step = None
-        self._cmd_queue: queue.Queue = queue.Queue()   # Tkinter → emulator
+        self._cmd_queue: queue.Queue = queue.Queue()  # Tkinter → emulator
         self._notify_queue: queue.Queue = queue.Queue()  # emulator → Tkinter
         self._window = None
 
@@ -79,7 +80,8 @@ class Debugger:
     def _hooked_step(self) -> None:
         pc = self._cpu.PC.d
         if pc in self._breakpoints:
-            # Execute the instruction, then pause (PC now points to the next instruction)
+            # Execute the instruction, then pause (PC now points to the next
+            # instruction)
             self._original_step()
             self._pysnes.paused = True
             self._install_hooks()
@@ -114,12 +116,14 @@ class Debugger:
         self._instr_count += 1
 
     def _notify_paused(self) -> None:
-        """Signal the Tkinter window to refresh. Thread-safe: puts to a queue."""
+        """Signal the Tkinter window to refresh. Thread-safe: puts to a
+        queue."""
         if self._window is not None:
             self._notify_queue.put(True)
 
     def drain_commands(self) -> None:
-        """Process commands from the Tkinter thread. Called every main loop iteration."""
+        """Process commands from the Tkinter thread. Called every main loop
+        iteration."""
         while not self._cmd_queue.empty():
             try:
                 cmd = self._cmd_queue.get_nowait()
@@ -132,7 +136,8 @@ class Debugger:
             elif action == "step":
                 done_event = cmd[1]
                 self.step_one_instruction()
-                done_event.set()  # unblocks Tkinter thread so it can refresh immediately
+                # unblocks Tkinter thread so it can refresh immediately
+                done_event.set()
             elif action == "continue":
                 self._pysnes.paused = False
             elif action == "pause":
@@ -142,7 +147,8 @@ class Debugger:
                 self._pysnes.reset()
 
     def disassemble_forward(self, pc: int, count: int) -> list[str]:
-        """Return up to `count` disassembled instruction strings starting at `pc`."""
+        """Return up to `count` disassembled instruction strings starting at
+        `pc`."""
         disasm = self._cpu.disassembler
         results = []
         for _ in range(count):
@@ -155,7 +161,8 @@ class Debugger:
         return results
 
     def _next_pc(self, pc: int) -> int:
-        """Advance PC past the instruction at `pc` using the addressing mode table."""
+        """Advance PC past the instruction at `pc` using the addressing mode
+        table."""
         disasm = self._cpu.disassembler
         bank = pc & 0xFF0000
         addr = pc & 0xFFFF
@@ -182,9 +189,10 @@ class Debugger:
         def _run():
             win = DebuggerWindow(self._cpu, self._bus, self._ppu, self)
             self._window = win
-            self._cpu.trace_enabled = True   # populate trace_log for disasm history
+            # populate trace_log for disasm history
+            self._cpu.trace_enabled = True
             win.root.mainloop()
-            win.root.destroy()               # destroy in daemon (Tkinter) thread
+            win.root.destroy()  # destroy in daemon (Tkinter) thread
             self._cpu.trace_enabled = False
             self._window = None
             # Force Tk object teardown on this (Tcl-owning) thread. On PyPy the

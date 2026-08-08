@@ -1,10 +1,8 @@
-from typing import Optional
-
 from .data_structures import Object
 
 
 class OAM:
-    def __init__(self, *, oam_dump: Optional[bytes] = None) -> None:
+    def __init__(self, *, oam_dump: bytes | None = None) -> None:
         # Object Attribute Memory
         self.oam = bytearray(512 + 32)
         self.objects = [Object() for i in range(128)]
@@ -64,9 +62,8 @@ class OAM:
 
         data = self.oam[addr + 3]
         obj.name_select = data & 0x01
-        obj.palette = (
-            (data >> 1) & 0x07
-        ) + 8  # Objects use the palettes present in the second half of CGRAM
+        # Objects use the palettes present in the second half of CGRAM
+        obj.palette = ((data >> 1) & 0x07) + 8
         obj.priority = (data >> 4) & 0x03
         obj.h_flip = data & 0x40
         obj.v_flip = data & 0x80

@@ -1,8 +1,7 @@
 from __future__ import annotations
 
 from array import array
-from typing import Tuple, TYPE_CHECKING
-
+from typing import TYPE_CHECKING
 
 from .constants import SCREEN_WIDTH
 from .data_structures import Object
@@ -26,16 +25,23 @@ def _decode_obj_tile(ppu: Ppu, slot: int, vram_addr: int) -> None:
         for col in range(8):
             shift = 7 - col
             cache[dst + col] = (
-                ((b0 >> shift) & 1) |
-                (((b1 >> shift) & 1) << 1) |
-                (((b2 >> shift) & 1) << 2) |
-                (((b3 >> shift) & 1) << 3)
+                ((b0 >> shift) & 1)
+                | (((b1 >> shift) & 1) << 1)
+                | (((b2 >> shift) & 1) << 2)
+                | (((b3 >> shift) & 1) << 3)
             )
     ppu._obj_tile_dirty[slot] = 0
 
 
-def _plot_obj(ppu: Ppu, obj: Object, x_offset: int, tile_base_addr: int,
-              tile_width: int, tile_height: int, cgram_cache: array) -> None:
+def _plot_obj(
+    ppu: Ppu,
+    obj: Object,
+    x_offset: int,
+    tile_base_addr: int,
+    tile_width: int,
+    tile_height: int,
+    cgram_cache: array,
+) -> None:
     """Plot one object's pixels for the current scanline into the OBJ line
     buffers, writing only where no lower-index sprite has already claimed the
     pixel (color_line == 0). Objects are always 4bpp."""
@@ -109,7 +115,11 @@ def _render_obj_line(ppu: Ppu) -> None:
     cgram_cache = ppu._cgram_cache
 
     for obj in ppu.oam.objects:
-        if obj.y == 240:  # TODO: replace with proper Y-bounds check; y=240 is the common hide convention but not the hardware rule
+        if (
+            obj.y == 240
+            # TODO: replace with proper Y-bounds check; y=240 is the common hide
+            # convention but not the hardware rule
+        ):
             continue
 
         tile_width, tile_height = get_obj_dimensions(ppu, obj.size)
@@ -124,10 +134,19 @@ def _render_obj_line(ppu: Ppu) -> None:
         # table, offset from the first by (oam_nameselect+1)*0x1000 VRAM words.
         tile_base_word = ppu.oam_tiledata_address
         if obj.name_select:
-            tile_base_word = (tile_base_word + (ppu.oam_nameselect + 1) * 0x1000) & 0x7FFF
+            tile_base_word = (
+                tile_base_word + (ppu.oam_nameselect + 1) * 0x1000
+            ) & 0x7FFF
 
-        _plot_obj(ppu, obj, x_screen, tile_base_word * 2,
-                  tile_width, tile_height, cgram_cache)
+        _plot_obj(
+            ppu,
+            obj,
+            x_screen,
+            tile_base_word * 2,
+            tile_width,
+            tile_height,
+            cgram_cache,
+        )
 
 
 def copy_obj_pixels_for_priority(ppu: Ppu, priority: int = -1) -> None:
@@ -165,7 +184,7 @@ def copy_obj_pixels_for_priority(ppu: Ppu, priority: int = -1) -> None:
             main_layer[idx] = layer_line[px]
 
 
-def get_obj_dimensions(ppu: Ppu, obj_size: bool) -> Tuple[int, int]:
+def get_obj_dimensions(ppu: Ppu, obj_size: bool) -> tuple[int, int]:
     """
     000 =  8x8  and 16x16 sprites
     001 =  8x8  and 32x32 sprites
@@ -190,7 +209,8 @@ def draw_point(
     x: int,
     y: int,
 ) -> None:
-    """Draw a single pixel from bitplane data at tile_data_index+i, wrapping at len(tile_data).
+    """Draw a single pixel from bitplane data at tile_data_index+i, wrapping at
+    len(tile_data).
 
     Used by tests to verify VRAM-boundary wrapping in tile fetches.
     """

@@ -3,12 +3,12 @@ class SPC700Opcodes:
     Opcodes implementation
 
     Notes:
-    Python stores negative integers as two's complement and that's why bitwise operations won't work correctly
+    Python stores negative integers as two's complement and that's why
+    bitwise operations won't work correctly
     https://stackoverflow.com/questions/46044936/bitwise-and-between-negative-and-positive-numbers
     """
 
     def ADC(self, x, y):
-        #assert False
         result = x + y + int(self.CF)
         self.CF = bool(result > 0xFF)
         self.ZF = bool(result & 0xFF == 0)
@@ -45,7 +45,6 @@ class SPC700Opcodes:
 
     def DEC(self, x):
         assert x >= 0
-        #assert (x - 1) >= 0
         # x is 8 bits, it's ok wrap from 0 to 255
         x = (x - 1) & 0xFF
         self.NF = bool(x & 0x80)
@@ -113,7 +112,6 @@ class SPC700Opcodes:
         return x
 
     def SBC(self, x: int, y: int) -> int:
-        #assert False
         assert x >= 0
         assert y >= 0
         return SPC700Opcodes.ADC(self, x & 0xFF, ~y & 0xFF)
@@ -138,7 +136,6 @@ class SPC700Opcodes:
         return x
 
     def LDW(self, x, y):
-        #assert False
         assert y >= 0
         self.ZF = y == 0
         self.NF = bool(y & 0x8000)

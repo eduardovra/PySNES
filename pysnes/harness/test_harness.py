@@ -1,4 +1,5 @@
 """Smoke tests for the Harness. Marked @pytest.mark.harness — opt-in."""
+
 from pathlib import Path
 
 import pytest
@@ -73,6 +74,7 @@ def test_on_write_range_fires_for_cgram():
     events: list[tuple[int, int, int, int]] = []
 
     with Harness(SMW_ROM) as h:
+
         def hook(harness, addr, value):
             events.append((harness.frame, harness.scanline, addr, value))
 
@@ -90,8 +92,9 @@ def test_on_write_range_fires_for_cgram():
 
 def test_tap_press_release_edge():
     _require_smw()
-    from pysnes.harness import Harness
     import sdl2
+
+    from pysnes.harness import Harness
 
     with Harness(SMW_ROM) as h:
         h.tap("Start", hold_frames=2, gap_frames=1)

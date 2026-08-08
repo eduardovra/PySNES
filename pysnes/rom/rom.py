@@ -1,7 +1,6 @@
 import pathlib
 from dataclasses import dataclass
 from enum import IntEnum
-from typing import Union
 
 from rich import print
 
@@ -19,13 +18,15 @@ class MappingMode(IntEnum):
     EXHIROM_FAST = 0x35
 
 
-SUPPORTED_MAPPING_MODES = frozenset({
-    MappingMode.TEST_PROGRAM,
-    MappingMode.LOROM,
-    MappingMode.LOROM_FAST,
-    MappingMode.HIROM,
-    MappingMode.HIROM_FAST,
-})
+SUPPORTED_MAPPING_MODES = frozenset(
+    {
+        MappingMode.TEST_PROGRAM,
+        MappingMode.LOROM,
+        MappingMode.LOROM_FAST,
+        MappingMode.HIROM,
+        MappingMode.HIROM_FAST,
+    }
+)
 
 
 class CartridgeType(IntEnum):
@@ -64,24 +65,26 @@ class Region(IntEnum):
     AUSTRALIA = 0x11
 
 
-def _enum_or_int(cls: type[IntEnum], value: int) -> Union[IntEnum, int]:
+def _enum_or_int(cls: type[IntEnum], value: int) -> IntEnum | int:
     try:
         return cls(value)
     except ValueError:
         return value
 
-# Scripts to convert SNES ROMs to SNES Classic (.sfrom) format and to read .sfrom headers
+
+# Scripts to convert SNES ROMs to SNES Classic (.sfrom) format and to read
+# .sfrom headers
 # https://gist.github.com/anpage/4834433944a2875ee6d4cbb5786c6bf7
 
 
 @dataclass
 class InterruptVectors:
     cop: int
-    brk: int      # native-only; 0 in emulation
+    brk: int  # native-only; 0 in emulation
     abort: int
     nmi: int
-    reset: int    # emulation-only; 0 in native
-    irq: int      # in emulation this is IRQ/BRK
+    reset: int  # emulation-only; 0 in native
+    irq: int  # in emulation this is IRQ/BRK
 
 
 @dataclass
@@ -93,14 +96,14 @@ class HardwareVectors:
 @dataclass
 class SnesHeader:
     game_title: str
-    mapping_mode: Union[MappingMode, int]
-    cartridge_type: Union[CartridgeType, int]
-    rom_size: int           # bytes; 0 if header byte is 0
-    sram_size: int          # bytes; 0 if header byte is 0
-    destination_code: Union[Region, int]   # $FFD9 — region, NOT developer ID
+    mapping_mode: MappingMode | int
+    cartridge_type: CartridgeType | int
+    rom_size: int  # bytes; 0 if header byte is 0
+    sram_size: int  # bytes; 0 if header byte is 0
+    destination_code: Region | int  # $FFD9 — region, NOT developer ID
     version: int
     checksum_complement: int  # 16-bit LE
-    checksum: int             # 16-bit LE
+    checksum: int  # 16-bit LE
 
 
 def _looks_like_title(buf) -> bool:
@@ -116,7 +119,6 @@ def _looks_like_map_mode(byte: int, want_hirom: bool) -> bool:
 
 
 class Rom:
-
     def __init__(self, rom_file_path: str) -> None:
         self.rom_file_path = rom_file_path
         self.rom_file_name = pathlib.Path(rom_file_path).name
@@ -127,11 +129,13 @@ class Rom:
 
     def load_rom_file(self):
         """
-        SFC and SMC files are usually identical. It's just a different choice in file extension.
-        “SMC” comes from Super MagiCom, a floppy-based cart copying device for backup/piracy.
-        The original .smc files produced by the device contained a 512 byte header.
+        SFC and SMC files are usually identical. It's just a different choice in
+        file extension. “SMC” comes from Super MagiCom, a floppy-based cart
+        copying device for backup/piracy. The original .smc files produced by
+        the device contained a 512 byte header.
         """
-        self.rom = bytearray(0x400000)  # https://en.wikibooks.org/wiki/Super_NES_Programming/SNES_memory_map
+        # https://en.wikibooks.org/wiki/Super_NES_Programming/SNES_memory_map
+        self.rom = bytearray(0x400000)
 
         print(f"Loading ROM file: {self.rom_file_path!r}")
         with open(self.rom_file_path, "rb") as f:
@@ -149,7 +153,8 @@ class Rom:
 
         assert self.snes_header.mapping_mode in SUPPORTED_MAPPING_MODES, (
             f"unsupported mapping mode {self.snes_header.mapping_mode:#04x} — "
-            f"supported: LoROM ({MappingMode.LOROM:#04x} / {MappingMode.LOROM_FAST:#04x}), "
+            f"supported: LoROM ({MappingMode.LOROM:#04x} / "
+            f"{MappingMode.LOROM_FAST:#04x}), "
             f"HiROM ({MappingMode.HIROM:#04x} / {MappingMode.HIROM_FAST:#04x})"
         )
 
@@ -189,16 +194,21 @@ class Rom:
 
         rom_size_byte = rom[page_offset + 0xD7]
         sram_size_byte = rom[page_offset + 0xD8]
+        if sram_size_byte:
+            sram_size = min(0x400 << sram_size_byte, 0x20000)
+        else:
+            sram_size = 0
 
         return SnesHeader(
             game_title=game_title,
             mapping_mode=_enum_or_int(MappingMode, rom[page_offset + 0xD5]),
             cartridge_type=_enum_or_int(CartridgeType, rom[page_offset + 0xD6]),
             rom_size=(0x400 << rom_size_byte) if rom_size_byte else 0,
-            sram_size=min(0x400 << sram_size_byte, 0x20000) if sram_size_byte else 0,
+            sram_size=sram_size,
             destination_code=_enum_or_int(Region, rom[page_offset + 0xD9]),
             version=rom[page_offset + 0xDB],
-            checksum_complement=rom[page_offset + 0xDC] | rom[page_offset + 0xDD] << 8,
+            checksum_complement=rom[page_offset + 0xDC]
+            | rom[page_offset + 0xDD] << 8,
             checksum=rom[page_offset + 0xDE] | rom[page_offset + 0xDF] << 8,
         )
 
@@ -216,7 +226,10 @@ class Rom:
             IRQ   $FFEE-$FFEF     IRQ/BRK $FFFE-$FFFF
         """
         rom = self.rom
-        word = lambda lo: rom[page_offset | lo] | rom[page_offset | (lo + 1)] << 8
+
+        def word(lo: int) -> int:
+            return rom[page_offset | lo] | rom[page_offset | (lo + 1)] << 8
+
         return HardwareVectors(
             native=InterruptVectors(
                 cop=word(0xE4),

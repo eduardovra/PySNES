@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-
 from .constants import SCREEN_WIDTH
 
 if TYPE_CHECKING:
@@ -10,13 +9,13 @@ if TYPE_CHECKING:
 
 # CGADSUB ($2131) bit masks
 _CGADSUB_SUBTRACT = 0x80  # 0=add, 1=subtract
-_CGADSUB_HALF     = 0x40  # 0=full intensity, 1=half intensity
-_CGADSUB_BACK     = 0x20  # backdrop participates
-_CGADSUB_OBJ      = 0x10  # OBJ palettes 4-7 participate
-_CGADSUB_BG4      = 0x08
-_CGADSUB_BG3      = 0x04
-_CGADSUB_BG2      = 0x02
-_CGADSUB_BG1      = 0x01
+_CGADSUB_HALF = 0x40  # 0=full intensity, 1=half intensity
+_CGADSUB_BACK = 0x20  # backdrop participates
+_CGADSUB_OBJ = 0x10  # OBJ palettes 4-7 participate
+_CGADSUB_BG4 = 0x08
+_CGADSUB_BG3 = 0x04
+_CGADSUB_BG2 = 0x02
+_CGADSUB_BG1 = 0x01
 
 
 def draw_scanline_forced_blank(ppu: Ppu) -> None:
@@ -85,8 +84,8 @@ def composite_scanline(ppu: Ppu) -> None:
     enable_obj = cgadsub & _CGADSUB_OBJ
     enable_back = cgadsub & _CGADSUB_BACK
 
-    # Color-window (math window) setup: WOBJSEL bits 4-7, WOBJLOG bits 2-3.
-    # Per $2125 spec (matching $2123 W12SEL convention): bit 0=invert, bit 1=enable.
+    # Color-window (math window) setup: WOBJSEL bits 4-7, WOBJLOG bits 2-3. Per
+    # $2125 spec (matching $2123 W12SEL convention): bit 0=invert, bit 1=enable.
     # Pairs: bits 0-1 OBJ W1, 2-3 OBJ W2, 4-5 MATH W1, 6-7 MATH W2.
     math_w1_invert = (ppu.wobjsel >> 4) & 1
     math_w1_enable = (ppu.wobjsel >> 5) & 1
@@ -100,8 +99,10 @@ def composite_scanline(ppu: Ppu) -> None:
         cmath_mask = ppu._window_mask_buf
         ppu._build_window_mask(
             cmath_mask,
-            math_w1_enable, math_w1_invert,
-            math_w2_enable, math_w2_invert,
+            math_w1_enable,
+            math_w1_invert,
+            math_w2_enable,
+            math_w2_invert,
             math_logic,
         )
 
@@ -128,12 +129,9 @@ def composite_scanline(ppu: Ppu) -> None:
 
         # Color-window gating (CGWSEL bits 5-4).
         if cmath_mode != 0:
-            if cmath_mask is not None:
-                in_window = cmath_mask[x]
-            else:
-                # No windows enabled → treat as always inside. Matches Mesen
-                # semantic where a disabled window acts as full-screen inside.
-                in_window = True
+            # No windows enabled → treat as always inside. Matches Mesen
+            # semantic where a disabled window acts as full-screen inside.
+            in_window = cmath_mask[x] if cmath_mask is not None else True
             if cmath_mode == 1 and not in_window:
                 continue  # inside only → skip outside
             if cmath_mode == 2 and in_window:
@@ -179,7 +177,9 @@ def composite_scanline(ppu: Ppu) -> None:
         ppu.main_bgs[idx] = (r << 24) | (g << 16) | (b << 8) | (m & 0xFF)
 
 
-def get_u32_color(ppu: Ppu, bpp: int, palette: int, color: int, color_offset: int = 0) -> int:
+def get_u32_color(
+    ppu: Ppu, bpp: int, palette: int, color: int, color_offset: int = 0
+) -> int:
     if ppu._cgram_dirty:
         ppu._rebuild_cgram_cache()
     if bpp == 8:

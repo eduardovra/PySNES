@@ -1,4 +1,4 @@
-from typing import Callable
+from collections.abc import Callable
 
 from ...cpu import Cpu
 
@@ -47,8 +47,8 @@ def JumpLong(cpu: Cpu):
 def JumpIndirect(cpu: Cpu):
     cpu.V.l = cpu.fetch()
     cpu.V.h = cpu.fetch()
-    cpu.W.l = cpu.read((cpu.V.w + 0) & 0xffff)
-    cpu.W.h = cpu.read((cpu.V.w + 1) & 0xffff)
+    cpu.W.l = cpu.read((cpu.V.w + 0) & 0xFFFF)
+    cpu.W.h = cpu.read((cpu.V.w + 1) & 0xFFFF)
     cpu.PC.w = cpu.W.w
     cpu.idleJump()
 
@@ -57,8 +57,8 @@ def JumpIndexedIndirect(cpu: Cpu):
     cpu.V.l = cpu.fetch()
     cpu.V.h = cpu.fetch()
     cpu.idle()
-    cpu.W.l = cpu.read(cpu.PC.b << 16 | (cpu.V.w + cpu.X.w + 0) & 0xffff)
-    cpu.W.h = cpu.read(cpu.PC.b << 16 | (cpu.V.w + cpu.X.w + 1) & 0xffff)
+    cpu.W.l = cpu.read(cpu.PC.b << 16 | (cpu.V.w + cpu.X.w + 0) & 0xFFFF)
+    cpu.W.h = cpu.read(cpu.PC.b << 16 | (cpu.V.w + cpu.X.w + 1) & 0xFFFF)
     cpu.PC.w = cpu.W.w
     cpu.idleJump()
 
@@ -66,9 +66,9 @@ def JumpIndexedIndirect(cpu: Cpu):
 def JumpIndirectLong(cpu: Cpu):
     cpu.U.l = cpu.fetch()
     cpu.U.h = cpu.fetch()
-    cpu.V.l = cpu.read((cpu.U.w + 0) & 0xffff)
-    cpu.V.h = cpu.read((cpu.U.w + 1) & 0xffff)
-    cpu.V.b = cpu.read((cpu.U.w + 2) & 0xffff)
+    cpu.V.l = cpu.read((cpu.U.w + 0) & 0xFFFF)
+    cpu.V.h = cpu.read((cpu.U.w + 1) & 0xFFFF)
+    cpu.V.b = cpu.read((cpu.U.w + 2) & 0xFFFF)
     cpu.PC.d = cpu.V.d
     cpu.idleJump()
 
@@ -105,8 +105,8 @@ def CallIndexedIndirect(cpu: Cpu):
     cpu.pushN(cpu.PC.l)
     cpu.V.h = cpu.fetch()
     cpu.idle()
-    cpu.W.l = cpu.read(cpu.PC.b << 16 | (cpu.V.w + cpu.X.w + 0) & 0xffff)
-    cpu.W.h = cpu.read(cpu.PC.b << 16 | (cpu.V.w + cpu.X.w + 1) & 0xffff)
+    cpu.W.l = cpu.read(cpu.PC.b << 16 | (cpu.V.w + cpu.X.w + 0) & 0xFFFF)
+    cpu.W.h = cpu.read(cpu.PC.b << 16 | (cpu.V.w + cpu.X.w + 1) & 0xFFFF)
     cpu.PC.w = cpu.W.w
     if cpu.EF:
         cpu.S.h = 0x01

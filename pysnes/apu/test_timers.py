@@ -25,12 +25,12 @@ Test register $F0:
 
 import pytest
 
-from .apu import Apu, Timer
-
+from .apu import Apu
 
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def apu():
@@ -44,6 +44,7 @@ def apu():
 # ---------------------------------------------------------------------------
 # Timer enable / disable via control register ($F1)
 # ---------------------------------------------------------------------------
+
 
 def test_control_register_enables_timer0(apu: Apu):
     apu.write(0x00F1, 0x01)
@@ -98,6 +99,7 @@ def test_disable_timer_stops_counting(apu: Apu):
 # Timer target ($FA/$FB/$FC)
 # ---------------------------------------------------------------------------
 
+
 def test_timer0_target_set_via_register(apu: Apu):
     apu.write(0x00FA, 0x10)
     assert apu.timers[0].target == 0x10
@@ -116,6 +118,7 @@ def test_timer2_target_set_via_register(apu: Apu):
 # ---------------------------------------------------------------------------
 # Counter output ($FD/$FE/$FF) and clear-on-read
 # ---------------------------------------------------------------------------
+
 
 def test_counter_read_returns_stage3(apu: Apu):
     apu.timers[0].stage3 = 0x07
@@ -154,14 +157,17 @@ def test_counter_wraps_at_4_bits(apu: Apu):
 # Counting behaviour — stage2 counts to target then stage3 increments
 # ---------------------------------------------------------------------------
 
+
 def _tick_until_overflow(apu: Apu, timer_idx: int, expected_hits: int) -> None:
-    """Step the APU timer enough times to get exactly expected_hits overflows."""
+    """Step the APU timer enough times to get exactly expected_hits
+    overflows."""
     t = apu.timers[timer_idx]
     t.enable = True
     t.stage2 = 0
     t.stage3 = 0
-    # Each call passes t.frequency APU cycles so stage0 overflows exactly once per call,
-    # incrementing stage2 directly. stage3 increments every target stage2 increments.
+    # Each call passes t.frequency APU cycles so stage0 overflows exactly once
+    # per call, incrementing stage2 directly. stage3 increments every target
+    # stage2 increments.
     steps = t.target * expected_hits + 1
     for _ in range(steps):
         apu.step_timers(t.frequency)
@@ -201,6 +207,7 @@ def test_timer2_higher_frequency(apu: Apu):
 # Global timer gates (test register $F0 bits 0 and 3)
 # ---------------------------------------------------------------------------
 
+
 def test_timers_disable_inhibits_all(apu: Apu):
     apu.timers_disable = True
     for t in apu.timers:
@@ -231,8 +238,10 @@ def test_timers_enable_false_inhibits_all(apu: Apu):
 # Port reset via control register bits 4 and 5
 # ---------------------------------------------------------------------------
 
+
 def test_control_bit4_resets_ports_r_01(apu: Apu):
-    """Bit 4 resets CPU→APU input ports (ports_r); APU output ports (ports_w) unchanged."""
+    """Bit 4 resets CPU→APU input ports (ports_r); APU output ports (ports_w)
+    unchanged."""
     apu.ports_r[0] = 0xAA
     apu.ports_r[1] = 0xBB
     apu.ports_w[0] = 0x11
@@ -245,7 +254,8 @@ def test_control_bit4_resets_ports_r_01(apu: Apu):
 
 
 def test_control_bit5_resets_ports_r_23(apu: Apu):
-    """Bit 5 resets CPU→APU input ports (ports_r); APU output ports (ports_w) unchanged."""
+    """Bit 5 resets CPU→APU input ports (ports_r); APU output ports (ports_w)
+    unchanged."""
     apu.ports_r[2] = 0xCC
     apu.ports_r[3] = 0xDD
     apu.ports_w[2] = 0x33

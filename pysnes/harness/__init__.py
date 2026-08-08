@@ -15,10 +15,12 @@ Example:
         h.screenshot("title.png")
         print("CGRAM[0..4]:", h.cgram(0, 4).hex())
 """
+
 from __future__ import annotations
 
+from collections.abc import Callable, Iterable, Sequence
 from pathlib import Path
-from typing import Any, Callable, Iterable, Optional, Sequence, Union
+from typing import Any, Optional, Union
 
 import numpy as np
 import sdl2
@@ -49,11 +51,11 @@ _BUTTON_KEYS = {
 }
 
 # Macro event: (frames_to_run, buttons_held_during_those_frames_or_None)
-MacroEvent = tuple[int, Optional[Iterable[str]]]
+MacroEvent = tuple[int, Iterable[str] | None]
 WriteHook = Callable[["Harness", int, int], None]
 
 
-def _resolve_buttons(buttons: Union[str, Iterable[str], None]) -> set[int]:
+def _resolve_buttons(buttons: str | Iterable[str] | None) -> set[int]:
     if buttons is None:
         return set()
     names: Iterable[str] = [buttons] if isinstance(buttons, str) else buttons
@@ -72,9 +74,9 @@ class Harness:
 
     def __init__(
         self,
-        rom_path: Union[str, Path],
-        sram_path: Optional[Union[str, Path]] = None,
-        load_state: Optional[Union[str, Path]] = None,
+        rom_path: str | Path,
+        sram_path: str | Path | None = None,
+        load_state: str | Path | None = None,
     ):
         # Defer the import so unrelated tools (e.g. the CLI's --help) don't pay
         # the boot cost of importing the emulator.
@@ -118,7 +120,8 @@ class Harness:
     # Execution
     # ------------------------------------------------------------------
     def run_frames(self, n: int) -> None:
-        """Advance the scheduler by exactly `n` frames worth of master clocks."""
+        """Advance the scheduler by exactly `n` frames worth of master
+        clocks."""
         if n <= 0:
             return
         sched = self._pysnes.scheduler
@@ -126,7 +129,7 @@ class Harness:
 
     def run_until(
         self,
-        predicate: Callable[["Harness"], bool],
+        predicate: Callable[[Harness], bool],
         max_frames: int = 600,
     ) -> bool:
         """Step one frame at a time until `predicate(self)` is truthy.
@@ -147,10 +150,13 @@ class Harness:
         Errors if the requested scanline has already passed in this frame.
         """
         if not (0 <= v < SCANLINES_PER_FRAME):
-            raise ValueError(f"scanline {v} out of range [0, {SCANLINES_PER_FRAME})")
+            raise ValueError(
+                f"scanline {v} out of range [0, {SCANLINES_PER_FRAME})"
+            )
         if v < self.scanline:
             raise ValueError(
-                f"scanline {v} already past in current frame (now at {self.scanline})"
+                f"scanline {v} already past in current frame (now at "
+                f"{self.scanline})"
             )
         delta = (v - self.scanline) * MC_PER_SCANLINE
         sched = self._pysnes.scheduler
@@ -159,11 +165,11 @@ class Harness:
     # ------------------------------------------------------------------
     # Controller input
     # ------------------------------------------------------------------
-    def press(self, buttons: Union[str, Iterable[str]]) -> None:
+    def press(self, buttons: str | Iterable[str]) -> None:
         """Add buttons to the held set without releasing anything else."""
         self._pysnes.controllers[0].pressed_keys |= _resolve_buttons(buttons)
 
-    def release(self, buttons: Union[str, Iterable[str]]) -> None:
+    def release(self, buttons: str | Iterable[str]) -> None:
         """Remove buttons from the held set."""
         self._pysnes.controllers[0].pressed_keys -= _resolve_buttons(buttons)
 
@@ -172,7 +178,7 @@ class Harness:
 
     def tap(
         self,
-        buttons: Union[str, Iterable[str]],
+        buttons: str | Iterable[str],
         hold_frames: int = 2,
         gap_frames: int = 1,
     ) -> None:
@@ -206,7 +212,7 @@ class Harness:
     # ------------------------------------------------------------------
     # Screenshot
     # ------------------------------------------------------------------
-    def screenshot(self, path: Union[str, Path]) -> None:
+    def screenshot(self, path: str | Path) -> None:
         """Write the current framebuffer to a 256×224 PNG.
 
         Reads `ppu.main_bgs` directly and applies the current INIDISP
@@ -385,15 +391,17 @@ class Harness:
         # macros did. Callers can call _save_sram() explicitly if needed.
         self._closed = True
 
-    def save_state(self, path: Union[str, Path]) -> None:
+    def save_state(self, path: str | Path) -> None:
         from pysnes import savestate  # noqa: PLC0415
+
         savestate.save(self._pysnes, str(path))
 
-    def load_state(self, path: Union[str, Path]) -> None:
+    def load_state(self, path: str | Path) -> None:
         from pysnes import savestate  # noqa: PLC0415
+
         savestate.load(self._pysnes, str(path))
 
-    def __enter__(self) -> "Harness":
+    def __enter__(self) -> Harness:
         return self
 
     def __exit__(self, *exc: Any) -> None:

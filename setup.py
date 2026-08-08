@@ -1,14 +1,16 @@
-from setuptools import setup, Extension
-from Cython.Build import cythonize
 import glob
-import pathlib
 import multiprocessing
+import pathlib
 
-# Modules excluded from Cython compilation: PyPy JIT cannot trace through compiled
-# C extension call boundaries. The CPU/bus hot path (cpu.py, bus.py, dma.py,
-# wdc65816/*.py) calls across module boundaries on every instruction cycle, so
-# compiling them creates JIT trace breaks and causes a severe performance regression.
-# These are left as pure Python for PyPy to JIT natively.
+from Cython.Build import cythonize
+from setuptools import Extension, setup
+
+# Modules excluded from Cython compilation: PyPy JIT cannot trace through
+# compiled C extension call boundaries. The CPU/bus hot path (cpu.py, bus.py,
+# dma.py, wdc65816/*.py) calls across module boundaries on every instruction
+# cycle, so compiling them creates JIT trace breaks and causes a severe
+# performance regression. These are left as pure Python for PyPy to JIT
+# natively.
 EXCLUDE_FROM_CYTHON = {
     "pysnes/cpu/cpu.py",
     "pysnes/cpu/dma.py",
@@ -17,7 +19,8 @@ EXCLUDE_FROM_CYTHON = {
 
 py_files = glob.glob("pysnes/**/*.py", recursive=True)
 py_files = [
-    f for f in py_files
+    f
+    for f in py_files
     if not f.endswith("__init__.py")
     and not pathlib.Path(f).name.startswith("test_")
     and pathlib.Path(f).name != "conftest.py"
@@ -27,13 +30,17 @@ py_files = [
 
 extensions = []
 for py_file in py_files:
-    module_name = pathlib.Path(py_file).with_suffix("").as_posix().replace("/", ".")
-    extensions.append(Extension(
-        name=module_name,
-        sources=[py_file],
-        libraries=["SDL2"],
-        include_dirs=["/usr/include/SDL2/"],
-    ))
+    module_name = (
+        pathlib.Path(py_file).with_suffix("").as_posix().replace("/", ".")
+    )
+    extensions.append(
+        Extension(
+            name=module_name,
+            sources=[py_file],
+            libraries=["SDL2"],
+            include_dirs=["/usr/include/SDL2/"],
+        )
+    )
 
 setup(
     ext_modules=cythonize(

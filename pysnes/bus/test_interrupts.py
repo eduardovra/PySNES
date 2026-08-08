@@ -10,17 +10,15 @@ Covers:
   - IRQ enable flags stored correctly
 """
 
-import pytest
-
-from ..scheduler import Scheduler
-from .bus import Bus
-from ..cpu import Cpu
-from ..apu import Apu
-from ..ppu import Ppu
-from ..controller import Controller
-from ..rom import HardwareVectors, InterruptVectors, MappingMode
 from types import SimpleNamespace
 
+from ..apu import Apu
+from ..controller import Controller
+from ..cpu import Cpu
+from ..ppu import Ppu
+from ..rom import HardwareVectors, InterruptVectors, MappingMode
+from ..scheduler import Scheduler
+from .bus import Bus
 
 # ---------------------------------------------------------------------------
 # Helpers (shared with other test modules)
@@ -34,10 +32,22 @@ class StubRom:
         self.rom = bytearray(size)
         self.snes_header = SimpleNamespace(mapping_mode=MappingMode.LOROM)
         self.hardware_vectors = HardwareVectors(
-            native=InterruptVectors(cop=0x8000, brk=0x8000, abort=0x8000,
-                                    nmi=0x8000, reset=0, irq=0x8000),
-            emulation=InterruptVectors(cop=0x8000, brk=0, abort=0x8000,
-                                       nmi=0x8000, reset=0x8000, irq=0x8000),
+            native=InterruptVectors(
+                cop=0x8000,
+                brk=0x8000,
+                abort=0x8000,
+                nmi=0x8000,
+                reset=0,
+                irq=0x8000,
+            ),
+            emulation=InterruptVectors(
+                cop=0x8000,
+                brk=0,
+                abort=0x8000,
+                nmi=0x8000,
+                reset=0x8000,
+                irq=0x8000,
+            ),
         )
 
     def read(self, addr):
@@ -62,6 +72,7 @@ def make_bus():
 # ---------------------------------------------------------------------------
 # NMITIMEN ($4200) — NMI enable / disable
 # ---------------------------------------------------------------------------
+
 
 def test_nmitimen_enables_nmi():
     bus, cpu = make_bus()
@@ -113,6 +124,7 @@ def test_nmitimen_auto_joypad_read_enable():
 # NMI rising-edge behaviour
 # ---------------------------------------------------------------------------
 
+
 def test_nmi_rising_edge_sets_pending_when_enabled():
     bus, cpu = make_bus()
     bus.write(0x004200, 0x80)  # enable NMI
@@ -128,7 +140,8 @@ def test_nmi_rising_edge_does_not_set_pending_when_disabled():
 
 
 def test_nmi_enable_with_line_already_high_triggers_immediately():
-    """Enabling NMI while nmi_line is already asserted triggers a rising edge."""
+    """Enabling NMI while nmi_line is already asserted triggers a rising
+    edge."""
     bus, cpu = make_bus()
     cpu.status.nmi_line = True
     # Writing 0x80 to NMITIMEN while nmi_line is high should trigger immediately
@@ -166,6 +179,7 @@ def test_lower_nmi_does_not_clear_nmi_line():
 # RDNMI ($4210)
 # ---------------------------------------------------------------------------
 
+
 def test_rdnmi_read_clears_nmi_line():
     bus, cpu = make_bus()
     cpu.status.nmi_line = True
@@ -198,12 +212,13 @@ def test_rdnmi_bit7_persists_through_vblank_end():
     """Per SNES spec, $4210 bit 7 is set at V-Blank start and cleared ONLY by
     a read of $4210. V-Blank end does NOT auto-clear it."""
     bus, cpu = make_bus()
-    bus.raise_nmi()        # simulate V-Blank start
+    bus.raise_nmi()  # simulate V-Blank start
     assert cpu.status.nmi_line is True
-    bus.lower_nmi()        # simulate V-Blank end
+    bus.lower_nmi()  # simulate V-Blank end
     # Hardware: bit 7 should still be set until the game reads $4210.
     assert cpu.status.nmi_line is True, (
-        "RDNMI bit 7 should persist through V-Blank end; only a $4210 read clears it"
+        "RDNMI bit 7 should persist through V-Blank end; only a $4210 read "
+        "clears it"
     )
     # Now reading $4210 clears it.
     _ = bus.read(0x004210)
@@ -213,6 +228,7 @@ def test_rdnmi_bit7_persists_through_vblank_end():
 # ---------------------------------------------------------------------------
 # TIMEUP / IRQ state
 # ---------------------------------------------------------------------------
+
 
 def test_irq_flags_independent_of_nmi():
     """Setting HIRQ enable must not disturb NMI enable and vice versa."""
@@ -232,29 +248,32 @@ def test_irq_flags_independent_of_nmi():
 # interrupt() cycle counting
 # ---------------------------------------------------------------------------
 
+
 def test_interrupt_advances_cycles_native_mode():
     """interrupt() must count bus cycles (not return a flat 1 MC)."""
     bus, cpu = make_bus()
-    cpu.EF = False  # native mode: 8 bus cycles (2 idle + push PBR/PCH/PCL/P + 2 vector reads)
+    # native mode: 8 bus cycles (2 idle + push PBR/PCH/PCL/P + 2 vector reads)
+    cpu.EF = False
     cpu.S.w = 0x01FF
     cycles_before = cpu.cycles
     cpu.interrupt(0xFFEA)  # native NMI vector
     elapsed_mc = cpu.cycles - cycles_before
-    # 2 idles (6 MC each) + 4 writes to stack in slow RAM (8 MC each) + 2 reads from ROM $FFxx (8 MC each)
-    # = 12 + 32 + 16 = 60 MC
+    # 2 idles (6 MC each) + 4 writes to stack in slow RAM (8 MC each) + 2 reads
+    # from ROM $FFxx (8 MC each) = 12 + 32 + 16 = 60 MC
     assert elapsed_mc == 60, f"Expected 60 MC, got {elapsed_mc}"
 
 
 def test_interrupt_advances_cycles_emulation_mode():
     """Emulation mode skips PBR push: 7 bus cycles total."""
     bus, cpu = make_bus()
-    cpu.EF = True  # emulation mode: 7 bus cycles (2 idle + push PCH/PCL/P + 2 vector reads)
+    # emulation mode: 7 bus cycles (2 idle + push PCH/PCL/P + 2 vector reads)
+    cpu.EF = True
     cpu.S.w = 0x01FF
     cycles_before = cpu.cycles
     cpu.interrupt(0xFFFA)  # emulation NMI vector
     elapsed_mc = cpu.cycles - cycles_before
-    # 2 idles (6 MC each) + 3 writes to stack in slow RAM (8 MC each) + 2 reads from ROM $FFxx (8 MC each)
-    # = 12 + 24 + 16 = 52 MC
+    # 2 idles (6 MC each) + 3 writes to stack in slow RAM (8 MC each) + 2 reads
+    # from ROM $FFxx (8 MC each) = 12 + 24 + 16 = 52 MC
     assert elapsed_mc == 52, f"Expected 52 MC, got {elapsed_mc}"
 
 
@@ -279,14 +298,19 @@ def test_interrupt_resets_pb_to_zero_native():
     cpu.PC.b = 0x04
     cpu.PC.w = 0xDD85
     cpu.S.w = 0x01FF
-    # Place vector low/high at ROM offset $7FEA-$7FEB (LoROM map of $00:FFEA-FFEB).
+    # Place vector low/high at ROM offset $7FEA-$7FEB (LoROM map of
+    # $00:FFEA-FFEB).
     bus.rom.rom[0x7FEA] = 0x6A
     bus.rom.rom[0x7FEB] = 0x81
     cpu.interrupt(0xFFEA)
-    assert cpu.PC.b == 0x00, f"PB must be 0 after interrupt, got ${cpu.PC.b:02X}"
+    assert cpu.PC.b == 0x00, (
+        f"PB must be 0 after interrupt, got ${cpu.PC.b:02X}"
+    )
     assert cpu.PC.w == 0x816A
     # The original PBR ($04) must have been pushed before being cleared.
-    assert bus.read(0x0001FF) == 0x04, f"PBR not pushed; stack top = ${bus.read(0x0001FF):02X}"
+    assert bus.read(0x0001FF) == 0x04, (
+        f"PBR not pushed; stack top = ${bus.read(0x0001FF):02X}"
+    )
 
 
 def test_interrupt_pb_is_zero_in_emulation_mode():
@@ -306,6 +330,7 @@ def test_interrupt_pb_is_zero_in_emulation_mode():
 # ---------------------------------------------------------------------------
 # H/V IRQ — $4207-$420A target registers
 # ---------------------------------------------------------------------------
+
 
 def test_htime_low_write():
     bus, cpu = make_bus()
@@ -346,6 +371,7 @@ def test_vtime_high_write_only_bit0():
 # $4211 TIMEUP — read-and-clear IRQ flag
 # ---------------------------------------------------------------------------
 
+
 def test_timeup_read_clears_irq_line():
     bus, cpu = make_bus()
     cpu.status.irq_line = True
@@ -370,6 +396,7 @@ def test_timeup_bit7_clear_when_line_low():
 # ---------------------------------------------------------------------------
 # IRQ dispatch in CPU._step
 # ---------------------------------------------------------------------------
+
 
 def test_irq_pending_fires_interrupt_when_i_flag_clear():
     """_step() must fire IRQ when irq_line is high and IFlag is clear."""
@@ -431,13 +458,6 @@ def test_nmi_takes_priority_over_irq():
 # ---------------------------------------------------------------------------
 # PPU → bus IRQ trigger at H/V match
 # ---------------------------------------------------------------------------
-
-def _make_bus_with_ppu():
-    """Variant of make_bus that also starts the PPU event loop."""
-    bus, cpu = make_bus()
-    bus.ppu.start()
-    cpu.start(bus.scheduler)
-    return bus, cpu
 
 
 def test_vrq_fires_at_vtime_scanline():

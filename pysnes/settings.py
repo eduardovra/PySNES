@@ -11,20 +11,24 @@ Example settings.json:
     "rom": "roms/mygame.sfc"
 }
 """
+
 import json
 from pathlib import Path
 
 DEFAULTS = {
     "headless": False,
     "rom": None,
-    "mesen_bin": "submodules/Mesen2/bin/linux-x64/Release/linux-x64/publish/Mesen",
+    "mesen_bin": (
+        "submodules/Mesen2/bin/linux-x64/Release/linux-x64/publish/Mesen"
+    ),
 }
 
 SETTINGS_FILE = "settings.json"
 
 
 def load(path=None) -> dict:
-    """Load settings from a JSON file, falling back to defaults for missing keys."""
+    """Load settings from a JSON file, falling back to defaults for missing
+    keys."""
     result = dict(DEFAULTS)
     settings_path = Path(path or SETTINGS_FILE)
     if settings_path.exists():

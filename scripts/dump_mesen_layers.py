@@ -18,7 +18,9 @@ Output files per config:
     mesen_layer_obj.png        TM = OBJ only
     mesen_layer_sub_bg2.png    TM=0, TS=BG2 only
 """
+
 import argparse
+import contextlib
 import json
 import os
 import struct
@@ -35,12 +37,12 @@ EXPECTED_SIZE = SCREEN_W * MESEN_BUF_H * 4
 
 # name, tm_mask (or None = no override), ts_mask (or None)
 CONFIGS = [
-    ("all",     None, None),
-    ("bg1",     0x01, 0x00),
-    ("bg2",     0x02, 0x00),
-    ("bg3",     0x04, 0x00),
-    ("bg4",     0x08, 0x00),
-    ("obj",     0x10, 0x00),
+    ("all", None, None),
+    ("bg1", 0x01, 0x00),
+    ("bg2", 0x02, 0x00),
+    ("bg3", 0x04, 0x00),
+    ("bg4", 0x08, 0x00),
+    ("obj", 0x10, 0x00),
     ("sub_bg2", 0x00, 0x02),
 ]
 
@@ -48,14 +50,17 @@ CONFIGS = [
 def mesen_bin() -> str:
     candidates = [
         os.environ.get("MESEN_BIN"),
-        str(REPO_ROOT / "submodules/Mesen2/bin/linux-x64/Release/linux-x64/publish/Mesen"),
+        str(
+            REPO_ROOT
+            / "submodules/Mesen2/bin/linux-x64/Release/linux-x64/publish/Mesen"
+        ),
     ]
     cfg_path = REPO_ROOT / "settings.json"
     if cfg_path.exists():
-        try:
-            candidates.insert(1, json.loads(cfg_path.read_text()).get("mesen_bin"))
-        except Exception:
-            pass
+        with contextlib.suppress(Exception):
+            candidates.insert(
+                1, json.loads(cfg_path.read_text()).get("mesen_bin")
+            )
     for c in candidates:
         if c and Path(c).is_file() and os.access(c, os.X_OK):
             return c
@@ -64,8 +69,9 @@ def mesen_bin() -> str:
     )
 
 
-def run_mesen(mesen: str, rom: Path, out_bin: Path, frame: int,
-              tm_mask, ts_mask) -> None:
+def run_mesen(
+    mesen: str, rom: Path, out_bin: Path, frame: int, tm_mask, ts_mask
+) -> None:
     lua_script = REPO_ROOT / "scripts/mesen_layers.lua"
     env = os.environ.copy()
     env["MESEN_FRAMES"] = str(frame)
@@ -97,7 +103,9 @@ def bin_to_png(bin_path: Path, png_path: Path) -> None:
     from PIL import Image
 
     raw = bin_path.read_bytes()
-    pixels_u32 = struct.unpack(f"<{SCREEN_W * MESEN_BUF_H}I", raw[:EXPECTED_SIZE])
+    pixels_u32 = struct.unpack(
+        f"<{SCREEN_W * MESEN_BUF_H}I", raw[:EXPECTED_SIZE]
+    )
     img = Image.new("RGB", (SCREEN_W, VISIBLE_H))
     out = img.load()
     for row in range(VISIBLE_H):

@@ -13,7 +13,10 @@ def pytest_addoption(parser):
         default=100_000,
         type=int,
         metavar="N",
-        help="Number of CPU instructions for instruction-level trace (default: 100000)",
+        help=(
+            "Number of CPU instructions for instruction-level trace "
+            "(default: 100000)"
+        ),
     )
     parser.addoption(
         "--no-cache",
@@ -26,7 +29,10 @@ def pytest_addoption(parser):
         action="store",
         default=None,
         metavar="HEX",
-        help="Run only tests for the given opcode prefix, e.g. --opcode 29 or --opcode ea",
+        help=(
+            "Run only tests for the given opcode prefix, "
+            "e.g. --opcode 29 or --opcode ea"
+        ),
     )
     parser.addoption(
         "--max-per-opcode",
@@ -34,7 +40,10 @@ def pytest_addoption(parser):
         default=None,
         type=int,
         metavar="N",
-        help="Limit to N test cases per opcode variant (default: 1; 0 = unlimited)",
+        help=(
+            "Limit to N test cases per opcode variant "
+            "(default: 1; 0 = unlimited)"
+        ),
     )
     parser.addoption(
         "--mode",

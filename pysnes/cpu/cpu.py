@@ -318,11 +318,10 @@ class Cpu:
         peeked = self.scheduler.peek()
         # When no other events are scheduled (e.g. unit tests without a PPU),
         # set next_event = master_clock so the loop exits after one instruction.
-        next_event = (
-            peeked
-            if peeked != 0xFFFFFFFFFFFFFFFF
-            else self.scheduler.master_clock
-        )
+        if peeked != 0xFFFFFFFFFFFFFFFF:
+            next_event = peeked
+        else:
+            next_event = self.scheduler.master_clock
         while True:
             if self._nmi_pending:
                 self._nmi_pending = False

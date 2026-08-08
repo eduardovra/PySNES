@@ -52,6 +52,11 @@ select = [
     "SIM", "C4", "PT", "PIE", "RET", "G", "ISC", "LOG",
 ]
 
+# SIM108 pushes if/else blocks into ternaries, but a ternary long enough to
+# exceed 80 columns gets wrapped by the formatter into a multi-line ternary,
+# which is harder to read than the if/else it replaced. House rule wins.
+ignore = ["SIM108"]
+
 [tool.ruff.lint.per-file-ignores]
 # Package __init__ files exist to re-export their module's public names.
 "**/__init__.py" = ["F401", "F403"]

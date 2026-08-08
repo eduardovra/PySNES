@@ -195,15 +195,17 @@ class Rom:
 
         rom_size_byte = rom[page_offset + 0xD7]
         sram_size_byte = rom[page_offset + 0xD8]
+        if sram_size_byte:
+            sram_size = min(0x400 << sram_size_byte, 0x20000)
+        else:
+            sram_size = 0
 
         return SnesHeader(
             game_title=game_title,
             mapping_mode=_enum_or_int(MappingMode, rom[page_offset + 0xD5]),
             cartridge_type=_enum_or_int(CartridgeType, rom[page_offset + 0xD6]),
             rom_size=(0x400 << rom_size_byte) if rom_size_byte else 0,
-            sram_size=min(0x400 << sram_size_byte, 0x20000)
-            if sram_size_byte
-            else 0,
+            sram_size=sram_size,
             destination_code=_enum_or_int(Region, rom[page_offset + 0xD9]),
             version=rom[page_offset + 0xDB],
             checksum_complement=rom[page_offset + 0xDC]

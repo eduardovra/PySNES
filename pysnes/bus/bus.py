@@ -53,13 +53,16 @@ class Bus:
         self._wrdiv = 0  # $4204-$4205 dividend (16-bit)
 
     def dump_state(self) -> dict:
+        if self.sram_size:
+            sram = bytes(self.sram[: self.sram_size])
+        else:
+            sram = b""
+
         return {
             "low_ram": bytes(self.low_ram),
             "high_ram": bytes(self.high_ram),
             "extended_ram": bytes(self.extended_ram),
-            "sram": bytes(self.sram[: self.sram_size])
-            if self.sram_size
-            else b"",
+            "sram": sram,
             "sram_dirty": bool(self.sram_dirty),
             "dma_ppu2_hw_registers": bytes(self.dma_ppu2_hw_registers),
             "hblank": bool(self.hblank),

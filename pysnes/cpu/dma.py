@@ -101,8 +101,7 @@ class Channel:
         count = self.transfer_size if self.transfer_size else 0x10000
         offsets = _HDMA_TARGET_OFFSETS[self.transfer_mode]
         unit_len = len(offsets)
-        # Left as if/else: the ternary form nests two levels and reads worse.
-        if self.fixed_transfer:  # noqa: SIM108
+        if self.fixed_transfer:
             step = 0
         else:
             step = -1 if self.reverse_transfer else 1

@@ -45,14 +45,6 @@ class SDL2Renderer:
                     f"{sdl.SDL_GetError().decode()}"
                 )
 
-            # Get renderer info for debugging (stored, not printed)
-            renderer_info = sdl.SDL_RendererInfo()
-            sdl.SDL_GetRendererInfo(self.renderer, renderer_info)
-            if renderer_info.name:
-                self.renderer_name = renderer_info.name.decode()
-            else:
-                self.renderer_name = "Unknown"
-
             # Create streaming texture for game screen
             self.texture = sdl.SDL_CreateTexture(
                 self.renderer,
@@ -73,10 +65,6 @@ class SDL2Renderer:
 
             # Set renderer clear color (black)
             sdl.SDL_SetRenderDrawColor(self.renderer, 0, 0, 0, 255)
-
-            # Disable VSync for maximum performance (can be re-enabled later)
-            # Note: VSync control is renderer-specific in SDL2
-
         except Exception as e:
             raise RuntimeError(
                 f"Failed to initialize SDL2 renderer: {e}"
@@ -159,33 +147,3 @@ class SDL2Renderer:
         if self.renderer:
             sdl.SDL_DestroyRenderer(self.renderer)
             self.renderer = None
-
-    def set_vsync(self, enabled: bool) -> None:
-        """Enable/disable VSync (if supported by renderer)"""
-        # Note: SDL2 VSync is set during renderer creation
-        # This would require recreating the renderer to change
-
-    def get_performance_info(self) -> dict:
-        """Get performance-related information"""
-        if not self.renderer:
-            return {}
-
-        renderer_info = sdl.SDL_RendererInfo()
-        if sdl.SDL_GetRendererInfo(self.renderer, renderer_info) == 0:
-            return {
-                "name": getattr(self, "renderer_name", "Unknown"),
-                "flags": renderer_info.flags,
-                "accelerated": bool(
-                    renderer_info.flags & sdl.SDL_RENDERER_ACCELERATED
-                ),
-                "vsync": bool(
-                    renderer_info.flags & sdl.SDL_RENDERER_PRESENTVSYNC
-                ),
-                "texture_size": f"{self.width}x{self.height}",
-                "backend": "SDL2",
-            }
-        return {
-            "backend": "SDL2",
-            "texture_size": f"{self.width}x{self.height}",
-            "name": getattr(self, "renderer_name", "Unknown"),
-        }

@@ -30,16 +30,6 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     if args.profile:
-        # import cProfile
-        # from line_profiler import LineProfiler
-
-        # lp = LineProfiler()
-        # lp_wrapper = lp(main)
-        # lp_wrapper()
-        # lp.print_stats()
-
-        # cProfile.run("main()", sort="cumulative")
-
         import cProfile
         import pstats
 
@@ -50,7 +40,6 @@ if __name__ == "__main__":
         from pysnes import pysnes
 
         cProfile.runctx("main()", globals(), locals(), "Profile.prof")
-        # cProfile.run("pysnes.main()", "Profile.prof")
 
         s = pstats.Stats("Profile.prof")
         s.sort_stats("time").print_stats(50)
@@ -59,7 +48,7 @@ if __name__ == "__main__":
         rom = args.rom or "roms/Super Mario World (U) [!].smc"
         pysnes = PySNES(rom)
 
-        rom_file_name, rom_extension = rom.split(".")
+        rom_file_name = rom.split(".")[0]
 
         with open(f"{rom_file_name}-vram.bin", "rb") as f:
             vram_dump = f.read()

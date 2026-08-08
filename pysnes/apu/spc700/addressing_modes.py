@@ -395,15 +395,11 @@ class SPC700AddressingModes:
         self.VF = self.Y >= self.X
         if self.Y < (self.X << 1):
             # if quotient is <= 511 (will fit into 9-bit result)
-            # self.A = ya / self.X
-            # self.Y = ya % self.X
             self.A = (ya // self.X) & 0xFF
             self.Y = (ya % self.X) & 0xFF
         else:
             # otherwise, the quotient won't fit into VF + A
             # this emulates the odd behavior of the S-SMP in this case
-            # self.A = 255 - (ya - (self.X << 9)) / (256 - self.X)
-            # self.Y = self.X   + (ya - (self.X << 9)) % (256 - self.X)
             self.A = (255 - (ya - (self.X << 9)) // (256 - self.X)) & 0xFF
             self.Y = (self.X + (ya - (self.X << 9)) % (256 - self.X)) & 0xFF
         # result is set based on a (quotient) only

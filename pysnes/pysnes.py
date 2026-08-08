@@ -74,7 +74,6 @@ class PySNES:
         # Emulator state
         self.running = True
         self.paused = False
-        self.frame_time = 0.0
         self.frame_fps = 60.0
         self._max_frames: int = settings.get("max_frames", 0)
         self._frame_count: int = 0

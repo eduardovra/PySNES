@@ -18,7 +18,6 @@ class Video:
         self.use_sdl2 = SDL2_AVAILABLE
         self.window = None
         self.sdl2_renderer = None
-        self.sdl2_calls = 0
 
     def initialize(self, headless: bool = False) -> None:
         if headless:
@@ -81,20 +80,5 @@ class Video:
             return
         if self.use_sdl2 and self.sdl2_renderer:
             self.sdl2_renderer.draw_frame(main_bgs)
-            self.sdl2_calls += 1
             return
         raise RuntimeError("No valid renderer available!")
-
-    def get_renderer_info(self) -> dict:
-        info = {
-            "active_renderer": "SDL2" if self.use_sdl2 else "None",
-            "sdl2_available": SDL2_AVAILABLE,
-            "sdl2_calls": getattr(self, "sdl2_calls", 0),
-        }
-        if self.sdl2_renderer:
-            info.update(self.sdl2_renderer.get_performance_info())
-        return info
-
-    def toggle_renderer(self) -> bool:
-        print("No other renderers available to toggle to")
-        return False

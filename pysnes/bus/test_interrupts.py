@@ -460,14 +460,6 @@ def test_nmi_takes_priority_over_irq():
 # ---------------------------------------------------------------------------
 
 
-def _make_bus_with_ppu():
-    """Variant of make_bus that also starts the PPU event loop."""
-    bus, cpu = make_bus()
-    bus.ppu.start()
-    cpu.start(bus.scheduler)
-    return bus, cpu
-
-
 def test_vrq_fires_at_vtime_scanline():
     """V-only IRQ: raise line when v_counter reaches VTIME."""
     bus, cpu = make_bus()

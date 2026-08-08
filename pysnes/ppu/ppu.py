@@ -376,17 +376,6 @@ class Ppu:
         # aaaaaaBBBccccccc → aaaaaacccccccBBB
         return (addr & 0xFC00) | ((addr & 0x007F) << 3) | ((addr & 0x0380) >> 7)
 
-    def write_vram(self) -> None:
-        word_addr = (self.vmaddl | self.vmaddh << 8) & 0x7FFF
-        base_addr = self._remap_vram_addr(word_addr) * 2
-        assert base_addr < len(self.vram), (
-            f"VRAM write out of bounds: 0x{base_addr:06X}"
-        )
-        self.vram[base_addr + 0] = self._vmdatal
-        self.vram[base_addr + 1] = self._vmdatah
-        self._obj_tile_dirty[base_addr >> 5] = 1
-        self.increment_vmadd()
-
     def increment_vmadd(self) -> None:
         addr = (
             self.vmaddl | self.vmaddh << 8

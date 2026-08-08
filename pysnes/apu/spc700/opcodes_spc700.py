@@ -46,7 +46,6 @@ class SPC700Opcodes:
 
     def DEC(self, x):
         assert x >= 0
-        # assert (x - 1) >= 0
         # x is 8 bits, it's ok wrap from 0 to 255
         x = (x - 1) & 0xFF
         self.NF = bool(x & 0x80)

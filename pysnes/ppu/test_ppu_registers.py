@@ -90,12 +90,13 @@ class TestOamaddGetters:
 
 
 def _write_word(ppu: Ppu, word_addr: int, low: int, high: int) -> None:
-    """Set VRAM word address and write a word (low, high) triggering
-    write_vram."""
+    """Set the VRAM word address and write a word (low, high)."""
     ppu.vmaddl = word_addr & 0xFF
     ppu.vmaddh = (word_addr >> 8) & 0xFF
     ppu.vmdatal = low
-    ppu.vmdatah = high  # triggers write_vram (increment mode = 1, default)
+    # The $2119 setter writes the high byte and, in increment mode 1
+    # (the default), advances the VRAM address.
+    ppu.vmdatah = high
 
 
 class TestVramRemapping:

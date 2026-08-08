@@ -67,9 +67,6 @@ class _RealisticScheduler:
         self.master_clock = t
         fn()
 
-    def peek_fn(self):
-        return self._queue[0][1] if self._queue else None
-
 
 class _RealisticCpu:
     """

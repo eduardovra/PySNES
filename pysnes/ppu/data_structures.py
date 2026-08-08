@@ -58,32 +58,3 @@ class Object:
     priority = 0
     palette = 0
     size = False
-
-
-@dataclass
-class Tilemap:
-    addr: int
-    palette: int
-    priority: int
-    h_flip: int
-    v_flip: int
-
-    @classmethod
-    def from_buffer(cls, data: bytearray, addr: int) -> "Tilemap":
-        low = data[addr]
-        high = data[addr + 1]
-        return cls(
-            addr=(high & 3) << 8 | low,
-            palette=(high >> 2) & 7,
-            priority=(high >> 5) & 1,
-            h_flip=(high >> 6) & 1,
-            v_flip=(high >> 7) & 1,
-        )
-
-
-@dataclass
-class Tile:
-    tile_map: Tilemap
-    map_num: int  # map number 0-3
-    map_position_x: int  # x index inside de map 0-31
-    map_position_y: int  # y index inside de map 0-31

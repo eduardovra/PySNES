@@ -165,8 +165,7 @@ class Cpu:
         self.D = Reg(16, 0x0000)  # Direct Page Register
         self.S = Reg(16, 0x01FF)  # Stack Pointer
         self.P = 0x34  # Status register
-        # self.PB = Reg(8, 0x00)  # Program Bank Register (removed in favor of
-        # PC.b)
+        # The Program Bank Register lives in PC.b, not a separate Reg.
         self.DB = Reg(8, 0x00)  # Data Bank Register
         self.PC = Reg(24, 0x00)  # self.hardware_vectors.emulation.reset
 
@@ -394,13 +393,10 @@ class Cpu:
         return data
 
     def readDirect(self, address: int) -> int:
-        # this is not part of bsnes implementation but it seems
-        # tests expect the page to wrap around when in emulation mode
-        # even if self.D.l is not zero
-        # NOTE commenting because of test for instruction 46 DirectModify LSR
-        # if self.EF:
-        #     addr = (self.D.h << 8) | ((self.D.l + address) & 0xff)
-        #     return self.read(addr)
+        # Not part of the bsnes implementation, but the tests expect the page
+        # to wrap in emulation mode even when D.l is non-zero. Wrapping
+        # unconditionally breaks the DirectModify LSR test for opcode $46, so
+        # the wrap stays gated on D.l == 0.
         if self.EF and self.D.l == 0:
             return self.read(self.D.w | address & 0xFF)
         return self.read(self.D.w + address & 0xFFFF)
@@ -602,7 +598,6 @@ class Cpu:
 
     @P.setter
     def P(self, data: int) -> None:
-        # assert 0 <= data <= 0xFF, f"Invalid value for P register: {hex(data)}"
         self.CFlag = data & 0x01 > 0
         self.ZFlag = data & 0x02 > 0
         self.IFlag = data & 0x04 > 0

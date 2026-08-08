@@ -7,7 +7,6 @@ _VBLANK_START_LINE: int = 225
 _TOTAL_SCANLINES: int = 262
 
 SCREEN_WIDTH = 256
-SCREEN_HEIGHT = 224
 # TODO: overscan — PAL uses 239/240 visible lines; SETINI $2133 bit 2 enables
 # NTSC pseudo-overscan to 239 lines
 

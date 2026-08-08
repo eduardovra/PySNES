@@ -169,8 +169,6 @@ class Apu:
         self.control_register = 0x80  # F1 (write only)
         self.dsp_register_address = 0x00  # F2 (r/w)
         self.dsp_register_data = 0x00  # F3 (r/w)
-        # self.timers = bytearray(3)  # FA/FB/FC (/w)
-        # self.counters = bytearray(3)  # FD/FE/FF (r/)
         # $F8/$F9 AUXIO4/AUXIO5: general-purpose 8-bit R/W scratch registers
         self.auxio4 = 0
         self.auxio5 = 0

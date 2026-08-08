@@ -48,9 +48,10 @@ class SDL2Renderer:
             # Get renderer info for debugging (stored, not printed)
             renderer_info = sdl.SDL_RendererInfo()
             sdl.SDL_GetRendererInfo(self.renderer, renderer_info)
-            self.renderer_name = (
-                renderer_info.name.decode() if renderer_info.name else "Unknown"
-            )
+            if renderer_info.name:
+                self.renderer_name = renderer_info.name.decode()
+            else:
+                self.renderer_name = "Unknown"
 
             # Create streaming texture for game screen
             self.texture = sdl.SDL_CreateTexture(

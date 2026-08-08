@@ -235,9 +235,8 @@ class TestColorMathBackdropAdd:
         # renders nothing.
         for col in range(32):
             addr = 0 + col * 2
-            ppu.vram[addr] = (
-                0 if col < 16 else 0xFE
-            )  # tile FE we never wrote → bitplanes 0 → transparent
+            # tile FE we never wrote → bitplanes 0 → transparent
+            ppu.vram[addr] = 0 if col < 16 else 0xFE
             ppu.vram[addr + 1] = 0
 
         # BG2 tilemap (at byte 0x1000 = word 0x800): tile 1 (blue) everywhere

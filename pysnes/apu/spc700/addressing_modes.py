@@ -107,9 +107,8 @@ class SPC700AddressingModes:
         if bool(self.data & 1 << bit) == match:
             self.idle()
             self.idle()
-            displacement = (
-                displacement if displacement < 0x80 else displacement - 0x100
-            )
+            if displacement >= 0x80:
+                displacement -= 0x100
             self.PC = (displacement + self.PC) & 0xFFFF
 
     def BranchNotDirect(self):
@@ -121,9 +120,8 @@ class SPC700AddressingModes:
         if self.data != self.A:
             self.idle()
             self.idle()
-            displacement = (
-                displacement if displacement < 0x80 else displacement - 0x100
-            )
+            if displacement >= 0x80:
+                displacement -= 0x100
             self.PC = (displacement + self.PC) & 0xFFFF
 
     def BranchNotDirectDecrement(self):
@@ -136,9 +134,8 @@ class SPC700AddressingModes:
         if self.data != 0:
             self.idle()
             self.idle()
-            displacement = (
-                displacement if displacement < 0x80 else displacement - 0x100
-            )
+            if displacement >= 0x80:
+                displacement -= 0x100
             self.PC = (displacement + self.PC) & 0xFFFF
 
     def BranchNotDirectIndexed(self, reg_index):
@@ -152,9 +149,8 @@ class SPC700AddressingModes:
         if self.data != self.A:
             self.idle()
             self.idle()
-            displacement = (
-                displacement if displacement < 0x80 else displacement - 0x100
-            )
+            if displacement >= 0x80:
+                displacement -= 0x100
             self.PC = (displacement + self.PC) & 0xFFFF
 
     def BranchNotYDecrement(self):
@@ -167,9 +163,8 @@ class SPC700AddressingModes:
         if self.Y != 0:
             self.idle()
             self.idle()
-            displacement = (
-                displacement if displacement < 0x80 else displacement - 0x100
-            )
+            if displacement >= 0x80:
+                displacement -= 0x100
             self.PC = (displacement + self.PC) & 0xFFFF
 
     def Break(self):

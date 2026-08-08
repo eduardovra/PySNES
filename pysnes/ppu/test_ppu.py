@@ -268,9 +268,10 @@ def test_ppu_screenshot(request, test_id, rom_rel, n_frames):
     """Compare PySNES framebuffer against Mesen oracle at the same frame
     count."""
     rom_rel_path = Path(rom_rel)
-    rom_path = (
-        rom_rel_path if rom_rel_path.is_absolute() else PPU_ROMS / rom_rel
-    )
+    if rom_rel_path.is_absolute():
+        rom_path = rom_rel_path
+    else:
+        rom_path = PPU_ROMS / rom_rel
 
     if not rom_path.exists():
         pytest.skip(f"ROM not found: {rom_path}")

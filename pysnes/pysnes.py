@@ -473,9 +473,10 @@ class PySNES:
                         and self._frame_count >= self._max_frames
                     ):
                         elapsed = time.perf_counter() - _bench_start
-                        avg_fps = (
-                            self._frame_count / elapsed if elapsed > 0 else 0.0
-                        )
+                        if elapsed > 0:
+                            avg_fps = self._frame_count / elapsed
+                        else:
+                            avg_fps = 0.0
                         print(
                             f"\nBenchmark: {self._frame_count} frames in "
                             f"{elapsed:.2f}s = {avg_fps:.2f} FPS",

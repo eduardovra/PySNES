@@ -950,9 +950,10 @@ class Dsp:
             adsr_on = bool(adsr1 & 0x80)
             gain_dir = (not adsr_on) and (not (gain_reg & 0x80))
             fixed_env = (gain_reg & 0x7F) << 4 if gain_dir else 0
-            gain_mode = (
-                (gain_reg >> 5) & 0x3 if (not adsr_on and not gain_dir) else 0
-            )
+            if not adsr_on and not gain_dir:
+                gain_mode = (gain_reg >> 5) & 0x3
+            else:
+                gain_mode = 0
             gain_rate = gain_reg & 0x1F if (not adsr_on and not gain_dir) else 0
             sl = (adsr2 >> 5) & 7
             ar = adsr1 & 0x0F

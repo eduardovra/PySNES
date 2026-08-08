@@ -259,9 +259,10 @@ class Ppu:
         for f, v in d["scalars"].items():
             setattr(self, f, v)
         self._cgadd = c_uint8(d["_cgadd"])
-        self._cgdata = (
-            c_uint8(d["_cgdata"]) if d["_cgdata"] is not None else None
-        )
+        if d["_cgdata"] is not None:
+            self._cgdata = c_uint8(d["_cgdata"])
+        else:
+            self._cgdata = None
         self.bg1.load_state(d["bg1"])
         self.bg2.load_state(d["bg2"])
         self.bg3.load_state(d["bg3"])

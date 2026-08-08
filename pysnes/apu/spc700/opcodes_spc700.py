@@ -9,7 +9,6 @@ class SPC700Opcodes:
     """
 
     def ADC(self, x, y):
-        # assert False
         result = x + y + int(self.CF)
         self.CF = bool(result > 0xFF)
         self.ZF = bool(result & 0xFF == 0)
@@ -113,7 +112,6 @@ class SPC700Opcodes:
         return x
 
     def SBC(self, x: int, y: int) -> int:
-        # assert False
         assert x >= 0
         assert y >= 0
         return SPC700Opcodes.ADC(self, x & 0xFF, ~y & 0xFF)
@@ -138,7 +136,6 @@ class SPC700Opcodes:
         return x
 
     def LDW(self, x, y):
-        # assert False
         assert y >= 0
         self.ZF = y == 0
         self.NF = bool(y & 0x8000)
